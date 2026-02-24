@@ -16,31 +16,13 @@ from pydantic import BaseModel
 load_dotenv()
 
 app = FastAPI()
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://hirescore-10e2g3uxs-vishwajeet3019-hues-projects.vercel.app",
+        "https://hirescore-10ndlp292-vishwajeet3019-hues-projects.vercel.app"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-def parse_cors_origins(raw_origins: str | None) -> list[str]:
-    if not raw_origins:
-        return ["http://localhost:3000", "http://127.0.0.1:3000"]
-    origins = [origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()]
-    return origins or ["http://localhost:3000", "http://127.0.0.1:3000"]
-
-
-cors_origins = parse_cors_origins(os.getenv("CORS_ALLOW_ORIGINS"))
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
