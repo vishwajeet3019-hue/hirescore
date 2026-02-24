@@ -20,8 +20,8 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://hirescore.vercel.app",
-        "http://localhost:3000"
+        "https://hirescore-10ndlp292-vishwajeet3019-hues-projects.vercel.app",
+        "https://hirescore-rosy.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
