@@ -16,7 +16,17 @@ from pydantic import BaseModel
 load_dotenv()
 
 app = FastAPI()
+from fastapi.middleware.cors import CORSMiddleware
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://hirescore-10e2g3uxs-vishwajeet3019-hues-projects.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def parse_cors_origins(raw_origins: str | None) -> list[str]:
     if not raw_origins:
