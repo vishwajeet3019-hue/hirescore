@@ -44,13 +44,13 @@ Create/update these DNS records for `hirescore.in`:
 - Host: `@`
 - Value: `76.76.21.21`
 
-2. `CNAME` record:
+2. `A` record:
 - Host: `www`
-- Value: `cname.vercel-dns.com`
+- Value: `76.76.21.21`
 
 3. `CNAME` record:
 - Host: `api`
-- Value: `<your-render-service>.onrender.com` (from Render)
+- Value: `hirescore-backend.onrender.com`
 
 If your provider already has conflicting `@`, `www`, or `api` records, remove the old ones first.
 
