@@ -15,14 +15,29 @@ from pydantic import BaseModel
 
 load_dotenv()
 
+DEFAULT_CORS_ORIGINS = [
+    "https://hirescore.in",
+    "https://www.hirescore.in",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+
+def parse_cors_origins(value: str | None) -> list[str]:
+    if not value:
+        return DEFAULT_CORS_ORIGINS
+    origins = [origin.strip() for origin in value.split(",") if origin.strip()]
+    return origins or DEFAULT_CORS_ORIGINS
+
+
 app = FastAPI()
+cors_allow_origins = parse_cors_origins(os.getenv("CORS_ALLOW_ORIGINS"))
+cors_allow_origin_regex = os.getenv("CORS_ALLOW_ORIGIN_REGEX")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://hirescore-10ndlp292-vishwajeet3019-hues-projects.vercel.app",
-        "https://hirescore-rosy.vercel.app",
-    ],
+    allow_origins=cors_allow_origins,
+    allow_origin_regex=cors_allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,67 +1,76 @@
-# Deployment Guide (GoDaddy Domain)
+# HireScore Deployment Guide (`hirescore.in`)
 
-This project has two apps:
-- `frontend`: Next.js app
-- `backend`: FastAPI API
+Target architecture:
+- Frontend (`frontend`) on Vercel
+- Backend API (`backend`) on Render
+- Custom domains:
+- `https://hirescore.in` and `https://www.hirescore.in` -> Vercel
+- `https://api.hirescore.in` -> Render
 
-Recommended setup:
-- Host frontend on Vercel
-- Host backend on Render
-- Point your GoDaddy domain to both (`@`/`www` for frontend, `api` subdomain for backend)
+## 1) Backend Deploy (Render)
 
-## 1) Deploy Backend (Render)
+This repo includes `render.yaml` for the backend service.
 
 1. Push this repo to GitHub.
-2. In Render, create a new **Web Service** from this repo.
-3. Set root directory to `backend`.
-4. Configure:
-- Build command: `pip install -r requirements.txt`
-- Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Add environment variables:
+2. In Render, choose **New +** -> **Blueprint** and connect the repo.
+3. Render will create service `hirescore-api` using:
+- Root dir: `backend`
+- Build: `pip install -r requirements.txt`
+- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+4. In Render service environment variables, set:
 - `OPENAI_API_KEY=...`
-- `CORS_ALLOW_ORIGINS=https://yourdomain.com,https://www.yourdomain.com`
-6. Deploy and note your Render URL, e.g. `https://hirescore-api.onrender.com`.
+- `CORS_ALLOW_ORIGINS=https://hirescore.in,https://www.hirescore.in`
+- Optional for preview testing:
+- `CORS_ALLOW_ORIGIN_REGEX=https://.*\.vercel\.app`
+5. After deploy, add custom domain in Render:
+- `api.hirescore.in`
 
-## 2) Deploy Frontend (Vercel)
+## 2) Frontend Deploy (Vercel)
 
-1. In Vercel, import this repo.
-2. Set root directory to `frontend`.
-3. Add environment variable:
-- `NEXT_PUBLIC_API_BASE_URL=https://api.yourdomain.com`
-4. Deploy and confirm Vercel URL works.
+1. In Vercel, import the same repo.
+2. Set **Root Directory** to `frontend`.
+3. Set environment variable:
+- `NEXT_PUBLIC_API_BASE_URL=https://api.hirescore.in`
+4. Deploy.
+5. In Vercel project domains, add:
+- `hirescore.in`
+- `www.hirescore.in`
 
-## 3) Connect GoDaddy DNS
+## 3) DNS Records (Domain Provider)
 
-In GoDaddy DNS Management:
+Create/update these DNS records for `hirescore.in`:
 
-1. Frontend (Vercel):
-- `A` record: host `@` -> `76.76.21.21`
-- `CNAME` record: host `www` -> `cname.vercel-dns.com`
+1. `A` record:
+- Host: `@`
+- Value: `76.76.21.21`
 
-2. Backend API:
-- `CNAME` record: host `api` -> your Render hostname (for example `hirescore-api.onrender.com`)
+2. `CNAME` record:
+- Host: `www`
+- Value: `cname.vercel-dns.com`
 
-3. In Vercel domain settings, add:
-- `yourdomain.com`
-- `www.yourdomain.com`
+3. `CNAME` record:
+- Host: `api`
+- Value: `<your-render-service>.onrender.com` (from Render)
 
-4. In Render custom domains, add:
-- `api.yourdomain.com`
+If your provider already has conflicting `@`, `www`, or `api` records, remove the old ones first.
 
-## 4) Final Verification
+## 4) Verify
 
-1. API health:
-- Open `https://api.yourdomain.com/`
-- Expect: `{ "message": "Hirescore backend running" }`
+1. Backend health:
+- `https://api.hirescore.in/`
+- Expected JSON: `{"message":"Hirescore backend running"}`
 
 2. Frontend:
-- Open `https://yourdomain.com/upload`
-- Run analysis and build flows
+- `https://hirescore.in/upload`
+- Run one resume analysis and one build flow
 
-3. CORS check:
-- If browser shows CORS errors, re-check `CORS_ALLOW_ORIGINS` exactly matches both domains.
+3. CORS:
+- If browser shows blocked CORS, verify Render env:
+- `CORS_ALLOW_ORIGINS=https://hirescore.in,https://www.hirescore.in`
 
-## Notes
+## 5) Local env files
 
-- DNS propagation can take a few minutes up to 24 hours.
-- If you change API domain later, update `NEXT_PUBLIC_API_BASE_URL` in Vercel and redeploy.
+- Backend sample env: `backend/.env.example`
+- Frontend sample env: `frontend/.env.example`
+
+Copy these into `.env` files for local development when needed.

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: hirescore-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        value: https://hirescore.in,https://www.hirescore.in
+      - key: CORS_ALLOW_ORIGIN_REGEX
+        value: https://.*\.vercel\.app
