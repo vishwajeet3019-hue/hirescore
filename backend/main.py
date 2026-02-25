@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 load_dotenv()
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+logger = logging.getLogger("hirescore.backend")
 
 
 def env_flag(name: str, default: bool = False) -> bool:
@@ -56,7 +58,12 @@ app.add_middleware(
 )
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = (os.getenv("OPENAI_MODEL") or "gpt-4o-mini").strip()
+OPENAI_FALLBACK_MODELS = [model.strip() for model in (os.getenv("OPENAI_FALLBACK_MODELS") or "").split(",") if model.strip()]
 client = OpenAI(api_key=openai_api_key) if openai_api_key else None
+
+if client is None:
+    logger.warning("OPENAI_API_KEY is missing. AI generation requests will not reach OpenAI.")
 
 
 class ResumeRequest(BaseModel):
@@ -745,6 +752,13 @@ def quota_error(message: str, plan: str, session_id: str, status_code: int) -> H
     )
 
 
+def ai_service_error(plan: str, session_id: str, detail: str | None = None) -> HTTPException:
+    message = "AI generation is temporarily unavailable. Please retry shortly."
+    if detail:
+        message = f"{message} ({detail})"
+    return quota_error(message, plan, session_id, 503)
+
+
 def consume_quota(plan: str, session_id: str, action: str) -> dict[str, Any]:
     if BYPASS_PLAN_LIMITS:
         return plan_enforcement_payload(plan, session_id)
@@ -805,6 +819,21 @@ def consume_quota(plan: str, session_id: str, action: str) -> dict[str, Any]:
         usage["generation_used"] += 1
 
     return plan_enforcement_payload(plan, session_id)
+
+
+def rollback_quota(plan: str, session_id: str, action: str) -> None:
+    if BYPASS_PLAN_LIMITS:
+        return
+
+    usage = usage_bucket(plan, session_id)
+
+    if action == "generation" and usage["generation_used"] > 0:
+        usage["generation_used"] -= 1
+    elif action == "pdf_polish":
+        if usage["pdf_polish_used"] > 0:
+            usage["pdf_polish_used"] -= 1
+        if usage["generation_used"] > 0:
+            usage["generation_used"] -= 1
 
 
 def normalize_token(value: str) -> str:
@@ -1410,23 +1439,66 @@ def fallback_build_resume(data: ResumeBuildRequest) -> str:
     return "\n\n".join(sections)
 
 
-def generate_with_llm(system_prompt: str, user_prompt: str, temperature: float, fallback_text: str) -> str:
-    if client is None:
-        return fallback_text
+def extract_llm_text(message_content: Any) -> str:
+    if isinstance(message_content, str):
+        return safe_text(message_content)
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=temperature,
-        )
-        content = safe_text(response.choices[0].message.content)
-        return content or fallback_text
-    except Exception:
-        return fallback_text
+    if isinstance(message_content, list):
+        parts: list[str] = []
+        for item in message_content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+
+            text = None
+            if isinstance(item, dict):
+                text = item.get("text")
+            else:
+                text = getattr(item, "text", None)
+
+            if isinstance(text, str):
+                parts.append(text)
+
+        return safe_text("\n".join(parts))
+
+    return safe_text(message_content)
+
+
+def generate_with_llm(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float,
+    fallback_text: str,
+) -> tuple[str, bool, str | None]:
+    if client is None:
+        return fallback_text, False, "OPENAI_API_KEY not configured"
+
+    models: list[str] = []
+    for model in [OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
+        if model and model not in models:
+            models.append(model)
+
+    last_error: str | None = None
+    for model in models:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=temperature,
+            )
+            content = extract_llm_text(response.choices[0].message.content if response.choices else "")
+            if content:
+                return content, True, None
+            last_error = f"empty response from model {model}"
+            logger.error("OpenAI returned empty content for model '%s'.", model)
+        except Exception as exc:
+            last_error = f"{type(exc).__name__} on model {model}"
+            logger.exception("OpenAI request failed for model '%s'.", model)
+
+    return fallback_text, False, last_error
 
 
 def improvise_resume_text(data: ResumeImproviseRequest) -> dict[str, Any]:
@@ -1469,7 +1541,7 @@ Instructions:
 """
 
     fallback_text = safe_text(data.resume_text)
-    improved_resume = generate_with_llm(
+    improved_resume, ai_generated, ai_error = generate_with_llm(
         system_prompt="You improve resumes with factual discipline and ATS-aware clarity.",
         user_prompt=improvise_prompt,
         temperature=0.25,
@@ -1489,6 +1561,8 @@ Instructions:
             "ats_friendliness": post_analysis["ats_friendliness"],
             "shortlist_prediction": post_analysis["shortlist_prediction"],
         },
+        "ai_generated": ai_generated,
+        "ai_error": ai_error,
     }
 
 
@@ -1607,16 +1681,21 @@ Instructions:
 Return only the final resume text.
 """
 
-    content = generate_with_llm(
+    content, ai_generated, ai_error = generate_with_llm(
         system_prompt="You write highly structured, factual resumes.",
         user_prompt=prompt,
         temperature=0.3,
         fallback_text=fallback_build_resume(data),
     )
 
+    if PLAN_RULES[normalized_plan]["can_ai_enhance"] and not ai_generated:
+        rollback_quota(normalized_plan, normalized_session, "generation")
+        raise ai_service_error(normalized_plan, normalized_session, ai_error)
+
     return {
         "optimized_resume": content,
         "plan_enforcement": plan_meta,
+        "ai_generated": ai_generated,
     }
 
 
@@ -1626,6 +1705,10 @@ def improvise_resume(data: ResumeImproviseRequest) -> dict[str, Any]:
     normalized_session = normalize_session_id(data.session_id)
     plan_meta = consume_quota(normalized_plan, normalized_session, "generation")
     payload = improvise_resume_text(data)
+    if PLAN_RULES[normalized_plan]["can_ai_enhance"] and not payload.get("ai_generated"):
+        rollback_quota(normalized_plan, normalized_session, "generation")
+        raise ai_service_error(normalized_plan, normalized_session, payload.get("ai_error"))
+    payload.pop("ai_error", None)
     payload["plan_enforcement"] = plan_meta
     return payload
 
@@ -1659,7 +1742,11 @@ async def polish_resume_pdf(
     )
 
     improved = improvise_resume_text(improvise_payload)
+    if PLAN_RULES[normalized_plan]["can_ai_enhance"] and not improved.get("ai_generated"):
+        rollback_quota(normalized_plan, normalized_session, "pdf_polish")
+        raise ai_service_error(normalized_plan, normalized_session, improved.get("ai_error"))
     return {
         "optimized_resume": safe_text(improved["optimized_resume"]),
         "plan_enforcement": plan_meta,
+        "ai_generated": improved.get("ai_generated", False),
     }
