@@ -736,6 +736,30 @@ ROLE_TRACK_KEYWORDS = {
     "content": ["content", "content writer", "copywriter", "copywriting", "editor", "seo content"],
 }
 
+ROLE_TITLE_OVERRIDES = {
+    "business analyst": "business",
+    "marketing associate": "marketing",
+    "seo specialist": "marketing",
+    "content strategist": "content",
+    "sales executive": "sales",
+    "customer success manager": "support",
+    "backend engineer": "backend",
+    "frontend developer": "frontend",
+    "data analyst": "data",
+    "hr recruiter": "hr",
+    "operations associate": "operations",
+    "finance analyst": "finance",
+    "ui ux designer": "design",
+    "product designer": "design",
+    "qa engineer": "qa",
+    "devops engineer": "devops",
+    "security analyst": "cybersecurity",
+    "cybersecurity analyst": "cybersecurity",
+    "mobile app developer": "mobile",
+    "legal associate": "legal",
+    "healthcare coordinator": "healthcare",
+}
+
 ROLE_CRITICAL_SKILLS = {
     "backend": ["python", "sql", "api design"],
     "frontend": ["javascript", "react", "html"],
@@ -1033,6 +1057,12 @@ def tokenize_keywords(text: str) -> set[str]:
 
 def infer_role_track_with_score(role: str, industry: str = "") -> tuple[str, int]:
     role_lower = f"{role} {industry}".lower()
+    role_compact = re.sub(r"[^a-z0-9]+", " ", role_lower).strip()
+
+    for title, track in ROLE_TITLE_OVERRIDES.items():
+        if title in role_compact:
+            return track, 5
+
     best_track = "general"
     best_score = 0
 
