@@ -199,6 +199,13 @@ SKILL_ALIASES = {
     "product demonstration": "product demo",
     "client handling": "client relationship management",
     "crm tools": "crm",
+    "content marketing": "content strategy",
+    "email campaigns": "email marketing",
+    "social media marketing": "social media",
+    "ppc": "performance marketing",
+    "google analytics": "analytics",
+    "meta marketing": "meta ads",
+    "paid ads": "performance marketing",
 }
 
 ROLE_BLUEPRINTS: dict[str, dict[str, list[str]]] = {
@@ -555,6 +562,131 @@ ROLE_BLUEPRINTS: dict[str, dict[str, list[str]]] = {
             "Build an edtech-enabled teaching plan for blended learning delivery.",
         ],
     },
+    "business": {
+        "core": [
+            "business analysis",
+            "requirement gathering",
+            "stakeholder management",
+            "process mapping",
+            "kpi tracking",
+            "problem solving",
+        ],
+        "adjacent": [
+            "excel",
+            "sql",
+            "power bi",
+            "tableau",
+            "documentation",
+            "workflow design",
+            "gap analysis",
+            "presentation",
+        ],
+        "projects": [
+            "Create an end-to-end business requirements document with measurable delivery outcomes.",
+            "Build a KPI dashboard and present weekly business insights with actions.",
+            "Map and optimize one operational workflow with before/after performance metrics.",
+        ],
+    },
+    "consulting": {
+        "core": [
+            "problem structuring",
+            "market analysis",
+            "client communication",
+            "stakeholder management",
+            "business strategy",
+            "presentation",
+        ],
+        "adjacent": [
+            "financial modeling",
+            "excel",
+            "powerpoint",
+            "data analysis",
+            "research",
+            "workshop facilitation",
+            "change management",
+            "risk analysis",
+        ],
+        "projects": [
+            "Deliver a consulting case with clear hypotheses, analysis, and implementation roadmap.",
+            "Build a market-entry strategy deck with assumptions and quantified impact.",
+            "Create an operating model recommendation with risks, dependencies, and success metrics.",
+        ],
+    },
+    "cybersecurity": {
+        "core": [
+            "network security",
+            "security monitoring",
+            "incident response",
+            "vulnerability assessment",
+            "risk management",
+            "security compliance",
+        ],
+        "adjacent": [
+            "siem",
+            "soc",
+            "iam",
+            "penetration testing",
+            "threat modeling",
+            "cloud security",
+            "linux",
+            "scripting",
+        ],
+        "projects": [
+            "Build a security monitoring workflow with alert triage and incident playbooks.",
+            "Conduct a vulnerability assessment and remediation prioritization report.",
+            "Design a role-based access control model with audit and compliance mapping.",
+        ],
+    },
+    "mobile": {
+        "core": [
+            "android",
+            "ios",
+            "mobile app development",
+            "ui development",
+            "api integration",
+            "debugging",
+        ],
+        "adjacent": [
+            "kotlin",
+            "swift",
+            "flutter",
+            "react native",
+            "firebase",
+            "performance optimization",
+            "app testing",
+            "state management",
+        ],
+        "projects": [
+            "Build a production-ready mobile app with auth, APIs, and offline support.",
+            "Optimize app performance and reduce crash rates with measurable improvements.",
+            "Create a modular app architecture with testable components and CI pipeline.",
+        ],
+    },
+    "content": {
+        "core": [
+            "content writing",
+            "content strategy",
+            "seo",
+            "research",
+            "editing",
+            "storytelling",
+        ],
+        "adjacent": [
+            "copywriting",
+            "email marketing",
+            "social media",
+            "keyword research",
+            "cms",
+            "analytics",
+            "brand voice",
+            "campaign planning",
+        ],
+        "projects": [
+            "Build a content calendar with measurable organic traffic growth targets.",
+            "Create SEO-optimized long-form and landing-page content with keyword strategy.",
+            "Design a multi-channel content campaign and report engagement/conversion impact.",
+        ],
+    },
     "general": {
         "core": ["communication", "problem solving", "collaboration", "domain knowledge"],
         "adjacent": ["analytics", "documentation", "execution", "stakeholder management"],
@@ -572,7 +704,21 @@ ROLE_TRACK_KEYWORDS = {
     "data": ["data", "analyst", "scientist", "ml", "ai", "analytics", "bi"],
     "product": ["product", "pm", "growth", "strategy", "roadmap"],
     "sales": ["sales", "account executive", "business development", "bdm", "inside sales", "pre sales"],
-    "marketing": ["marketing", "digital marketing", "seo", "sem", "brand", "campaign", "performance marketing"],
+    "marketing": [
+        "marketing",
+        "digital marketing",
+        "seo",
+        "sem",
+        "brand",
+        "campaign",
+        "performance marketing",
+        "marketing associate",
+        "growth marketer",
+        "content marketer",
+        "email marketer",
+        "social media manager",
+        "seo specialist",
+    ],
     "finance": ["finance", "financial", "fp&a", "accounting", "investment", "audit", "analyst"],
     "operations": ["operations", "ops", "supply chain", "process", "logistics", "procurement"],
     "hr": ["hr", "human resources", "talent", "recruiter", "recruitment", "people operations"],
@@ -583,6 +729,11 @@ ROLE_TRACK_KEYWORDS = {
     "legal": ["legal", "lawyer", "advocate", "attorney", "compliance", "contract"],
     "healthcare": ["healthcare", "nurse", "doctor", "clinical", "medical", "hospital", "pharma"],
     "education": ["teacher", "educator", "trainer", "professor", "instructor", "education"],
+    "business": ["business analyst", "business analysis", "requirements", "process mapping", "kpi", "bsa"],
+    "consulting": ["consultant", "consulting", "strategy consultant", "management consulting", "advisory"],
+    "cybersecurity": ["cybersecurity", "security analyst", "soc", "infosec", "iam", "threat", "vulnerability"],
+    "mobile": ["mobile", "android", "ios", "flutter", "react native", "app developer"],
+    "content": ["content", "content writer", "copywriter", "copywriting", "editor", "seo content"],
 }
 
 ROLE_CRITICAL_SKILLS = {
@@ -591,7 +742,7 @@ ROLE_CRITICAL_SKILLS = {
     "data": ["python", "sql", "data analysis"],
     "product": ["product strategy", "metrics", "user research"],
     "sales": ["pipeline management", "negotiation", "deal closing"],
-    "marketing": ["campaign management", "analytics", "content strategy"],
+    "marketing": ["campaign management", "seo", "content strategy"],
     "finance": ["financial analysis", "forecasting", "excel"],
     "operations": ["process improvement", "kpi tracking", "project management"],
     "hr": ["recruitment", "employee engagement", "hr operations"],
@@ -602,6 +753,11 @@ ROLE_CRITICAL_SKILLS = {
     "legal": ["legal research", "contract drafting", "compliance"],
     "healthcare": ["patient care", "clinical documentation", "safety protocols"],
     "education": ["teaching", "curriculum design", "student assessment"],
+    "business": ["business analysis", "requirement gathering", "stakeholder management"],
+    "consulting": ["problem structuring", "market analysis", "presentation"],
+    "cybersecurity": ["network security", "incident response", "vulnerability assessment"],
+    "mobile": ["mobile app development", "api integration", "debugging"],
+    "content": ["content writing", "content strategy", "seo"],
     "general": ["communication", "problem solving"],
 }
 
@@ -642,6 +798,11 @@ SPECIFICITY_KEYWORDS = {
     "google ads",
     "meta ads",
     "seo",
+    "sem",
+    "content strategy",
+    "content writing",
+    "email marketing",
+    "social media",
     "power bi",
     "tableau",
     "erp",
@@ -656,6 +817,16 @@ SPECIFICITY_KEYWORDS = {
     "ehr",
     "emr",
     "lms",
+    "kotlin",
+    "swift",
+    "flutter",
+    "react native",
+    "firebase",
+    "siem",
+    "soc",
+    "iam",
+    "penetration testing",
+    "vulnerability assessment",
 }
 
 SENIORITY_KEYWORDS = {
@@ -1350,9 +1521,18 @@ def analyze_profile(industry: str, role: str, skills_text: str) -> dict[str, Any
         + 0.06 * consistency_score
     )
 
-    penalty_cap = 14 if adaptive_profile else 18
-    strictness_penalty = min(penalty_cap, len(critical_missing) * 6 + max(0, 45 - consistency_score) * 0.22)
+    penalty_cap = 12 if adaptive_profile else 16
+    strictness_penalty = min(penalty_cap, len(critical_missing) * 4.4 + max(0, 40 - consistency_score) * 0.16)
     overall_score = clamp(raw_overall - strictness_penalty)
+
+    # Prevent extreme floor effects for valid role/skill signals on short early-career profiles.
+    if skills_list and role_track != "custom":
+        if profile_details["listed_count"] >= 3:
+            overall_score = max(overall_score, 14)
+        if skill_match_score >= 16:
+            overall_score = max(overall_score, 20)
+        if critical_coverage >= 34:
+            overall_score = max(overall_score, 24)
 
     confidence = confidence_by_seniority(seniority, profile_details["listed_count"], critical_coverage)
     confidence = clamp(confidence + min(8, consistency_score * 0.08) - min(10, len(critical_missing) * 2.3))
