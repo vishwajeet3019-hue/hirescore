@@ -881,6 +881,29 @@ def safe_text(value: str | None) -> str:
     return (value or "").strip()
 
 
+def extract_resume_text_for_analysis(file_name: str, content_type: str | None, contents: bytes) -> str:
+    normalized_name = safe_text(file_name).lower()
+    normalized_type = safe_text(content_type).lower()
+
+    is_pdf = normalized_name.endswith(".pdf") or normalized_type == "application/pdf"
+    is_txt = normalized_name.endswith(".txt") or normalized_type.startswith("text/")
+
+    if is_pdf:
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(contents))
+        extracted_pages: list[str] = []
+        for page in pdf_reader.pages:
+            extracted_pages.append(page.extract_text() or "")
+        return "\n".join(extracted_pages).strip()
+
+    if is_txt:
+        return contents.decode("utf-8", errors="ignore").strip()
+
+    raise HTTPException(
+        status_code=400,
+        detail="Unsupported file type for analysis. Upload a PDF or TXT file.",
+    )
+
+
 def usage_window_key() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
@@ -1797,6 +1820,38 @@ def analyze_resume(data: ResumeRequest) -> dict[str, Any]:
     analysis = analyze_profile(data.industry, data.role, skills_text)
     analysis["plan_enforcement"] = plan_meta
     return analysis
+
+
+@app.post("/analyze-resume-file")
+async def analyze_resume_file(
+    file: UploadFile = File(...),
+    industry: str = Form("General"),
+    role: str = Form("General Role"),
+    plan: str = Form("free"),
+    session_id: str = Form("anonymous"),
+) -> dict[str, Any]:
+    normalized_plan = normalize_plan(plan)
+    normalized_session = normalize_session_id(session_id)
+    plan_meta = consume_quota(normalized_plan, normalized_session, "analyze")
+
+    try:
+        contents = await file.read()
+        extracted_text = extract_resume_text_for_analysis(file.filename or "", file.content_type, contents)
+        if not extracted_text:
+            rollback_quota(normalized_plan, normalized_session, "analyze")
+            raise HTTPException(status_code=400, detail="No readable text found in the uploaded file.")
+
+        analysis = analyze_profile(industry, role, extracted_text)
+        analysis["plan_enforcement"] = plan_meta
+        analysis["source"] = "resume_upload"
+        analysis["extracted_chars"] = len(extracted_text)
+        return analysis
+    except HTTPException:
+        rollback_quota(normalized_plan, normalized_session, "analyze")
+        raise
+    except Exception:
+        rollback_quota(normalized_plan, normalized_session, "analyze")
+        raise HTTPException(status_code=400, detail="Unable to parse this file. Try a text-based PDF or TXT resume.")
 
 
 @app.post("/suggest")
