@@ -76,6 +76,9 @@ class ResumeRequest(BaseModel):
     role: str
     skills: str | None = None
     description: str | None = None
+    experience_years: float | None = None
+    applications_count: int | None = None
+    salary_boost_toggles: list[str] | None = None
     plan: str | None = None
     session_id: str | None = None
 
@@ -877,13 +880,178 @@ GENERIC_ROLE_WORDS = {
     "industry",
 }
 
+TRACK_TO_MARKET_SEGMENT = {
+    "backend": "technology",
+    "frontend": "technology",
+    "data": "technology",
+    "product": "business",
+    "sales": "business",
+    "marketing": "business",
+    "finance": "business",
+    "operations": "business",
+    "hr": "business",
+    "design": "creative",
+    "devops": "technology",
+    "qa": "technology",
+    "support": "service",
+    "legal": "business",
+    "healthcare": "service",
+    "education": "service",
+    "business": "business",
+    "consulting": "business",
+    "cybersecurity": "technology",
+    "mobile": "technology",
+    "content": "creative",
+    "general": "general",
+}
+
+INDIA_MARKET_SEGMENTS: dict[str, dict[str, Any]] = {
+    "technology": {
+        "salary_lpa": {"entry": (5.8, 12.0), "mid": (11.0, 24.0), "senior": (22.0, 48.0)},
+        "best_months": ["January", "February", "March", "July", "August", "September"],
+        "hiring_peak_windows": ["Q1 budgeting cycle", "Q3 product release cycle"],
+        "layoff_risk": "medium",
+        "layoff_note": "Startup and non-profitable teams can be volatile; revenue-critical engineering teams are safer.",
+    },
+    "business": {
+        "salary_lpa": {"entry": (3.6, 8.5), "mid": (7.5, 18.0), "senior": (15.0, 36.0)},
+        "best_months": ["January", "February", "April", "August", "September", "October"],
+        "hiring_peak_windows": ["Q1 annual planning", "Post-monsoon expansion cycle"],
+        "layoff_risk": "medium",
+        "layoff_note": "Demand is healthy but target-driven teams can tighten headcount during slow quarters.",
+    },
+    "creative": {
+        "salary_lpa": {"entry": (3.2, 8.0), "mid": (6.5, 15.0), "senior": (13.0, 28.0)},
+        "best_months": ["January", "March", "June", "August", "October"],
+        "hiring_peak_windows": ["Campaign planning cycles", "Festive-quarter brand spend"],
+        "layoff_risk": "medium",
+        "layoff_note": "Brand budgets can contract in downturns; performance-linked roles are more resilient.",
+    },
+    "service": {
+        "salary_lpa": {"entry": (2.8, 7.0), "mid": (5.5, 13.0), "senior": (11.0, 24.0)},
+        "best_months": ["February", "March", "July", "August", "November"],
+        "hiring_peak_windows": ["Academic/financial-year transitions", "Year-end staffing ramps"],
+        "layoff_risk": "low",
+        "layoff_note": "Operational roles are steadier, with volatility concentrated in contract-heavy employers.",
+    },
+    "general": {
+        "salary_lpa": {"entry": (3.4, 7.8), "mid": (6.8, 15.0), "senior": (12.0, 28.0)},
+        "best_months": ["January", "February", "July", "August", "September"],
+        "hiring_peak_windows": ["Quarter planning windows"],
+        "layoff_risk": "medium",
+        "layoff_note": "Stability depends on company profitability and team criticality.",
+    },
+}
+
+HIGH_RISK_INDUSTRIES_INDIA = [
+    "speculative web3 and non-revenue crypto ventures",
+    "high-burn direct-to-consumer startups",
+    "ad-dependent content businesses with weak cash flow",
+]
+
+TRACK_ROLE_OPTIONS: dict[str, list[str]] = {
+    "backend": ["Backend Engineer", "Platform Engineer", "API Engineer", "Site Reliability Engineer"],
+    "frontend": ["Frontend Engineer", "UI Engineer", "Web Developer", "Design Systems Engineer"],
+    "data": ["Data Analyst", "Data Scientist", "Business Intelligence Analyst", "ML Engineer"],
+    "product": ["Product Manager", "Product Analyst", "Growth Analyst", "Program Manager"],
+    "sales": ["Account Executive", "Business Development Executive", "Inside Sales Specialist", "Customer Success Manager"],
+    "marketing": ["Performance Marketer", "Growth Marketer", "SEO Specialist", "Content Marketing Manager"],
+    "finance": ["Finance Analyst", "FP&A Analyst", "Risk Analyst", "Business Finance Manager"],
+    "operations": ["Operations Analyst", "Program Operations Manager", "Supply Chain Analyst", "Business Operations Lead"],
+    "hr": ["Talent Acquisition Specialist", "HR Operations Analyst", "People Partner", "Recruitment Consultant"],
+    "design": ["Product Designer", "UI Designer", "UX Researcher", "Visual Designer"],
+    "devops": ["DevOps Engineer", "Cloud Engineer", "Infrastructure Engineer", "Reliability Engineer"],
+    "qa": ["QA Engineer", "Automation Test Engineer", "SDET", "Quality Analyst"],
+    "support": ["Customer Support Specialist", "Customer Success Executive", "Support Operations Analyst", "Service Desk Analyst"],
+    "legal": ["Legal Associate", "Compliance Analyst", "Contracts Specialist", "Corporate Counsel"],
+    "healthcare": ["Clinical Coordinator", "Healthcare Operations Analyst", "Patient Success Specialist", "Medical Documentation Specialist"],
+    "education": ["Instructional Designer", "Curriculum Specialist", "Learning Program Manager", "Academic Coordinator"],
+    "business": ["Business Analyst", "Process Analyst", "Strategy Analyst", "Operations Analyst"],
+    "consulting": ["Consulting Analyst", "Strategy Analyst", "Business Consultant", "Transformation Consultant"],
+    "cybersecurity": ["Security Analyst", "SOC Analyst", "Security Engineer", "GRC Analyst"],
+    "mobile": ["Mobile Developer", "Android Developer", "iOS Developer", "Flutter Engineer"],
+    "content": ["Content Strategist", "SEO Content Specialist", "Copywriter", "Editorial Lead"],
+    "general": ["Business Analyst", "Operations Executive", "Project Coordinator", "Program Associate"],
+}
+
+GLOBAL_SALARY_BOOSTERS: list[dict[str, Any]] = [
+    {
+        "id": "quantified_outcomes",
+        "label": "Quantified impact in resume",
+        "description": "Show revenue, conversion, savings, quality, or delivery metrics.",
+        "uplift_lpa": 1.1,
+    },
+    {
+        "id": "domain_certification",
+        "label": "Role-relevant certification",
+        "description": "Add one strong certification tied to your target role stack.",
+        "uplift_lpa": 0.8,
+    },
+    {
+        "id": "portfolio_case_study",
+        "label": "Portfolio case study",
+        "description": "Show one end-to-end project artifact aligned to your target job.",
+        "uplift_lpa": 1.2,
+    },
+]
+
+TRACK_SALARY_BOOSTERS: dict[str, list[dict[str, Any]]] = {
+    "technology": [
+        {"id": "cloud_depth", "label": "Cloud depth (AWS/GCP/Azure)", "description": "Demonstrate production-grade cloud ownership.", "uplift_lpa": 1.4},
+        {"id": "system_design", "label": "System design readiness", "description": "Show scalability and architecture decision capability.", "uplift_lpa": 1.6},
+    ],
+    "business": [
+        {"id": "stakeholder_influence", "label": "Stakeholder influence", "description": "Document cross-functional initiatives with outcomes.", "uplift_lpa": 1.3},
+        {"id": "pnl_orientation", "label": "P&L or revenue ownership", "description": "Show ownership of growth, margin, or cost metrics.", "uplift_lpa": 1.5},
+    ],
+    "creative": [
+        {"id": "campaign_roi", "label": "Campaign ROI proof", "description": "Add data-backed campaign case studies.", "uplift_lpa": 1.2},
+        {"id": "design_systems", "label": "Design systems expertise", "description": "Show consistency and scale impact from design systems.", "uplift_lpa": 1.0},
+    ],
+    "service": [
+        {"id": "service_quality_metrics", "label": "Service quality metrics", "description": "Highlight CSAT, TAT, adherence, and retention gains.", "uplift_lpa": 1.1},
+        {"id": "domain_specialization", "label": "Domain specialization", "description": "Show depth in healthcare/education/service workflows.", "uplift_lpa": 0.9},
+    ],
+    "general": [
+        {"id": "business_communication", "label": "Executive communication", "description": "Demonstrate report-ready structured communication.", "uplift_lpa": 0.8},
+        {"id": "ownership_scope", "label": "Ownership scope increase", "description": "Show larger project or process ownership.", "uplift_lpa": 1.0},
+    ],
+}
+
 
 def clamp(value: float, lower: int = 0, upper: int = 100) -> int:
     return max(lower, min(upper, int(round(value))))
 
 
+def clamp_float(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
 def safe_text(value: str | None) -> str:
     return (value or "").strip()
+
+
+def normalize_experience_years(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return clamp_float(float(value), 0.0, 35.0)
+
+
+def normalize_applications_count(value: int | None) -> int:
+    if value is None:
+        return 60
+    return int(clamp_float(float(value), 1.0, 2500.0))
+
+
+def normalize_toggle_ids(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    for item in values:
+        token = re.sub(r"[^a-z0-9_]+", "_", safe_text(item).lower()).strip("_")
+        if token:
+            normalized.append(token)
+    return dedupe_preserve_order(normalized)
 
 
 def extract_resume_text_for_analysis(file_name: str, content_type: str | None, contents: bytes) -> str:
@@ -1419,7 +1587,7 @@ def build_improvement_areas(
                 "category": "Must-Have Skill Gaps",
                 "details": [
                     f"Missing must-have skills: {', '.join(critical_missing[:4])}.",
-                    "These are high-weight filters in shortlist decisions for this role track.",
+                    "These are high-weight filters in shortlist decisions for your target role.",
                     "Prioritize learning and demonstrating these skills first in projects or experience bullets.",
                 ],
             }
@@ -1442,7 +1610,7 @@ def build_improvement_areas(
             {
                 "category": "Role Consistency",
                 "details": [
-                    "Your listed skills look scattered across multiple role tracks.",
+                    "Your listed skills look scattered across multiple role directions.",
                     "Low role consistency reduces screening confidence and ranking quality.",
                     "Refocus profile around one target role and remove unrelated low-signal skills.",
                 ],
@@ -1552,7 +1720,331 @@ def build_suggestion_payload(
     }
 
 
-def analyze_profile(industry: str, role: str, skills_text: str) -> dict[str, Any]:
+def infer_experience_band(experience_years: float | None, seniority: str) -> str:
+    normalized = normalize_experience_years(experience_years)
+    if normalized is None:
+        if seniority == "senior":
+            return "senior"
+        if seniority == "junior":
+            return "entry"
+        return "mid"
+    if normalized < 2.5:
+        return "entry"
+    if normalized < 8:
+        return "mid"
+    return "senior"
+
+
+def market_segment_for_track(role_track: str, industry: str) -> str:
+    inferred = TRACK_TO_MARKET_SEGMENT.get(role_track, "general")
+    industry_text = safe_text(industry).lower()
+    if any(token in industry_text for token in ["ai", "software", "technology", "saas", "it services"]):
+        return "technology"
+    if any(token in industry_text for token in ["bank", "finance", "insurance", "consulting", "retail"]):
+        return "business"
+    if any(token in industry_text for token in ["healthcare", "hospital", "education", "edtech"]):
+        return "service"
+    if any(token in industry_text for token in ["media", "content", "creative", "design", "advertising"]):
+        return "creative"
+    return inferred if inferred in INDIA_MARKET_SEGMENTS else "general"
+
+
+def build_salary_boosters(market_segment: str) -> list[dict[str, Any]]:
+    segment_boosters = TRACK_SALARY_BOOSTERS.get(market_segment, TRACK_SALARY_BOOSTERS["general"])
+    merged = [*GLOBAL_SALARY_BOOSTERS, *segment_boosters]
+    deduped: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for booster in merged:
+        booster_id = safe_text(str(booster.get("id"))).lower()
+        if booster_id and booster_id not in seen_ids:
+            seen_ids.add(booster_id)
+            deduped.append(
+                {
+                    "id": booster_id,
+                    "label": safe_text(str(booster.get("label"))),
+                    "description": safe_text(str(booster.get("description"))),
+                    "uplift_lpa": round(float(booster.get("uplift_lpa", 0.0)), 1),
+                }
+            )
+    return deduped
+
+
+def build_salary_insight(
+    role_track: str,
+    role: str,
+    industry: str,
+    overall_score: int,
+    confidence: int,
+    seniority: str,
+    experience_years: float | None,
+    selected_toggle_ids: list[str] | None,
+) -> dict[str, Any]:
+    market_segment = market_segment_for_track(role_track, industry)
+    market_data = INDIA_MARKET_SEGMENTS.get(market_segment, INDIA_MARKET_SEGMENTS["general"])
+    experience_band = infer_experience_band(experience_years, seniority)
+
+    band_low, band_high = market_data["salary_lpa"][experience_band]
+    score_factor = clamp_float(0.86 + (overall_score / 100.0) * 0.32, 0.82, 1.22)
+    confidence_factor = clamp_float(0.92 + (confidence / 100.0) * 0.14, 0.9, 1.08)
+
+    base_low = round(band_low * score_factor * confidence_factor, 1)
+    base_high = round(band_high * score_factor * confidence_factor, 1)
+
+    boosters = build_salary_boosters(market_segment)
+    selected = set(normalize_toggle_ids(selected_toggle_ids))
+    uplift = round(sum(item["uplift_lpa"] for item in boosters if item["id"] in selected), 1)
+
+    projected_low = round(base_low + (uplift * 0.72), 1)
+    projected_high = round(base_high + uplift, 1)
+
+    return {
+        "market_scope": "India",
+        "market_segment": market_segment,
+        "target_role": safe_text(role),
+        "target_industry": safe_text(industry),
+        "experience_band": experience_band,
+        "experience_years_used": normalize_experience_years(experience_years),
+        "currency": "INR LPA",
+        "base_range_lpa": {
+            "low": base_low,
+            "mid": round((base_low + base_high) / 2, 1),
+            "high": base_high,
+        },
+        "selected_boosters": sorted(selected),
+        "booster_uplift_lpa": uplift,
+        "projected_range_lpa": {
+            "low": projected_low,
+            "mid": round((projected_low + projected_high) / 2, 1),
+            "high": projected_high,
+        },
+        "salary_booster_options": boosters,
+        "market_data_refresh_note": "Model calibrated for current India hiring patterns; connect live salary APIs for company-level precision.",
+    }
+
+
+def build_ninety_plus_plan(
+    overall_score: int,
+    critical_missing: list[str],
+    core_missing: list[str],
+    adjacent_missing: list[str],
+) -> dict[str, Any]:
+    gap_to_90 = max(0, 90 - overall_score)
+    actions: list[dict[str, Any]] = []
+
+    if critical_missing:
+        actions.append(
+            {
+                "priority": "P1",
+                "action": f"Close must-have gaps first: {', '.join(critical_missing[:4])}.",
+                "estimated_score_lift": min(24, 6 + len(critical_missing[:4]) * 4),
+                "timeline_weeks": "2-5",
+            }
+        )
+
+    if core_missing:
+        actions.append(
+            {
+                "priority": "P1",
+                "action": f"Build role-depth proof on core gaps: {', '.join(core_missing[:4])}.",
+                "estimated_score_lift": min(18, 5 + len(core_missing[:4]) * 3),
+                "timeline_weeks": "3-6",
+            }
+        )
+
+    actions.append(
+        {
+            "priority": "P2",
+            "action": "Rewrite top resume bullets with quantified outcomes and role-specific keywords.",
+            "estimated_score_lift": 8,
+            "timeline_weeks": "1-2",
+        }
+    )
+    actions.append(
+        {
+            "priority": "P2",
+            "action": "Tailor resume variant per role cluster and submit in focused batches.",
+            "estimated_score_lift": 6,
+            "timeline_weeks": "1-3",
+        }
+    )
+
+    if adjacent_missing:
+        actions.append(
+            {
+                "priority": "P3",
+                "action": f"Add 2 adjacent differentiators: {', '.join(adjacent_missing[:3])}.",
+                "estimated_score_lift": 5,
+                "timeline_weeks": "2-4",
+            }
+        )
+
+    projected_lift = min(32, sum(item["estimated_score_lift"] for item in actions[:4]))
+    projected_score = clamp(overall_score + projected_lift)
+
+    return {
+        "target_score": 90,
+        "current_score": overall_score,
+        "gap_to_90": gap_to_90,
+        "projected_score_after_execution": projected_score,
+        "execution_window_weeks": "4-10",
+        "plan_status": "already_90_plus" if gap_to_90 == 0 else "improvement_required",
+        "actions": actions[:5],
+    }
+
+
+def build_interview_call_likelihood(overall_score: int, confidence: int) -> dict[str, Any]:
+    weighted = clamp(0.68 * overall_score + 0.32 * confidence)
+    if weighted >= 76:
+        return {"level": "high", "label": "Likely to get interview calls: High", "score": weighted}
+    if weighted >= 56:
+        return {"level": "medium", "label": "Likely to get interview calls: Medium", "score": weighted}
+    return {"level": "low", "label": "Likely to get interview calls: Low", "score": weighted}
+
+
+def track_fit_score(track: str, skills_list: list[str], role: str, industry: str) -> tuple[int, list[str]]:
+    blueprint = ROLE_BLUEPRINTS.get(track, ROLE_BLUEPRINTS["general"])
+    catalog = dedupe_preserve_order(
+        [
+            *blueprint["core"],
+            *blueprint["adjacent"],
+            *ROLE_CRITICAL_SKILLS.get(track, []),
+            *ROLE_TRACK_KEYWORDS.get(track, []),
+        ]
+    )
+    catalog_set = set(catalog)
+    hits = [skill for skill in skills_list if skill in catalog_set]
+    ratio = len(hits) / max(1, min(14, len(catalog_set)))
+
+    role_hint = f"{safe_text(role)} {safe_text(industry)}".lower()
+    keyword_bonus = min(18, sum(1 for keyword in ROLE_TRACK_KEYWORDS.get(track, []) if keyword in role_hint) * 4)
+    score = clamp(ratio * 92 + keyword_bonus)
+    return score, dedupe_preserve_order(hits)[:6]
+
+
+def build_positioning_strategy(role_track: str, role: str, industry: str, skills_list: list[str]) -> dict[str, Any]:
+    target_track = role_track if role_track in ROLE_BLUEPRINTS else infer_role_track(role, industry)
+    track_scores: list[tuple[str, int, list[str]]] = []
+
+    for track in ROLE_BLUEPRINTS:
+        if track == "general":
+            continue
+        score, hits = track_fit_score(track, skills_list, role, industry)
+        track_scores.append((track, score, hits))
+
+    track_scores.sort(key=lambda item: item[1], reverse=True)
+    target_score = next((item[1] for item in track_scores if item[0] == target_track), 0)
+
+    alternatives: list[dict[str, Any]] = []
+    for track, score, hits in track_scores:
+        if track == target_track:
+            continue
+        stronger_fit = score >= target_score + 4
+        if not stronger_fit and len(alternatives) >= 3:
+            continue
+        options = TRACK_ROLE_OPTIONS.get(track, TRACK_ROLE_OPTIONS["general"])
+        alternatives.append(
+            {
+                "role": options[0],
+                "fit_score": score,
+                "fit_signal": "higher_fit" if stronger_fit else "comparable_fit",
+                "why": f"Current profile already signals {', '.join(hits[:3]) or 'transferable capabilities'} for this role.",
+            }
+        )
+        if len(alternatives) == 3:
+            break
+
+    target_role_options = TRACK_ROLE_OPTIONS.get(target_track, TRACK_ROLE_OPTIONS["general"])
+    return {
+        "target_role": safe_text(role),
+        "target_fit_score": target_score,
+        "target_role_examples": target_role_options[:3],
+        "higher_probability_roles": alternatives,
+        "summary": "Positioning can improve by applying to both your desired role and adjacent higher-fit role titles in parallel.",
+    }
+
+
+def build_learning_roadmap(
+    role: str,
+    critical_missing: list[str],
+    core_missing: list[str],
+    adjacent_missing: list[str],
+) -> dict[str, Any]:
+    foundation_focus = dedupe_preserve_order([*critical_missing[:3], *core_missing[:2]])[:4]
+    execution_focus = dedupe_preserve_order([*core_missing[2:6], *adjacent_missing[:3]])[:4]
+
+    phases: list[dict[str, Any]] = [
+        {
+            "phase": "Phase 1: Foundation",
+            "duration_weeks": "1-3",
+            "focus": foundation_focus or ["Role fundamentals", "Keyword-ready skill language"],
+            "outcome": "Cover must-have gaps and baseline readiness for interviews.",
+        },
+        {
+            "phase": "Phase 2: Proof Of Work",
+            "duration_weeks": "3-6",
+            "focus": execution_focus or ["Portfolio artifact", "Role-specific execution evidence"],
+            "outcome": "Convert skills into project bullets with measurable outcomes.",
+        },
+        {
+            "phase": "Phase 3: Conversion Sprint",
+            "duration_weeks": "2-4",
+            "focus": ["Resume variants", "Interview stories", "Targeted application batching"],
+            "outcome": "Increase interview call rate through sharper positioning.",
+        },
+    ]
+
+    return {
+        "target_role": safe_text(role),
+        "total_duration_weeks": "6-13",
+        "phases": phases,
+    }
+
+
+def build_hiring_timing_insights(role_track: str, industry: str) -> dict[str, Any]:
+    segment = market_segment_for_track(role_track, industry)
+    market_data = INDIA_MARKET_SEGMENTS.get(segment, INDIA_MARKET_SEGMENTS["general"])
+    return {
+        "best_months_to_apply": market_data["best_months"],
+        "hiring_peak_windows": market_data["hiring_peak_windows"],
+        "layoff_risk_level": market_data["layoff_risk"],
+        "layoff_risk_note": market_data["layoff_note"],
+        "higher_layoff_risk_industries": HIGH_RISK_INDUSTRIES_INDIA,
+        "application_timing_tip": "Apply in first 10 business days of peak months and follow up with proof-of-impact resume bullets.",
+    }
+
+
+def build_callback_estimator(
+    overall_score: int,
+    confidence: int,
+    applications_count: int,
+    ninety_plus_plan: dict[str, Any],
+) -> dict[str, Any]:
+    application_volume = normalize_applications_count(applications_count)
+    base_rate = clamp_float(1.8 + (overall_score * 0.16) + (confidence * 0.065), 2.0, 38.0)
+    improvement_headroom = 2.0 + max(0.0, ninety_plus_plan["gap_to_90"] * 0.24)
+    improved_rate = clamp_float(base_rate + improvement_headroom, base_rate, 48.0)
+
+    expected_callbacks = round((application_volume * base_rate) / 100.0, 1)
+    improved_callbacks = round((application_volume * improved_rate) / 100.0, 1)
+
+    return {
+        "applications_input": application_volume,
+        "estimated_callback_rate": round(base_rate, 1),
+        "expected_callbacks": expected_callbacks,
+        "improved_callback_rate": round(improved_rate, 1),
+        "expected_callbacks_after_improvements": improved_callbacks,
+        "improvement_actions": [action["action"] for action in ninety_plus_plan.get("actions", [])[:3]],
+    }
+
+
+def analyze_profile(
+    industry: str,
+    role: str,
+    skills_text: str,
+    experience_years: float | None = None,
+    applications_count: int | None = None,
+    salary_boost_toggles: list[str] | None = None,
+) -> dict[str, Any]:
     normalized_skills_text = safe_text(skills_text)
     skills_list = extract_skills_from_text(normalized_skills_text)
 
@@ -1598,12 +2090,12 @@ def analyze_profile(industry: str, role: str, skills_text: str) -> dict[str, Any
     prediction_band = build_prediction_band(overall_score, confidence)
 
     prediction_reasoning = [
-        f"Critical-skill coverage is {critical_coverage}% for the {role_track} role track.",
+        f"Critical-skill coverage is {critical_coverage}% for your target role intent.",
         f"Role blueprint coverage is {coverage_score}% and keyword alignment is {skill_match_score}%.",
         f"Consistency score is {consistency_score}%; profile quality signal is {profile_score}%.",
     ]
     if adaptive_profile:
-        prediction_reasoning.append("Adaptive role profiling is active for this custom role.")
+        prediction_reasoning.append("Adaptive open-role profiling is active for this title.")
 
     quick_wins = [
         "Close must-have skill gaps first, then add adjacent differentiators.",
@@ -1618,6 +2110,23 @@ def analyze_profile(industry: str, role: str, skills_text: str) -> dict[str, Any
         profile_details,
         consistency_score,
     )
+    applications_used = normalize_applications_count(applications_count)
+    ninety_plus_strategy = build_ninety_plus_plan(overall_score, critical_missing, core_missing, adjacent_missing)
+    interview_call_likelihood = build_interview_call_likelihood(overall_score, confidence)
+    salary_insight = build_salary_insight(
+        role_track=role_track,
+        role=role,
+        industry=industry,
+        overall_score=overall_score,
+        confidence=confidence,
+        seniority=seniority,
+        experience_years=experience_years,
+        selected_toggle_ids=salary_boost_toggles,
+    )
+    positioning_strategy = build_positioning_strategy(role_track, role, industry, skills_list)
+    learning_roadmap = build_learning_roadmap(role, critical_missing, core_missing, adjacent_missing)
+    hiring_market_insights = build_hiring_timing_insights(role_track, industry)
+    callback_forecast = build_callback_estimator(overall_score, confidence, applications_used, ninety_plus_strategy)
 
     return {
         "stage": "analyze",
@@ -1656,6 +2165,14 @@ def analyze_profile(industry: str, role: str, skills_text: str) -> dict[str, Any
         "prediction_reasoning": prediction_reasoning,
         "quick_wins": quick_wins,
         "areas_to_improve": areas_to_improve,
+        "role_universe_mode": "unlimited_open_role",
+        "likely_interview_call": interview_call_likelihood,
+        "ninety_plus_strategy": ninety_plus_strategy,
+        "salary_insight": salary_insight,
+        "positioning_strategy": positioning_strategy,
+        "learning_roadmap": learning_roadmap,
+        "hiring_market_insights": hiring_market_insights,
+        "callback_forecast": callback_forecast,
     }
 
 
@@ -1833,7 +2350,14 @@ def analyze_resume(data: ResumeRequest) -> dict[str, Any]:
     normalized_session = normalize_session_id(data.session_id)
     plan_meta = consume_quota(normalized_plan, normalized_session, "analyze")
     skills_text = safe_text(data.skills or data.description)
-    analysis = analyze_profile(data.industry, data.role, skills_text)
+    analysis = analyze_profile(
+        data.industry,
+        data.role,
+        skills_text,
+        experience_years=data.experience_years,
+        applications_count=data.applications_count,
+        salary_boost_toggles=data.salary_boost_toggles,
+    )
     analysis["plan_enforcement"] = plan_meta
     return analysis
 
@@ -1843,6 +2367,9 @@ async def analyze_resume_file(
     file: UploadFile = File(...),
     industry: str = Form("General"),
     role: str = Form("General Role"),
+    experience_years: float | None = Form(None),
+    applications_count: int | None = Form(None),
+    salary_boost_toggles: str = Form(""),
     plan: str = Form("free"),
     session_id: str = Form("anonymous"),
 ) -> dict[str, Any]:
@@ -1857,7 +2384,15 @@ async def analyze_resume_file(
             rollback_quota(normalized_plan, normalized_session, "analyze")
             raise HTTPException(status_code=400, detail="No readable text found in the uploaded file.")
 
-        analysis = analyze_profile(industry, role, extracted_text)
+        toggle_ids = [token.strip() for token in salary_boost_toggles.split(",") if token.strip()]
+        analysis = analyze_profile(
+            industry,
+            role,
+            extracted_text,
+            experience_years=experience_years,
+            applications_count=applications_count,
+            salary_boost_toggles=toggle_ids,
+        )
         analysis["plan_enforcement"] = plan_meta
         analysis["source"] = "resume_upload"
         analysis["extracted_chars"] = len(extracted_text)
