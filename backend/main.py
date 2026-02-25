@@ -4,6 +4,7 @@ import io
 import logging
 import os
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -59,7 +60,11 @@ app.add_middleware(
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = (os.getenv("OPENAI_MODEL") or "gpt-4o-mini").strip()
-OPENAI_FALLBACK_MODELS = [model.strip() for model in (os.getenv("OPENAI_FALLBACK_MODELS") or "").split(",") if model.strip()]
+configured_fallback_models = [model.strip() for model in (os.getenv("OPENAI_FALLBACK_MODELS") or "").split(",") if model.strip()]
+if configured_fallback_models:
+    OPENAI_FALLBACK_MODELS = configured_fallback_models
+else:
+    OPENAI_FALLBACK_MODELS = [model for model in ["gpt-4.1-mini", "gpt-4o-mini"] if model != OPENAI_MODEL]
 client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 if client is None:
@@ -1697,6 +1702,10 @@ def extract_llm_text(message_content: Any) -> str:
     return safe_text(message_content)
 
 
+def is_transient_openai_error(exc: Exception) -> bool:
+    return type(exc).__name__ in {"APIConnectionError", "APITimeoutError", "InternalServerError"}
+
+
 def generate_with_llm(
     system_prompt: str,
     user_prompt: str,
@@ -1713,23 +1722,30 @@ def generate_with_llm(
 
     last_error: str | None = None
     for model in models:
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-            )
-            content = extract_llm_text(response.choices[0].message.content if response.choices else "")
-            if content:
-                return content, True, None
-            last_error = f"empty response from model {model}"
-            logger.error("OpenAI returned empty content for model '%s'.", model)
-        except Exception as exc:
-            last_error = f"{type(exc).__name__} on model {model}"
-            logger.exception("OpenAI request failed for model '%s'.", model)
+        for attempt in range(3):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=temperature,
+                )
+                content = extract_llm_text(response.choices[0].message.content if response.choices else "")
+                if content:
+                    return content, True, None
+                last_error = f"empty response from model {model}"
+                logger.error("OpenAI returned empty content for model '%s'.", model)
+                break
+            except Exception as exc:
+                last_error = f"{type(exc).__name__} on model {model}"
+                logger.exception("OpenAI request failed for model '%s' (attempt %s).", model, attempt + 1)
+
+                if attempt < 2 and is_transient_openai_error(exc):
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                break
 
     return fallback_text, False, last_error
 
@@ -1961,6 +1977,9 @@ Return only the final resume text.
         "optimized_resume": content,
         "plan_enforcement": plan_meta,
         "ai_generated": ai_generated,
+        "ai_warning": "AI service was unavailable for this run. Returned a structured fallback draft."
+        if (not ai_generated and ai_error)
+        else None,
     }
 
 
@@ -1970,10 +1989,9 @@ def improvise_resume(data: ResumeImproviseRequest) -> dict[str, Any]:
     normalized_session = normalize_session_id(data.session_id)
     plan_meta = consume_quota(normalized_plan, normalized_session, "generation")
     payload = improvise_resume_text(data)
-    if PLAN_RULES[normalized_plan]["can_ai_enhance"] and not payload.get("ai_generated"):
-        rollback_quota(normalized_plan, normalized_session, "generation")
-        raise ai_service_error(normalized_plan, normalized_session, payload.get("ai_error"))
-    payload.pop("ai_error", None)
+    ai_error = payload.pop("ai_error", None)
+    if not payload.get("ai_generated") and ai_error:
+        payload["ai_warning"] = "AI service was unavailable for this run. Returned a structured fallback draft."
     payload["plan_enforcement"] = plan_meta
     return payload
 
@@ -2007,11 +2025,12 @@ async def polish_resume_pdf(
     )
 
     improved = improvise_resume_text(improvise_payload)
-    if PLAN_RULES[normalized_plan]["can_ai_enhance"] and not improved.get("ai_generated"):
-        rollback_quota(normalized_plan, normalized_session, "pdf_polish")
-        raise ai_service_error(normalized_plan, normalized_session, improved.get("ai_error"))
+    ai_error = improved.get("ai_error")
     return {
         "optimized_resume": safe_text(improved["optimized_resume"]),
         "plan_enforcement": plan_meta,
         "ai_generated": improved.get("ai_generated", False),
+        "ai_warning": "AI service was unavailable for this run. Returned a structured fallback draft."
+        if (not improved.get("ai_generated") and ai_error)
+        else None,
     }
