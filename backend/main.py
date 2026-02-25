@@ -15,6 +15,16 @@ from pydantic import BaseModel
 
 load_dotenv()
 
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+
+
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in TRUTHY_ENV_VALUES
+
+
 DEFAULT_CORS_ORIGINS = [
     "https://hirescore.in",
     "https://www.hirescore.in",
@@ -33,6 +43,8 @@ def parse_cors_origins(value: str | None) -> list[str]:
 app = FastAPI()
 cors_allow_origins = parse_cors_origins(os.getenv("CORS_ALLOW_ORIGINS"))
 cors_allow_origin_regex = os.getenv("CORS_ALLOW_ORIGIN_REGEX")
+BYPASS_PLAN_LIMITS = env_flag("BYPASS_PLAN_LIMITS", False)
+BYPASS_PLAN_AS = (os.getenv("BYPASS_PLAN_AS") or "elite").strip().lower()
 
 app.add_middleware(
     CORSMiddleware,
@@ -117,6 +129,8 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "can_ai_enhance": True,
     },
 }
+
+BYPASS_PLAN_AS = BYPASS_PLAN_AS if BYPASS_PLAN_AS in PLAN_RULES else "elite"
 
 USAGE_TRACKER: dict[str, dict[str, int]] = {}
 
@@ -670,6 +684,8 @@ def usage_window_key() -> str:
 
 
 def normalize_plan(plan: str | None) -> str:
+    if BYPASS_PLAN_LIMITS:
+        return BYPASS_PLAN_AS
     normalized = safe_text(plan).lower()
     return normalized if normalized in PLAN_RULES else "free"
 
@@ -730,6 +746,9 @@ def quota_error(message: str, plan: str, session_id: str, status_code: int) -> H
 
 
 def consume_quota(plan: str, session_id: str, action: str) -> dict[str, Any]:
+    if BYPASS_PLAN_LIMITS:
+        return plan_enforcement_payload(plan, session_id)
+
     rules = PLAN_RULES[plan]
     usage = usage_bucket(plan, session_id)
 
