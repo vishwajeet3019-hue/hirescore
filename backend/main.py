@@ -1969,10 +1969,6 @@ Return only the final resume text.
         fallback_text=fallback_build_resume(data),
     )
 
-    if PLAN_RULES[normalized_plan]["can_ai_enhance"] and not ai_generated:
-        rollback_quota(normalized_plan, normalized_session, "generation")
-        raise ai_service_error(normalized_plan, normalized_session, ai_error)
-
     return {
         "optimized_resume": content,
         "plan_enforcement": plan_meta,
