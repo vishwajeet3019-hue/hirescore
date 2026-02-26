@@ -13,15 +13,26 @@ This repo includes `render.yaml` for the backend service.
 
 1. Push this repo to GitHub.
 2. In Render, choose **New +** -> **Blueprint** and connect the repo.
-3. Render will create service `hirescore-api` using:
+3. Render will create services `hirescore-api` (prod) and `hirescore-api-staging` (staging) using:
 - Root dir: `backend`
 - Build: `pip install -r requirements.txt`
 - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 4. In Render service environment variables, set:
 - `OPENAI_API_KEY=...`
+- `AUTH_TOKEN_SECRET=<long-random-secret>`
+- `ADMIN_API_KEYS=<one-or-more-admin-keys-comma-separated>`
+- `AUTH_DB_PATH=/var/data/hirescore_auth.db`
 - `CORS_ALLOW_ORIGINS=https://hirescore.in,https://www.hirescore.in`
 - Optional for preview testing:
 - `CORS_ALLOW_ORIGIN_REGEX=https://.*\.vercel\.app`
+5. Enable persistent storage in Render (already defined in `render.yaml`):
+- mount path: `/var/data`
+- db file path: `/var/data/hirescore_auth.db`
+6. Optional payments (Stripe):
+- `STRIPE_SECRET_KEY=...`
+- `STRIPE_WEBHOOK_SECRET=...`
+- `PAYMENT_SUCCESS_URL=https://hirescore.in/pricing?payment=success`
+- `PAYMENT_CANCEL_URL=https://hirescore.in/pricing?payment=cancelled`
 5. After deploy, add custom domain in Render:
 - `api.hirescore.in`
 
@@ -86,17 +97,14 @@ Use staging for unrestricted testing across multiple devices.
 
 ### Create staging backend on Render
 
-1. In Render, create a second web service from the same repo with root `backend`.
-2. Suggested name: `hirescore-backend-staging`.
-3. Use same build/start commands:
-- Build: `pip install -r requirements.txt`
-- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-4. Set environment variables:
-- `OPENAI_API_KEY=...`
+1. Deploy via Render Blueprint (`render.yaml`) so `hirescore-api-staging` is created automatically.
+2. Set `OPENAI_API_KEY` for `hirescore-api-staging`.
+3. Confirm staging env values are present:
 - `CORS_ALLOW_ORIGINS=https://staging.hirescore.in`
 - `BYPASS_PLAN_LIMITS=true`
 - `BYPASS_PLAN_AS=elite`
-5. Add Render custom domain:
+- `AUTH_DB_PATH=/var/data/hirescore_auth.db`
+4. Add Render custom domain:
 - `api-staging.hirescore.in`
 
 ### Create staging frontend on Vercel
@@ -125,3 +133,15 @@ Add these records at your DNS provider:
 1. `https://staging.hirescore.in/upload`
 2. `https://api-staging.hirescore.in/`
 3. `GET /plan-status?plan=free&session_id=test` should report elite-level limits when bypass is enabled.
+
+## 7) Admin + Analytics + Feedback
+
+- Admin dashboard URL: `https://hirescore.in/admin` (or staging equivalent).
+- Enter the value configured in `ADMIN_API_KEYS` to unlock admin endpoints.
+- Admin can:
+  - view user analytics/events/feedback/credit transactions,
+  - edit user email/password,
+  - set credits directly or apply credit +/- adjustments.
+- Passwords are stored hashed; plain-text passwords are not retrievable.
+- Mandatory feedback flow:
+  - after first analysis, user must submit 1-5 star feedback + comment before next analysis.

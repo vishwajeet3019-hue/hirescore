@@ -29,6 +29,11 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfgen import canvas
 from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
+try:
+    import stripe  # type: ignore
+except Exception:  # pragma: no cover - optional dependency at runtime
+    stripe = None
+
 load_dotenv()
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
@@ -45,6 +50,7 @@ def env_flag(name: str, default: bool = False) -> bool:
 DEFAULT_CORS_ORIGINS = [
     "https://hirescore.in",
     "https://www.hirescore.in",
+    "https://staging.hirescore.in",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
@@ -89,8 +95,15 @@ AUTH_DB_PATH = (os.getenv("AUTH_DB_PATH") or "/tmp/hirescore_auth.db").strip()
 AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
 AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
 ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", True)
+ADMIN_API_KEYS = {
+    key.strip()
+    for key in (os.getenv("ADMIN_API_KEYS") or os.getenv("ADMIN_API_KEY") or "").split(",")
+    if key.strip()
+}
 if AUTH_TOKEN_SECRET == "replace-this-in-production":
     logger.warning("AUTH_TOKEN_SECRET is using a default value. Set AUTH_TOKEN_SECRET in production.")
+if AUTH_DB_PATH.startswith("/tmp/"):
+    logger.warning("AUTH_DB_PATH is using temporary storage (%s). Use persistent storage in production.", AUTH_DB_PATH)
 
 WELCOME_FREE_CREDITS = 5
 CREDIT_COSTS: dict[str, int] = {
@@ -98,6 +111,19 @@ CREDIT_COSTS: dict[str, int] = {
     "ai_resume_generation": 15,
     "template_pdf_download": 20,
 }
+
+PAYMENT_CREDIT_PACKS: dict[str, dict[str, Any]] = {
+    "starter_100": {"label": "Starter 100", "credits": 100, "amount_inr": 199},
+    "pro_300": {"label": "Pro 300", "credits": 300, "amount_inr": 499},
+    "elite_800": {"label": "Elite 800", "credits": 800, "amount_inr": 999},
+}
+PAYMENT_SUCCESS_URL = (os.getenv("PAYMENT_SUCCESS_URL") or "").strip() or "https://hirescore.in/pricing?payment=success"
+PAYMENT_CANCEL_URL = (os.getenv("PAYMENT_CANCEL_URL") or "").strip() or "https://hirescore.in/pricing?payment=cancelled"
+STRIPE_SECRET_KEY = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+STRIPE_WEBHOOK_SECRET = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
+STRIPE_ENABLED = bool(stripe and STRIPE_SECRET_KEY)
+if STRIPE_ENABLED and stripe is not None:
+    stripe.api_key = STRIPE_SECRET_KEY
 
 AUTH_DB_LOCK = threading.Lock()
 
@@ -109,6 +135,29 @@ class AuthRequest(BaseModel):
 
 class TopupRequest(BaseModel):
     credits: int
+
+
+class FeedbackSubmitRequest(BaseModel):
+    rating: int
+    comment: str
+    source: str | None = None
+    auth_token: str | None = None
+
+
+class PaymentCheckoutRequest(BaseModel):
+    package_id: str
+    auth_token: str | None = None
+
+
+class AdminUserUpdateRequest(BaseModel):
+    email: str | None = None
+    password: str | None = None
+    credits_set: int | None = None
+
+
+class AdminCreditAdjustRequest(BaseModel):
+    delta: int
+    reason: str | None = None
 
 
 class ResumeExportRequest(BaseModel):
@@ -1131,7 +1180,36 @@ def init_auth_db() -> None:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    rating INTEGER NOT NULL,
+                    comment TEXT NOT NULL,
+                    source TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS analytics_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    event_type TEXT NOT NULL,
+                    event_name TEXT NOT NULL,
+                    meta_json TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+                """
+            )
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_user_time ON credit_transactions (user_id, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedback_user_time ON user_feedback (user_id, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_user_time ON analytics_events (user_id, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_time ON analytics_events (created_at)")
             connection.commit()
         finally:
             connection.close()
@@ -1247,6 +1325,85 @@ def fetch_user_by_id(user_id: int) -> sqlite3.Row | None:
         connection.close()
 
 
+def log_analytics_event(
+    event_type: str,
+    event_name: str,
+    user_id: int | None = None,
+    meta: dict[str, Any] | None = None,
+) -> None:
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            connection.execute(
+                """
+                INSERT INTO analytics_events (user_id, event_type, event_name, meta_json, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    safe_text(event_type) or "system",
+                    safe_text(event_name) or "event",
+                    json.dumps(meta or {}, separators=(",", ":"), sort_keys=True),
+                    now_utc_iso(),
+                ),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+        finally:
+            connection.close()
+
+
+def get_analyze_count(user_id: int) -> int:
+    connection = auth_db_connection()
+    try:
+        row = connection.execute(
+            "SELECT COUNT(*) AS count FROM credit_transactions WHERE user_id = ? AND action = 'analyze'",
+            (user_id,),
+        ).fetchone()
+        return int(row["count"] if row else 0)
+    finally:
+        connection.close()
+
+
+def has_feedback_submission(user_id: int) -> bool:
+    connection = auth_db_connection()
+    try:
+        row = connection.execute(
+            "SELECT id FROM user_feedback WHERE user_id = ? ORDER BY id ASC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        return bool(row)
+    finally:
+        connection.close()
+
+
+def feedback_required_for_user(user_id: int) -> bool:
+    return get_analyze_count(user_id) >= 1 and not has_feedback_submission(user_id)
+
+
+def require_feedback_completion(user_id: int) -> None:
+    if feedback_required_for_user(user_id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Mandatory feedback is required before running another analysis.",
+                "feedback_required": True,
+            },
+        )
+
+
+def require_admin_access(request: Request) -> None:
+    if not ADMIN_API_KEYS:
+        raise HTTPException(status_code=503, detail="Admin access is not configured.")
+
+    header_token = safe_text(request.headers.get("x-admin-key"))
+    auth_token = safe_text(extract_bearer_token(request))
+    provided = header_token or auth_token
+    if not provided or provided not in ADMIN_API_KEYS:
+        raise HTTPException(status_code=401, detail="Invalid admin key.")
+
+
 def wallet_payload(credits: int) -> dict[str, Any]:
     return {
         "credits": max(0, int(credits)),
@@ -1261,13 +1418,15 @@ def wallet_payload(credits: int) -> dict[str, Any]:
 
 
 def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> dict[str, Any]:
+    user_id = int(user_row["id"])
     payload: dict[str, Any] = {
         "user": {
-            "id": int(user_row["id"]),
+            "id": user_id,
             "email": str(user_row["email"]),
             "created_at": str(user_row["created_at"]),
         },
         "wallet": wallet_payload(int(user_row["credits"])),
+        "feedback_required": feedback_required_for_user(user_id),
     }
     if token:
         payload["auth_token"] = token
@@ -3103,11 +3262,14 @@ def signup(data: AuthRequest) -> dict[str, Any]:
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Enter a valid email address.")
     if len(password) < 6:
+        log_analytics_event("auth", "signup_failed_short_password", meta={"email": email})
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
     if fetch_user_by_email(email):
+        log_analytics_event("auth", "signup_failed_existing_account", meta={"email": email})
         raise HTTPException(status_code=409, detail="Account already exists. Please log in.")
 
     user = create_user_with_welcome_credits(email, password, source="signup")
+    log_analytics_event("auth", "signup_success", user_id=int(user["id"]), meta={"email": email})
     return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
 
 
@@ -3117,12 +3279,15 @@ def login(data: AuthRequest) -> dict[str, Any]:
     password = safe_text(data.password)
     user = fetch_user_by_email(email)
     if not user:
+        log_analytics_event("auth", "login_failed_account_not_found", meta={"email": email})
         raise HTTPException(status_code=401, detail="Account not found. Please sign up.")
 
     expected = hash_password(password, str(user["password_salt"]))
     if not hmac.compare_digest(expected, str(user["password_hash"])):
+        log_analytics_event("auth", "login_failed_wrong_password", user_id=int(user["id"]), meta={"email": email})
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
+    log_analytics_event("auth", "login_success", user_id=int(user["id"]), meta={"email": email})
     return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
 
 
@@ -3143,15 +3308,582 @@ def auth_topup(data: TopupRequest, request: Request, auth_token: str | None = No
     refreshed = fetch_user_by_id(int(user["id"]))
     if not refreshed:
         raise HTTPException(status_code=500, detail="Unable to refresh wallet.")
+    log_analytics_event("credits", "manual_topup", user_id=int(user["id"]), meta={"credits": credits})
     payload = auth_response_payload(refreshed)
     payload["wallet"] = topup["wallet"]
     payload["credit_transaction_id"] = topup["transaction_id"]
     return payload
 
 
+@app.post("/feedback")
+def submit_feedback(data: FeedbackSubmitRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    rating = int(clamp_float(float(data.rating), 1.0, 5.0))
+    comment = safe_text(data.comment)
+    if len(comment) < 4:
+        raise HTTPException(status_code=400, detail="Please add a short feedback comment.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            connection.execute(
+                """
+                INSERT INTO user_feedback (user_id, rating, comment, source, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(user["id"]),
+                    rating,
+                    comment,
+                    safe_text(data.source) or "post_analysis",
+                    now_utc_iso(),
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    log_analytics_event(
+        "feedback",
+        "feedback_submitted",
+        user_id=int(user["id"]),
+        meta={"rating": rating, "source": safe_text(data.source)},
+    )
+    refreshed = fetch_user_by_id(int(user["id"]))
+    if not refreshed:
+        raise HTTPException(status_code=500, detail="Unable to refresh account.")
+    payload = auth_response_payload(refreshed)
+    payload["feedback_saved"] = True
+    return payload
+
+
+@app.get("/payments/packages")
+def payment_packages() -> dict[str, Any]:
+    return {
+        "stripe_enabled": STRIPE_ENABLED,
+        "packages": [
+            {
+                "id": package_id,
+                "label": package["label"],
+                "credits": package["credits"],
+                "amount_inr": package["amount_inr"],
+            }
+            for package_id, package in PAYMENT_CREDIT_PACKS.items()
+        ],
+    }
+
+
+@app.post("/payments/checkout")
+def create_payment_checkout(data: PaymentCheckoutRequest, request: Request) -> dict[str, Any]:
+    if not STRIPE_ENABLED or stripe is None:
+        raise HTTPException(status_code=503, detail="Payment gateway is not configured yet.")
+
+    package_id = safe_text(data.package_id)
+    package = PAYMENT_CREDIT_PACKS.get(package_id)
+    if not package:
+        raise HTTPException(status_code=400, detail="Invalid payment package.")
+
+    user = require_authenticated_user(request, data.auth_token)
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            payment_method_types=["card"],
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "inr",
+                        "unit_amount": int(package["amount_inr"]) * 100,
+                        "product_data": {
+                            "name": f"HireScore Credits - {package['label']}",
+                            "description": f"{package['credits']} credit pack",
+                        },
+                    },
+                    "quantity": 1,
+                }
+            ],
+            success_url=PAYMENT_SUCCESS_URL,
+            cancel_url=PAYMENT_CANCEL_URL,
+            metadata={
+                "user_id": str(int(user["id"])),
+                "package_id": package_id,
+                "credits": str(int(package["credits"])),
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Unable to initialize payment session right now.") from exc
+
+    log_analytics_event(
+        "payment",
+        "checkout_created",
+        user_id=int(user["id"]),
+        meta={"package_id": package_id, "stripe_session_id": safe_text(session.get("id"))},
+    )
+    return {
+        "checkout_url": safe_text(session.get("url")),
+        "session_id": safe_text(session.get("id")),
+    }
+
+
+@app.post("/payments/webhook")
+async def stripe_webhook(request: Request) -> dict[str, bool]:
+    if not STRIPE_ENABLED or stripe is None:
+        raise HTTPException(status_code=503, detail="Payment gateway is not configured.")
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe webhook secret is not configured.")
+
+    payload = await request.body()
+    signature = safe_text(request.headers.get("stripe-signature"))
+    try:
+        event = stripe.Webhook.construct_event(payload=payload, sig_header=signature, secret=STRIPE_WEBHOOK_SECRET)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid webhook signature.") from exc
+
+    if safe_text(event.get("type")) == "checkout.session.completed":
+        session = event.get("data", {}).get("object", {})
+        metadata = session.get("metadata") or {}
+        user_id = int(float(metadata.get("user_id") or 0))
+        credits = int(float(metadata.get("credits") or 0))
+        package_id = safe_text(metadata.get("package_id"))
+        stripe_session_id = safe_text(session.get("id"))
+        checkout_logged_meta: dict[str, Any] | None = None
+        if user_id > 0 and credits > 0 and stripe_session_id:
+            with AUTH_DB_LOCK:
+                connection = auth_db_connection()
+                try:
+                    cursor = connection.cursor()
+                    cursor.execute("BEGIN IMMEDIATE")
+                    existing = connection.execute(
+                        """
+                        SELECT id FROM credit_transactions
+                        WHERE action = 'stripe_credit_pack' AND meta_json LIKE ?
+                        LIMIT 1
+                        """,
+                        (f'%\"stripe_session_id\":\"{stripe_session_id}\"%',),
+                    ).fetchone()
+                    if not existing:
+                        user_row = cursor.execute(
+                            "SELECT id, credits FROM users WHERE id = ?",
+                            (user_id,),
+                        ).fetchone()
+                        if not user_row:
+                            connection.rollback()
+                            return {"received": True}
+                        updated_credits = int(user_row["credits"]) + credits
+                        cursor.execute("UPDATE users SET credits = ? WHERE id = ?", (updated_credits, user_id))
+                        cursor.execute(
+                            """
+                            INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                user_id,
+                                "stripe_credit_pack",
+                                credits,
+                                updated_credits,
+                                json.dumps(
+                                    {
+                                        "stripe_session_id": stripe_session_id,
+                                        "package_id": package_id,
+                                        "amount_inr": int(PAYMENT_CREDIT_PACKS.get(package_id, {}).get("amount_inr", 0)),
+                                    },
+                                    separators=(",", ":"),
+                                    sort_keys=True,
+                                ),
+                                now_utc_iso(),
+                            ),
+                        )
+                        connection.commit()
+                        checkout_logged_meta = {
+                            "package_id": package_id,
+                            "credits": credits,
+                            "stripe_session_id": stripe_session_id,
+                            "credits_after": updated_credits,
+                        }
+                    else:
+                        connection.rollback()
+                finally:
+                    connection.close()
+            if checkout_logged_meta:
+                log_analytics_event(
+                    "payment",
+                    "checkout_completed",
+                    user_id=user_id,
+                    meta=checkout_logged_meta,
+                )
+
+    return {"received": True}
+
+
+@app.get("/admin/analytics")
+def admin_analytics(request: Request) -> dict[str, Any]:
+    require_admin_access(request)
+    connection = auth_db_connection()
+    try:
+        users_total = int(connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"])
+        feedback_row = connection.execute(
+            "SELECT COUNT(*) AS count, COALESCE(AVG(rating), 0) AS avg_rating FROM user_feedback"
+        ).fetchone()
+        feedback_total = int(feedback_row["count"])
+        feedback_avg = round(float(feedback_row["avg_rating"] or 0), 2)
+        signups_total = int(
+            connection.execute(
+                "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'signup_success'"
+            ).fetchone()["count"]
+        )
+        logins_total = int(
+            connection.execute(
+                "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'login_success'"
+            ).fetchone()["count"]
+        )
+        analyses_total = int(connection.execute("SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze'").fetchone()["count"])
+        payments_total = int(
+            connection.execute("SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'stripe_credit_pack'").fetchone()["count"]
+        )
+        credits_sold = int(
+            connection.execute(
+                "SELECT COALESCE(SUM(delta), 0) AS sold FROM credit_transactions WHERE action = 'stripe_credit_pack'"
+            ).fetchone()["sold"]
+        )
+        payment_rows = connection.execute(
+            "SELECT meta_json FROM credit_transactions WHERE action = 'stripe_credit_pack'"
+        ).fetchall()
+        revenue_inr = 0
+        for row in payment_rows:
+            try:
+                meta = json.loads(row["meta_json"] or "{}")
+                revenue_inr += int(meta.get("amount_inr") or 0)
+            except Exception:
+                continue
+    finally:
+        connection.close()
+
+    return {
+        "users_total": users_total,
+        "signups_total": signups_total,
+        "logins_total": logins_total,
+        "analyses_total": analyses_total,
+        "feedback_total": feedback_total,
+        "feedback_avg_rating": feedback_avg,
+        "payments_total": payments_total,
+        "credits_sold_total": credits_sold,
+        "revenue_inr_total": revenue_inr,
+        "stripe_enabled": STRIPE_ENABLED,
+    }
+
+
+@app.get("/admin/events")
+def admin_events(request: Request, limit: int = 200) -> dict[str, Any]:
+    require_admin_access(request)
+    safe_limit = int(clamp_float(float(limit), 1, 1000))
+    connection = auth_db_connection()
+    try:
+        rows = connection.execute(
+            """
+            SELECT e.id, e.user_id, u.email, e.event_type, e.event_name, e.meta_json, e.created_at
+            FROM analytics_events e
+            LEFT JOIN users u ON u.id = e.user_id
+            ORDER BY e.id DESC
+            LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    events: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            meta = json.loads(row["meta_json"] or "{}")
+        except Exception:
+            meta = {}
+        events.append(
+            {
+                "id": int(row["id"]),
+                "user_id": int(row["user_id"]) if row["user_id"] is not None else None,
+                "email": safe_text(row["email"]),
+                "event_type": safe_text(row["event_type"]),
+                "event_name": safe_text(row["event_name"]),
+                "meta": meta,
+                "created_at": safe_text(row["created_at"]),
+            }
+        )
+    return {"events": events}
+
+
+@app.get("/admin/feedback")
+def admin_feedback(request: Request, limit: int = 200) -> dict[str, Any]:
+    require_admin_access(request)
+    safe_limit = int(clamp_float(float(limit), 1, 1000))
+    connection = auth_db_connection()
+    try:
+        rows = connection.execute(
+            """
+            SELECT f.id, f.user_id, u.email, f.rating, f.comment, f.source, f.created_at
+            FROM user_feedback f
+            LEFT JOIN users u ON u.id = f.user_id
+            ORDER BY f.id DESC
+            LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    feedback_rows: list[dict[str, Any]] = []
+    for row in rows:
+        feedback_rows.append(
+            {
+                "id": int(row["id"]),
+                "user_id": int(row["user_id"]),
+                "email": safe_text(row["email"]),
+                "rating": int(row["rating"]),
+                "comment": safe_text(row["comment"]),
+                "source": safe_text(row["source"]),
+                "created_at": safe_text(row["created_at"]),
+            }
+        )
+    return {"feedback": feedback_rows}
+
+
+@app.get("/admin/users")
+def admin_users(request: Request, q: str | None = None, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    require_admin_access(request)
+    safe_limit = int(clamp_float(float(limit), 1, 200))
+    safe_offset = max(0, int(offset))
+    search = safe_text(q).lower()
+
+    connection = auth_db_connection()
+    try:
+        if search:
+            rows = connection.execute(
+                """
+                SELECT u.id, u.email, u.credits, u.created_at
+                FROM users u
+                WHERE lower(u.email) LIKE ?
+                ORDER BY u.id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (f"%{search}%", safe_limit, safe_offset),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT u.id, u.email, u.credits, u.created_at
+                FROM users u
+                ORDER BY u.id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (safe_limit, safe_offset),
+            ).fetchall()
+    finally:
+        connection.close()
+
+    users = []
+    for row in rows:
+        user_id = int(row["id"])
+        users.append(
+            {
+                "id": user_id,
+                "email": str(row["email"]),
+                "credits": int(row["credits"]),
+                "created_at": str(row["created_at"]),
+                "analyze_count": get_analyze_count(user_id),
+                "feedback_submitted": has_feedback_submission(user_id),
+                "feedback_required": feedback_required_for_user(user_id),
+            }
+        )
+    return {"users": users, "limit": safe_limit, "offset": safe_offset}
+
+
+@app.patch("/admin/users/{user_id}")
+def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Request) -> dict[str, Any]:
+    require_admin_access(request)
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            user = cursor.execute(
+                "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="User not found.")
+
+            updates: list[str] = []
+            values: list[Any] = []
+            meta: dict[str, Any] = {}
+
+            if data.email is not None:
+                new_email = normalize_email(data.email)
+                if not new_email or "@" not in new_email:
+                    connection.rollback()
+                    raise HTTPException(status_code=400, detail="Enter a valid email address.")
+                updates.append("email = ?")
+                values.append(new_email)
+                meta["email_updated"] = True
+
+            if data.password is not None:
+                new_password = safe_text(data.password)
+                if len(new_password) < 6:
+                    connection.rollback()
+                    raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+                new_salt = secrets.token_hex(16)
+                new_hash = hash_password(new_password, new_salt)
+                updates.extend(["password_hash = ?", "password_salt = ?"])
+                values.extend([new_hash, new_salt])
+                meta["password_updated"] = True
+
+            if updates:
+                values.append(user_id)
+                cursor.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", tuple(values))
+
+            if data.credits_set is not None:
+                target = max(0, int(data.credits_set))
+                current = int(user["credits"])
+                delta = target - current
+                cursor.execute("UPDATE users SET credits = ? WHERE id = ?", (target, user_id))
+                cursor.execute(
+                    """
+                    INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        "admin_set_credits",
+                        delta,
+                        target,
+                        json.dumps({"reason": "admin_update"}, separators=(",", ":"), sort_keys=True),
+                        now_utc_iso(),
+                    ),
+                )
+                meta["credits_set"] = target
+
+            connection.commit()
+        except HTTPException:
+            raise
+        except sqlite3.IntegrityError as exc:
+            connection.rollback()
+            raise HTTPException(status_code=409, detail="Email already exists.") from exc
+        finally:
+            connection.close()
+
+    refreshed = fetch_user_by_id(user_id)
+    if not refreshed:
+        raise HTTPException(status_code=500, detail="Unable to refresh updated user.")
+    log_analytics_event("admin", "user_updated", user_id=user_id, meta=meta)
+    return {
+        "user": {
+            "id": int(refreshed["id"]),
+            "email": str(refreshed["email"]),
+            "credits": int(refreshed["credits"]),
+            "created_at": str(refreshed["created_at"]),
+        },
+        "feedback_required": feedback_required_for_user(user_id),
+    }
+
+
+@app.post("/admin/users/{user_id}/credits")
+def admin_adjust_credits(user_id: int, data: AdminCreditAdjustRequest, request: Request) -> dict[str, Any]:
+    require_admin_access(request)
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            user = cursor.execute(
+                "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="User not found.")
+            current = int(user["credits"])
+            target = max(0, current + int(data.delta))
+            delta_applied = target - current
+            cursor.execute("UPDATE users SET credits = ? WHERE id = ?", (target, user_id))
+            cursor.execute(
+                """
+                INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    "admin_adjust_credits",
+                    delta_applied,
+                    target,
+                    json.dumps({"reason": safe_text(data.reason)}, separators=(",", ":"), sort_keys=True),
+                    now_utc_iso(),
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    refreshed = fetch_user_by_id(user_id)
+    if not refreshed:
+        raise HTTPException(status_code=500, detail="Unable to refresh wallet.")
+    log_analytics_event("admin", "user_credits_adjusted", user_id=user_id, meta={"delta": int(data.delta), "reason": safe_text(data.reason)})
+    return {
+        "wallet": wallet_payload(int(refreshed["credits"])),
+        "user": {
+            "id": int(refreshed["id"]),
+            "email": str(refreshed["email"]),
+            "credits": int(refreshed["credits"]),
+        },
+    }
+
+
+@app.get("/admin/credit-transactions")
+def admin_credit_transactions(request: Request, limit: int = 120) -> dict[str, Any]:
+    require_admin_access(request)
+    safe_limit = int(clamp_float(float(limit), 1, 400))
+    connection = auth_db_connection()
+    try:
+        rows = connection.execute(
+            """
+            SELECT t.id, t.user_id, u.email, t.action, t.delta, t.balance_after, t.meta_json, t.created_at
+            FROM credit_transactions t
+            LEFT JOIN users u ON u.id = t.user_id
+            ORDER BY t.id DESC
+            LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    transactions = []
+    for row in rows:
+        try:
+            meta = json.loads(row["meta_json"] or "{}")
+        except Exception:
+            meta = {}
+        transactions.append(
+            {
+                "id": int(row["id"]),
+                "user_id": int(row["user_id"]),
+                "email": safe_text(row["email"]),
+                "action": safe_text(row["action"]),
+                "delta": int(row["delta"]),
+                "balance_after": int(row["balance_after"]),
+                "meta": meta,
+                "created_at": safe_text(row["created_at"]),
+            }
+        )
+    return {"transactions": transactions}
+
 @app.post("/analyze")
 def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
+    require_feedback_completion(int(user["id"]))
     debit = debit_credits(
         int(user["id"]),
         "analyze",
@@ -3171,6 +3903,13 @@ def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:
         )
         analysis["wallet"] = debit["wallet"]
         analysis["credit_transaction_id"] = debit["transaction_id"]
+        analysis["feedback_required"] = feedback_required_for_user(int(user["id"]))
+        log_analytics_event(
+            "analysis",
+            "analyze_success",
+            user_id=int(user["id"]),
+            meta={"role": safe_text(data.role), "industry": safe_text(data.industry)},
+        )
         return analysis
     except HTTPException:
         credit_credits(
@@ -3202,6 +3941,7 @@ async def analyze_resume_file(
     auth_token: str | None = Form(None),
 ) -> dict[str, Any]:
     user = require_authenticated_user(request, auth_token)
+    require_feedback_completion(int(user["id"]))
     debit = debit_credits(
         int(user["id"]),
         "analyze",
@@ -3228,6 +3968,13 @@ async def analyze_resume_file(
         analysis["credit_transaction_id"] = debit["transaction_id"]
         analysis["source"] = "resume_upload"
         analysis["extracted_chars"] = len(extracted_text)
+        analysis["feedback_required"] = feedback_required_for_user(int(user["id"]))
+        log_analytics_event(
+            "analysis",
+            "analyze_resume_file_success",
+            user_id=int(user["id"]),
+            meta={"role": safe_text(role), "industry": safe_text(industry)},
+        )
         return analysis
     except HTTPException:
         credit_credits(
@@ -3250,6 +3997,7 @@ async def analyze_resume_file(
 @app.post("/suggest")
 def suggest_actions(data: ResumeRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
+    require_feedback_completion(int(user["id"]))
     debit = debit_credits(
         int(user["id"]),
         "analyze",

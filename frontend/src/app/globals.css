@@ -1,0 +1,321 @@
+@import "tailwindcss";
+
+:root {
+  --background: #050c17;
+  --foreground: #dff7ff;
+  --surface: rgba(7, 20, 40, 0.76);
+  --surface-strong: rgba(4, 13, 28, 0.9);
+  --line: rgba(117, 208, 255, 0.26);
+  --accent: #3ee6d2;
+  --accent-warm: #ffd59a;
+  --accent-rich: #6dd8ff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-mono: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+}
+
+body {
+  background:
+    radial-gradient(circle at 10% 15%, rgba(52, 147, 255, 0.24), transparent 36%),
+    radial-gradient(circle at 84% 12%, rgba(35, 247, 211, 0.19), transparent 33%),
+    radial-gradient(circle at 30% 100%, rgba(255, 212, 153, 0.12), transparent 35%),
+    linear-gradient(140deg, #040913 0%, #08172a 45%, #030912 100%);
+  color: var(--foreground);
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  min-height: 100vh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: radial-gradient(rgba(159, 229, 255, 0.2) 0.7px, transparent 0.7px);
+  background-size: 4px 4px;
+  mask-image: radial-gradient(circle at center, black 30%, transparent 90%);
+  z-index: -2;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(154, 226, 255, 0.04) 0%,
+    rgba(154, 226, 255, 0.01) 35%,
+    rgba(154, 226, 255, 0.04) 70%,
+    rgba(154, 226, 255, 0.02) 100%
+  );
+  background-size: 100% 5px;
+  mix-blend-mode: screen;
+  opacity: 0.12;
+  z-index: -1;
+}
+
+.futuristic-grid {
+  position: absolute;
+  inset: -40%;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 66px 66px;
+  transform: perspective(900px) rotateX(65deg);
+  opacity: 0.24;
+}
+
+.neon-panel {
+  background: linear-gradient(
+    150deg,
+    rgba(9, 24, 48, 0.78) 0%,
+    rgba(7, 22, 42, 0.62) 56%,
+    rgba(9, 25, 49, 0.84) 100%
+  );
+  border: 1px solid rgba(127, 216, 255, 0.28);
+  box-shadow:
+    inset 0 0 0 1px rgba(154, 231, 255, 0.1),
+    0 22px 55px rgba(2, 7, 19, 0.52),
+    0 0 50px rgba(44, 185, 255, 0.09);
+  backdrop-filter: blur(18px);
+}
+
+.premium-panel {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(143, 229, 255, 0.12), transparent 36%),
+    radial-gradient(circle at 88% 14%, rgba(255, 213, 154, 0.1), transparent 33%),
+    linear-gradient(145deg, rgba(10, 28, 54, 0.88) 0%, rgba(5, 16, 33, 0.9) 58%, rgba(10, 28, 54, 0.88) 100%);
+  border: 1px solid rgba(143, 225, 255, 0.32);
+  box-shadow:
+    inset 0 0 0 1px rgba(176, 236, 255, 0.12),
+    0 26px 60px rgba(2, 7, 19, 0.6),
+    0 0 65px rgba(80, 210, 255, 0.12);
+  backdrop-filter: blur(20px);
+}
+
+.studio-bright-panel {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(113, 236, 255, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 16%, rgba(255, 220, 170, 0.16), transparent 36%),
+    linear-gradient(145deg, rgba(14, 40, 68, 0.9) 0%, rgba(8, 24, 46, 0.86) 52%, rgba(16, 44, 74, 0.9) 100%);
+  border: 1px solid rgba(166, 238, 255, 0.38);
+  box-shadow:
+    inset 0 0 0 1px rgba(204, 245, 255, 0.14),
+    0 22px 58px rgba(2, 8, 22, 0.52),
+    0 0 60px rgba(101, 224, 255, 0.14);
+  backdrop-filter: blur(18px);
+}
+
+.studio-soft-card {
+  background: linear-gradient(150deg, rgba(9, 30, 56, 0.84), rgba(8, 28, 52, 0.78));
+  border: 1px solid rgba(152, 231, 255, 0.28);
+  box-shadow:
+    inset 0 0 0 1px rgba(170, 237, 255, 0.1),
+    0 16px 42px rgba(2, 8, 20, 0.45);
+}
+
+.holo-sheen {
+  position: relative;
+}
+
+/* Disable global card sweep overlays; aurora strips are now opt-in per card. */
+.holo-sheen::before,
+.holo-sheen::after {
+  content: none !important;
+  animation: none !important;
+}
+
+.aurora-strip {
+  background: linear-gradient(90deg, rgba(93, 223, 255, 0.22), rgba(255, 213, 154, 0.24), rgba(108, 234, 228, 0.22));
+  background-size: 220% 100%;
+  animation: auroraPulse10 10s ease-in-out infinite;
+  box-shadow: 0 0 24px rgba(119, 226, 255, 0.25);
+}
+
+.ring-spin {
+  animation: spinRing 14s linear infinite;
+}
+
+.scan-beam {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 24px;
+  border-radius: 0.8rem;
+  background: linear-gradient(180deg, rgba(186, 245, 255, 0.55), rgba(112, 223, 255, 0.18));
+  box-shadow:
+    0 0 24px rgba(130, 236, 255, 0.28),
+    inset 0 0 12px rgba(195, 244, 255, 0.22);
+  animation: beamSweepDown 5.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.soft-pulse {
+  animation: softPulse 3s ease-in-out infinite;
+}
+
+.signal-line {
+  position: relative;
+  overflow: hidden;
+}
+
+.signal-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(155, 245, 255, 0.45) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: signalSweep 3s ease-in-out infinite;
+}
+
+.glow-chip {
+  border: 1px solid rgba(159, 236, 255, 0.38);
+  background: rgba(8, 24, 44, 0.72);
+  box-shadow: inset 0 0 24px rgba(71, 226, 255, 0.07);
+}
+
+.live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 16px rgba(62, 230, 210, 0.9);
+}
+
+.animate-grid-drift {
+  animation: gridDrift 26s linear infinite;
+}
+
+.animate-orbital {
+  animation: orbital 14s ease-in-out infinite;
+}
+
+.animate-drift {
+  animation: drift 8s ease-in-out infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulseRing 2.5s cubic-bezier(0.18, 0.86, 0.3, 1) infinite;
+}
+
+@keyframes gridDrift {
+  0% {
+    transform: perspective(900px) rotateX(65deg) translateY(0) translateX(0);
+  }
+  100% {
+    transform: perspective(900px) rotateX(65deg) translateY(-70px) translateX(50px);
+  }
+}
+
+@keyframes orbital {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(20px, -24px, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulseRing {
+  0% {
+    transform: scale(0.45);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@keyframes signalSweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  55%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes auroraPulse10 {
+  0%,
+  82% {
+    background-position: 0% 50%;
+    opacity: 0.26;
+  }
+  92% {
+    opacity: 0.95;
+  }
+  100% {
+    background-position: 220% 50%;
+    opacity: 0.3;
+  }
+}
+
+@keyframes spinRing {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes beamSweepDown {
+  0%,
+  26% {
+    top: 8%;
+    opacity: 0;
+  }
+  32% {
+    top: 8%;
+    opacity: 0.96;
+  }
+  74% {
+    top: 82%;
+    opacity: 0.96;
+  }
+  84%,
+  100% {
+    top: 82%;
+    opacity: 0;
+  }
+}
+
+@keyframes softPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(109, 216, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 26px rgba(109, 216, 255, 0.28);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

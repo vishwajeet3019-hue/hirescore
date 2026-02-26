@@ -6,10 +6,64 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /
+    disk:
+      name: hirescore-api-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: AUTH_TOKEN_SECRET
+        sync: false
+      - key: ADMIN_API_KEYS
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: AUTH_DB_PATH
+        value: /var/data/hirescore_auth.db
       - key: CORS_ALLOW_ORIGINS
-        value: https://hirescore.in,https://www.hirescore.in
+        value: https://hirescore.in,https://www.hirescore.in,https://staging.hirescore.in
+      - key: PAYMENT_SUCCESS_URL
+        value: https://hirescore.in/pricing?payment=success
+      - key: PAYMENT_CANCEL_URL
+        value: https://hirescore.in/pricing?payment=cancelled
+      - key: CORS_ALLOW_ORIGIN_REGEX
+        value: https://.*\.vercel\.app
+  - type: web
+    name: hirescore-api-staging
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    disk:
+      name: hirescore-api-staging-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: AUTH_TOKEN_SECRET
+        sync: false
+      - key: ADMIN_API_KEYS
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: AUTH_DB_PATH
+        value: /var/data/hirescore_auth.db
+      - key: CORS_ALLOW_ORIGINS
+        value: https://staging.hirescore.in,https://hirescore.in,https://www.hirescore.in
+      - key: BYPASS_PLAN_LIMITS
+        value: "true"
+      - key: BYPASS_PLAN_AS
+        value: elite
+      - key: PAYMENT_SUCCESS_URL
+        value: https://staging.hirescore.in/pricing?payment=success
+      - key: PAYMENT_CANCEL_URL
+        value: https://staging.hirescore.in/pricing?payment=cancelled
       - key: CORS_ALLOW_ORIGIN_REGEX
         value: https://.*\.vercel\.app
