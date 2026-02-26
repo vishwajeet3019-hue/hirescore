@@ -14,6 +14,8 @@ import hashlib
 import hmac
 import base64
 import secrets
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import Any
@@ -135,8 +137,14 @@ EMAIL_SMTP_PASSWORD = (os.getenv("EMAIL_SMTP_PASSWORD") or "").strip()
 EMAIL_SMTP_FROM = (os.getenv("EMAIL_SMTP_FROM") or EMAIL_SMTP_USERNAME).strip()
 EMAIL_SMTP_FROM_NAME = (os.getenv("EMAIL_SMTP_FROM_NAME") or "HireScore").strip()
 EMAIL_SMTP_USE_TLS = env_flag("EMAIL_SMTP_USE_TLS", True)
+EMAIL_SMTP_USE_SSL = env_flag("EMAIL_SMTP_USE_SSL", False)
 EMAIL_SMTP_TIMEOUT_SECONDS = max(5, min(30, int((os.getenv("EMAIL_SMTP_TIMEOUT_SECONDS") or "12").strip())))
-EMAIL_SENDING_ENABLED = bool(EMAIL_SMTP_HOST and EMAIL_SMTP_PORT and EMAIL_SMTP_USERNAME and EMAIL_SMTP_PASSWORD and EMAIL_SMTP_FROM)
+SMTP_EMAIL_SENDING_ENABLED = bool(EMAIL_SMTP_HOST and EMAIL_SMTP_PORT and EMAIL_SMTP_USERNAME and EMAIL_SMTP_PASSWORD and EMAIL_SMTP_FROM)
+RESEND_API_KEY = (os.getenv("RESEND_API_KEY") or "").strip()
+RESEND_FROM = (os.getenv("RESEND_FROM") or EMAIL_SMTP_FROM).strip()
+RESEND_EMAIL_SENDING_ENABLED = bool(RESEND_API_KEY and RESEND_FROM)
+EMAIL_PROVIDER = (os.getenv("EMAIL_PROVIDER") or "auto").strip().lower()
+EMAIL_HTTP_TIMEOUT_SECONDS = max(5, min(30, int((os.getenv("EMAIL_HTTP_TIMEOUT_SECONDS") or "12").strip())))
 OTP_SIGNING_SECRET = (os.getenv("OTP_SIGNING_SECRET") or AUTH_TOKEN_SECRET).strip()
 OTP_EXPIRY_MINUTES = max(2, min(30, int((os.getenv("OTP_EXPIRY_MINUTES") or "10").strip())))
 OTP_RESEND_COOLDOWN_SECONDS = max(10, min(180, int((os.getenv("OTP_RESEND_COOLDOWN_SECONDS") or "45").strip())))
@@ -1314,10 +1322,9 @@ def otp_hash(email: str, purpose: str, otp: str) -> str:
     return hashlib.sha256(message.encode("utf-8")).hexdigest()
 
 
-def send_email_message(to_email: str, subject: str, text_body: str) -> str | None:
-    if not EMAIL_SENDING_ENABLED:
-        logger.warning("Email sending is not configured. Unable to send email to %s", to_email)
-        return "Email settings are missing in backend environment."
+def send_email_message_smtp(to_email: str, subject: str, text_body: str) -> str | None:
+    if not SMTP_EMAIL_SENDING_ENABLED:
+        return "SMTP email settings are missing in backend environment."
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -1326,7 +1333,8 @@ def send_email_message(to_email: str, subject: str, text_body: str) -> str | Non
     msg.set_content(text_body)
 
     try:
-        if EMAIL_SMTP_PORT == 465 and not EMAIL_SMTP_USE_TLS:
+        use_ssl = EMAIL_SMTP_PORT == 465 or EMAIL_SMTP_USE_SSL
+        if use_ssl:
             with smtplib.SMTP_SSL(EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, timeout=EMAIL_SMTP_TIMEOUT_SECONDS) as server:
                 server.login(EMAIL_SMTP_USERNAME, EMAIL_SMTP_PASSWORD)
                 server.send_message(msg)
@@ -1352,6 +1360,78 @@ def send_email_message(to_email: str, subject: str, text_body: str) -> str | Non
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
         return "Unexpected email delivery error. Check backend logs for details."
+
+
+def send_email_message_resend(to_email: str, subject: str, text_body: str) -> str | None:
+    if not RESEND_EMAIL_SENDING_ENABLED:
+        return "Resend email settings are missing in backend environment."
+    payload = {
+        "from": f"{EMAIL_SMTP_FROM_NAME} <{RESEND_FROM}>",
+        "to": [normalize_email(to_email)],
+        "subject": subject,
+        "text": text_body,
+    }
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=EMAIL_HTTP_TIMEOUT_SECONDS) as resp:
+            status_code = int(resp.getcode() or 0)
+            if status_code >= 400:
+                return f"Resend API rejected the request (HTTP {status_code})."
+        return None
+    except urllib.error.HTTPError as exc:
+        try:
+            details = exc.read().decode("utf-8", errors="ignore")
+        except Exception:
+            details = ""
+        logger.exception("Resend HTTP error while sending email to %s", to_email)
+        if details:
+            return f"Resend API error ({exc.code}): {details[:220]}"
+        return f"Resend API error ({exc.code})."
+    except TimeoutError:
+        logger.exception("Resend timeout while sending email to %s", to_email)
+        return "Resend API timeout. Check provider connectivity."
+    except urllib.error.URLError:
+        logger.exception("Resend network error while sending email to %s", to_email)
+        return "Resend network error. Verify connectivity from backend."
+    except Exception:
+        logger.exception("Unexpected Resend failure while sending email to %s", to_email)
+        return "Unexpected Resend delivery error. Check backend logs for details."
+
+
+def send_email_message(to_email: str, subject: str, text_body: str) -> str | None:
+    preferred_provider = EMAIL_PROVIDER if EMAIL_PROVIDER in {"smtp", "resend"} else "auto"
+    provider_sequence: list[str] = []
+    if preferred_provider == "smtp":
+        provider_sequence = ["smtp", "resend"]
+    elif preferred_provider == "resend":
+        provider_sequence = ["resend", "smtp"]
+    else:
+        if RESEND_EMAIL_SENDING_ENABLED:
+            provider_sequence.append("resend")
+        if SMTP_EMAIL_SENDING_ENABLED:
+            provider_sequence.append("smtp")
+    if not provider_sequence:
+        logger.warning("Email sending is not configured. Unable to send email to %s", to_email)
+        return "Email settings are missing. Configure RESEND_API_KEY/RESEND_FROM or SMTP settings."
+
+    errors: list[str] = []
+    for provider in provider_sequence:
+        if provider == "resend":
+            error = send_email_message_resend(to_email, subject, text_body)
+        else:
+            error = send_email_message_smtp(to_email, subject, text_body)
+        if not error:
+            return None
+        errors.append(f"{provider.upper()}: {error}")
+    return " | ".join(errors)
 
 
 def send_signup_otp_email(email: str, otp: str) -> str | None:

@@ -31,6 +31,8 @@ services:
         sync: false
       - key: EMAIL_SMTP_USE_TLS
         sync: false
+      - key: EMAIL_SMTP_USE_SSL
+        sync: false
       - key: EMAIL_SMTP_USERNAME
         sync: false
       - key: EMAIL_SMTP_PASSWORD
@@ -38,6 +40,14 @@ services:
       - key: EMAIL_SMTP_FROM
         sync: false
       - key: EMAIL_SMTP_FROM_NAME
+        sync: false
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: EMAIL_HTTP_TIMEOUT_SECONDS
         sync: false
       - key: AUTH_DB_PATH
         value: /var/data/hirescore_auth.db
@@ -81,6 +91,8 @@ services:
         sync: false
       - key: EMAIL_SMTP_USE_TLS
         sync: false
+      - key: EMAIL_SMTP_USE_SSL
+        sync: false
       - key: EMAIL_SMTP_USERNAME
         sync: false
       - key: EMAIL_SMTP_PASSWORD
@@ -88,6 +100,14 @@ services:
       - key: EMAIL_SMTP_FROM
         sync: false
       - key: EMAIL_SMTP_FROM_NAME
+        sync: false
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: EMAIL_HTTP_TIMEOUT_SECONDS
         sync: false
       - key: AUTH_DB_PATH
         value: /var/data/hirescore_auth.db

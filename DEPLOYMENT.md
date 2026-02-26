@@ -36,14 +36,21 @@ This repo includes `render.yaml` for the backend service.
 7. Email OTP + welcome emails:
 - `EMAIL_OTP_REQUIRED=true`
 - `OTP_SIGNING_SECRET=<random-secret>`
-- `EMAIL_SMTP_HOST=<smtp-host>`
-- `EMAIL_SMTP_PORT=587`
-- `EMAIL_SMTP_USE_TLS=true`
-- `EMAIL_SMTP_TIMEOUT_SECONDS=12`
-- `EMAIL_SMTP_USERNAME=<smtp-username>`
-- `EMAIL_SMTP_PASSWORD=<smtp-password>`
-- `EMAIL_SMTP_FROM=no-reply@hirescore.in`
-- `EMAIL_SMTP_FROM_NAME=HireScore`
+- `EMAIL_PROVIDER=auto` (recommended) or `resend` or `smtp`
+- Resend option (recommended for Render reliability):
+  - `RESEND_API_KEY=<re_...>`
+  - `RESEND_FROM=<verified-sender@your-domain>`
+  - `EMAIL_HTTP_TIMEOUT_SECONDS=12`
+- SMTP option (fallback/optional):
+  - `EMAIL_SMTP_HOST=<smtp-host>`
+  - `EMAIL_SMTP_PORT=587` (or `465` for SSL)
+  - `EMAIL_SMTP_USE_TLS=true` (set `false` if using 465 SSL)
+  - `EMAIL_SMTP_USE_SSL=false` (set `true` if using 465 SSL)
+  - `EMAIL_SMTP_TIMEOUT_SECONDS=12`
+  - `EMAIL_SMTP_USERNAME=<smtp-username>`
+  - `EMAIL_SMTP_PASSWORD=<smtp-password>`
+  - `EMAIL_SMTP_FROM=no-reply@hirescore.in`
+  - `EMAIL_SMTP_FROM_NAME=HireScore`
 5. After deploy, add custom domain in Render:
 - `api.hirescore.in`
 
