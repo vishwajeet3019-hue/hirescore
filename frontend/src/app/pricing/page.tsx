@@ -79,6 +79,12 @@ type ApiErrorPayload = {
   user?: AuthUser;
 };
 
+const DEFAULT_FEATURE_PRICING = {
+  analyze: 5,
+  ai_resume_generation: 15,
+  template_pdf_download: 20,
+};
+
 const creditRules = [
   {
     title: "Welcome Credits",
@@ -135,6 +141,15 @@ export default function PricingPage() {
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
     [authToken]
+  );
+  const pricingUnits = wallet?.pricing || DEFAULT_FEATURE_PRICING;
+  const sortedPackages = useMemo(
+    () =>
+      [...paymentPackages].sort((a, b) => {
+        if (a.amount_inr !== b.amount_inr) return a.amount_inr - b.amount_inr;
+        return a.credits - b.credits;
+      }),
+    [paymentPackages]
   );
 
   const applyAuthPayload = (payload: AuthPayload | null | undefined) => {
@@ -494,6 +509,90 @@ export default function PricingPage() {
 
       <section className="mx-auto mt-8 grid max-w-7xl gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <article className="neon-panel rounded-3xl p-5 sm:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.15em] text-cyan-100/70">Premium Plans</p>
+              <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Choose Your Credit Plan</h3>
+              <p className="mt-2 text-sm text-cyan-50/72">
+                Clean plan cards with clear differences for frequent analysis and resume workflows.
+              </p>
+            </div>
+            <p className="text-xs text-cyan-100/72">
+              Gateway: <span className="font-semibold uppercase text-cyan-50">{paymentGateway}</span>
+              {paymentGateway === "razorpay" && razorpayEnabled ? " (UPI/cards/netbanking)" : ""}
+              {paymentGateway === "stripe" && stripeEnabled ? " (card checkout)" : ""}
+            </p>
+          </div>
+
+          {packagesError && <p className="mt-3 text-xs text-amber-100">{packagesError}</p>}
+          {!packagesLoading && !paymentEnabled && (
+            <p className="mt-3 text-xs text-amber-100">
+              Payment gateway is not enabled yet. Configure Razorpay or Stripe env vars on backend.
+            </p>
+          )}
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {sortedPackages.map((item, index) => {
+              const labelLower = item.label.toLowerCase();
+              const isElite = /elite/.test(labelLower) || item.credits >= 200;
+              const isPro = !isElite && (/pro/.test(labelLower) || item.credits >= 100);
+              const tierTitle = isElite ? "Elite" : isPro ? "Pro" : "Starter";
+              const isFeatured = isPro || (sortedPackages.length === 1 && index === 0);
+              const analysisRuns = Math.max(1, Math.floor(item.credits / pricingUnits.analyze));
+              const aiBuildRuns = Math.max(0, Math.floor(item.credits / pricingUnits.ai_resume_generation));
+              const pdfExports = Math.max(0, Math.floor(item.credits / pricingUnits.template_pdf_download));
+
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-2xl border p-4 sm:p-5 ${
+                    isFeatured
+                      ? "border-cyan-100/45 bg-gradient-to-b from-cyan-200/22 to-cyan-100/8"
+                      : "border-cyan-100/20 bg-cyan-100/8"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/70">{tierTitle}</p>
+                      <h4 className="mt-1 text-xl font-semibold text-cyan-50">{item.label}</h4>
+                    </div>
+                    {isFeatured && (
+                      <span className="rounded-full border border-cyan-100/40 bg-cyan-100/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-50">
+                        Most Popular
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-end gap-2">
+                    <p className="text-3xl font-semibold text-cyan-100">₹{item.amount_inr}</p>
+                    <p className="pb-1 text-xs text-cyan-50/72">{item.credits} credits</p>
+                  </div>
+
+                  <div className="mt-4 space-y-1.5 text-xs text-cyan-50/80">
+                    <p>Up to {analysisRuns} analysis reports</p>
+                    <p>Up to {aiBuildRuns} AI resume build + TXT runs</p>
+                    <p>Up to {pdfExports} premium PDF exports</p>
+                    <p>{isElite ? "Best for power users" : isPro ? "Best for regular users" : "Best to get started"}</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={!paymentEnabled || checkoutLoadingId === item.id}
+                    onClick={() => void handleCheckout(item.id)}
+                    className="mt-4 w-full rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+                  >
+                    {checkoutLoadingId === item.id ? "Opening..." : "Choose Plan"}
+                  </button>
+                </div>
+              );
+            })}
+            {!packagesLoading && sortedPackages.length === 0 && (
+              <p className="text-xs text-cyan-50/70">No credit packs configured yet.</p>
+            )}
+          </div>
+        </article>
+
+        <article className="neon-panel rounded-3xl p-5 sm:p-6">
           <p className="text-xs uppercase tracking-[0.15em] text-cyan-100/70">Wallet Access</p>
           {authToken && wallet ? (
             <div className="mt-3 space-y-3">
@@ -636,50 +735,6 @@ export default function PricingPage() {
           )}
           {authInfo && <p className="mt-3 text-xs text-emerald-100">{authInfo}</p>}
           {authError && <p className="mt-3 text-xs text-amber-100">{authError}</p>}
-        </article>
-
-        <article className="neon-panel rounded-3xl p-5 sm:p-6">
-          <p className="text-xs uppercase tracking-[0.15em] text-cyan-100/70">Payments</p>
-          <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Credit Packs</h3>
-          <p className="mt-2 text-sm text-cyan-50/72">
-            Choose a pack and complete checkout. Credits are added automatically after payment confirmation.
-          </p>
-          <p className="mt-2 text-xs text-cyan-100/72">
-            Active gateway:{" "}
-            <span className="font-semibold uppercase text-cyan-50">{paymentGateway}</span>
-            {paymentGateway === "razorpay" && razorpayEnabled ? " (UPI/cards/netbanking)" : ""}
-            {paymentGateway === "stripe" && stripeEnabled ? " (card checkout)" : ""}
-          </p>
-          {packagesError && <p className="mt-3 text-xs text-amber-100">{packagesError}</p>}
-          {!packagesLoading && !paymentEnabled && (
-            <p className="mt-3 text-xs text-amber-100">
-              Payment gateway is not enabled yet. Configure Razorpay or Stripe env vars on backend.
-            </p>
-          )}
-          <div className="mt-4 space-y-2">
-            {paymentPackages.map((item) => (
-              <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
-                <div>
-                  <p className="text-sm font-semibold text-cyan-50">{item.label}</p>
-                  <p className="text-xs text-cyan-50/72">{item.credits} credits</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-cyan-100">₹{item.amount_inr}</p>
-                  <button
-                    type="button"
-                    disabled={!paymentEnabled || checkoutLoadingId === item.id}
-                    onClick={() => void handleCheckout(item.id)}
-                    className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
-                  >
-                    {checkoutLoadingId === item.id ? "Opening..." : "Buy"}
-                  </button>
-                </div>
-              </div>
-            ))}
-            {!packagesLoading && paymentPackages.length === 0 && (
-              <p className="text-xs text-cyan-50/70">No credit packs configured yet.</p>
-            )}
-          </div>
         </article>
       </section>
 
