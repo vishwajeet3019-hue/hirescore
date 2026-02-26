@@ -68,8 +68,12 @@ type SalaryInsight = {
 };
 
 type NinetyPlusAction = {
-  priority: string;
+  priority?: string;
+  step_label?: string;
+  title?: string;
   action: string;
+  why_it_matters?: string;
+  how_to_execute?: string[];
   estimated_score_lift: number;
   timeline_weeks: string;
 };
@@ -1319,13 +1323,13 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] bg-[#020915]/88 px-3 py-4 backdrop-blur-xl sm:px-6 sm:py-6"
+            className="fixed inset-0 z-[220] overflow-y-auto bg-[#020915]/88 px-3 py-3 backdrop-blur-xl sm:px-6 sm:py-5"
             onClick={() => setShowResultModal(false)}
           >
             <button
               type="button"
               onClick={() => setShowResultModal(false)}
-              className="fixed right-4 top-4 z-[130] rounded-xl border border-cyan-100/30 bg-[#082640]/92 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50 shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition hover:bg-[#0d3358] sm:hidden"
+              className="fixed right-4 top-4 z-[230] rounded-xl border border-cyan-100/30 bg-[#082640]/92 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50 shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition hover:bg-[#0d3358] sm:hidden"
             >
               Close
             </button>
@@ -1333,7 +1337,7 @@ export default function UploadPage() {
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)]"
+              className="mx-auto my-1 flex min-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:my-2 sm:max-h-[calc(100vh-2.5rem)] sm:min-h-0"
             >
               <div className="sticky top-0 z-20 flex justify-end border-b border-cyan-100/14 bg-[#041427]/96 px-4 py-3 sm:px-6">
                 <button
@@ -1475,8 +1479,19 @@ export default function UploadPage() {
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
                           {result.ninety_plus_strategy.actions.map((action, idx) => (
                             <div key={`n90-${idx}`} className="rounded-xl border border-cyan-100/18 bg-cyan-100/6 p-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100/82">{action.priority}</p>
+                              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100/82">
+                                {action.step_label || `Step ${idx + 1}`}
+                              </p>
+                              {action.title && <p className="mt-1 text-sm font-semibold text-cyan-50">{action.title}</p>}
                               <p className="mt-1 text-sm text-cyan-50/80">{action.action}</p>
+                              {action.why_it_matters && <p className="mt-2 text-xs text-cyan-50/72">Why this matters: {action.why_it_matters}</p>}
+                              {(action.how_to_execute || []).length > 0 && (
+                                <ul className="mt-2 space-y-1 text-xs text-cyan-50/72">
+                                  {(action.how_to_execute || []).map((line, executeIndex) => (
+                                    <li key={`exec-${idx}-${executeIndex}`}>- {line}</li>
+                                  ))}
+                                </ul>
+                              )}
                               <p className="mt-2 text-xs text-cyan-50/70">Est. lift: +{action.estimated_score_lift} | Timeline: {action.timeline_weeks} weeks</p>
                             </div>
                           ))}

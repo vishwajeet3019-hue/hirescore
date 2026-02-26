@@ -2700,8 +2700,90 @@ def build_shortlist_prediction(score: int) -> str:
     return "Low shortlist probability"
 
 
+def role_metric_signals(role_track: str) -> list[str]:
+    mapping = {
+        "sales": ["pipeline coverage", "win rate", "deal value", "revenue closed"],
+        "marketing": ["CAC", "ROAS", "CTR/CVR", "qualified leads"],
+        "hr": ["time-to-hire", "offer acceptance", "retention", "quality-of-hire"],
+        "operations": ["cycle time", "SLA adherence", "cost savings", "error reduction"],
+        "finance": ["forecast accuracy", "variance reduction", "cashflow impact", "margin improvement"],
+        "product": ["activation", "retention", "feature adoption", "release impact"],
+        "support": ["first response time", "resolution time", "CSAT", "escalation rate"],
+    }
+    return mapping.get(role_track, ["delivery speed", "quality outcomes", "business impact", "stakeholder trust"])
+
+
+def role_execution_examples(role_track: str, industry: str) -> list[str]:
+    industry_text = normalize_search_text(industry)
+    if role_track == "sales" and any(phrase_in_text(industry_text, token) for token in ["automobile", "automotive", "dealership"]):
+        return [
+            "test-drive to booking conversion improvement",
+            "dealer/outlet-wise target achievement plan",
+            "finance and insurance attach-rate improvement",
+        ]
+    if role_track == "hr":
+        return [
+            "hiring funnel cleanup for priority roles",
+            "onboarding quality checklist rollout",
+            "manager interview calibration framework",
+        ]
+    if role_track == "marketing":
+        return [
+            "channel mix optimization with budget reallocation",
+            "campaign copy-test matrix with weekly winners",
+            "landing page and funnel conversion improvements",
+        ]
+    if role_track == "operations":
+        return [
+            "workflow bottleneck elimination sprint",
+            "SOP redesign with weekly quality controls",
+            "vendor-performance and SLA governance setup",
+        ]
+    return [
+        "role-aligned proof project with measurable impact",
+        "before/after process or outcome metrics",
+        "decision narrative with clear ownership",
+    ]
+
+
+def build_quick_wins(
+    role_track: str,
+    role: str,
+    industry: str,
+    critical_missing: list[str],
+    core_missing: list[str],
+    adjacent_missing: list[str],
+    experience_band: str,
+) -> list[str]:
+    role_label = safe_text(role) or "your target role"
+    industry_label = safe_text(industry) or "your target industry"
+    metrics = ", ".join(role_metric_signals(role_track)[:3])
+    examples = role_execution_examples(role_track, industry)
+
+    wins: list[str] = [
+        f"For {role_label} in {industry_label}, lead your profile with measurable outcomes ({metrics}) before listing tools/skills.",
+        f"Add one proof story this week: {examples[0]} with numbers, timeline, and your exact ownership.",
+    ]
+
+    if critical_missing:
+        wins.append(f"Close must-have gaps first: {', '.join(critical_missing[:3])}. Do this before adding advanced/adjacent skills.")
+    elif core_missing:
+        wins.append(f"Prioritize these role-core skills next: {', '.join(core_missing[:3])}. Tie each to one practical work example.")
+    elif adjacent_missing:
+        wins.append(f"Add 1-2 differentiators ({', '.join(adjacent_missing[:3])}) to move from 'eligible' to 'preferred' candidate.")
+    else:
+        wins.append("Your core signals are in place. Focus on sharper role-tailored bullets and weekly application quality.")
+
+    if experience_band == "senior":
+        wins.append("As a senior profile, highlight team outcomes, forecasting quality, and business decisions you influenced.")
+
+    return wins[:4]
+
+
 def build_improvement_areas(
     role_track: str,
+    role: str,
+    industry: str,
     critical_missing: list[str],
     core_missing: list[str],
     adjacent_missing: list[str],
@@ -2709,15 +2791,19 @@ def build_improvement_areas(
     consistency_score: int,
 ) -> list[dict[str, Any]]:
     areas: list[dict[str, Any]] = []
+    role_label = safe_text(role) or "your target role"
+    industry_label = safe_text(industry) or "your target industry"
+    metrics_text = ", ".join(role_metric_signals(role_track)[:3])
+    execution_examples = role_execution_examples(role_track, industry)
 
     if critical_missing:
         areas.append(
             {
                 "category": "Must-Have Skill Gaps",
                 "details": [
-                    f"Missing must-have skills: {', '.join(critical_missing[:4])}.",
-                    "Recruiters and screeners treat these as hard filters in the first short scan.",
-                    "Show proof in your most recent work bullets so trust builds immediately.",
+                    f"Missing must-have skills for {role_label}: {', '.join(critical_missing[:4])}.",
+                    f"In {industry_label}, first shortlisting pass usually checks these before anything else.",
+                    f"Action this week: add one bullet per missing skill with measurable evidence ({metrics_text}).",
                 ],
             }
         )
@@ -2727,9 +2813,9 @@ def build_improvement_areas(
             {
                 "category": "Critical Skill Gaps",
                 "details": [
-                    f"Missing core skills: {', '.join(core_missing[:5])}.",
-                    "Right now your profile reads as partially ready, not fully role-ready.",
-                    "Prioritize these first and add evidence through outcomes, ownership, and context.",
+                    f"Core capability gaps: {', '.join(core_missing[:5])}.",
+                    "Current profile looks partially aligned, but not clearly hire-ready for this role.",
+                    f"Convert each gap into proof by completing role-specific outputs like {execution_examples[0]} and {execution_examples[1]}.",
                 ],
             }
         )
@@ -2740,8 +2826,8 @@ def build_improvement_areas(
                 "category": "Role Consistency",
                 "details": [
                     "Your skills currently signal multiple directions, which creates hiring doubt.",
-                    "When the signal is mixed, recruiters move to clearer profiles first.",
-                    "Refocus around one role narrative and cut unrelated low-signal keywords.",
+                    f"For {role_label}, keep one clear narrative: target scope, key capabilities, and outcomes.",
+                    "Remove low-signal unrelated keywords and tighten your top 8-12 skills to one role direction.",
                 ],
             }
         )
@@ -2752,8 +2838,8 @@ def build_improvement_areas(
                 "category": "Competitive Edge",
                 "details": [
                     f"Missing differentiators: {', '.join(adjacent_missing[:5])}.",
-                    "These differentiators create the 'strong fit' feeling during shortlisting.",
-                    "Add at least 2 and show practical usage in real work scenarios.",
+                    "These are the skills that move profiles from 'considered' to 'shortlisted quickly'.",
+                    f"Pick 2 and prove them via outcomes (for example: {execution_examples[2]}).",
                 ],
             }
         )
@@ -2787,9 +2873,9 @@ def build_improvement_areas(
             {
                 "category": "Positioning",
                 "details": [
-                    "Your profile is already strong and close to interview-ready.",
-                    "Small positioning changes can materially increase callback conversion.",
-                    "Tailor top skills per job and keep claims specific and evidence-backed.",
+                    f"Your profile is already close to interview-ready for {role_label}.",
+                    "Next lift will come from sharper positioning and stronger proof, not just adding more keywords.",
+                    "Tailor your top section for each role cluster and keep every claim evidence-backed.",
                 ],
             }
         )
@@ -2965,58 +3051,109 @@ def build_salary_insight(
 
 def build_ninety_plus_plan(
     overall_score: int,
+    role_track: str,
+    role: str,
+    industry: str,
+    experience_band: str,
     critical_missing: list[str],
     core_missing: list[str],
     adjacent_missing: list[str],
 ) -> dict[str, Any]:
     gap_to_90 = max(0, 90 - overall_score)
     actions: list[dict[str, Any]] = []
+    role_label = safe_text(role) or "your target role"
+    industry_label = safe_text(industry) or "your target industry"
+    metrics = ", ".join(role_metric_signals(role_track)[:3])
+    execution_examples = role_execution_examples(role_track, industry)
 
-    if critical_missing:
+    def add_action(
+        title: str,
+        action: str,
+        why_it_matters: str,
+        how_to_execute: list[str],
+        estimated_score_lift: int,
+        timeline_weeks: str,
+    ) -> None:
+        step = len(actions) + 1
         actions.append(
             {
-                "priority": "P1",
-                "action": f"Close must-have gaps first: {', '.join(critical_missing[:4])}.",
-                "estimated_score_lift": min(24, 6 + len(critical_missing[:4]) * 4),
-                "timeline_weeks": "2-5",
+                "priority": f"Step {step}",
+                "step_label": f"Step {step}",
+                "title": title,
+                "action": action,
+                "why_it_matters": why_it_matters,
+                "how_to_execute": how_to_execute[:3],
+                "estimated_score_lift": int(estimated_score_lift),
+                "timeline_weeks": timeline_weeks,
             }
+        )
+
+    if critical_missing:
+        add_action(
+            "Fix hard-screening gaps first",
+            f"Close must-have gaps for {role_label}: {', '.join(critical_missing[:4])}.",
+            "These are hard filters in first shortlist screening.",
+            [
+                f"Pick top 2 gaps and complete one practical output for each in {industry_label}.",
+                f"Add proof bullets with measurable impact ({metrics}).",
+                "Mirror exact JD wording in your headline, skills, and top experience points.",
+            ],
+            min(24, 6 + len(critical_missing[:4]) * 4),
+            "2-5",
         )
 
     if core_missing:
-        actions.append(
-            {
-                "priority": "P1",
-                "action": f"Build role-depth proof on core gaps: {', '.join(core_missing[:4])}.",
-                "estimated_score_lift": min(18, 5 + len(core_missing[:4]) * 3),
-                "timeline_weeks": "3-6",
-            }
+        add_action(
+            "Build depth proof for role-core capabilities",
+            f"Create real evidence for these core areas: {', '.join(core_missing[:4])}.",
+            "Recruiters shortlist candidates who can prove execution, not only list skills.",
+            [
+                f"Build two proof artifacts such as {execution_examples[0]} and {execution_examples[1]}.",
+                "Add one quantified achievement per core skill in your resume.",
+                "Use STAR-style storytelling for interviews on each capability.",
+            ],
+            min(18, 5 + len(core_missing[:4]) * 3),
+            "3-6",
         )
 
-    actions.append(
-        {
-            "priority": "P2",
-            "action": "Rewrite top resume bullets with quantified outcomes and role-specific keywords.",
-            "estimated_score_lift": 8,
-            "timeline_weeks": "1-2",
-        }
+    leadership_clause = "Include team impact, planning quality, and decision ownership in each story." if experience_band == "senior" else "Highlight direct individual contribution and outcome ownership in each story."
+    add_action(
+        "Rewrite resume for role-fit clarity",
+        f"Rewrite top bullets for {role_label} with measurable outcomes and clean role language.",
+        "A clear, role-aligned resume raises screening confidence quickly.",
+        [
+            f"Lead bullets with outcome metrics ({metrics}) instead of responsibilities.",
+            "Remove generic claims and replace with specific scope, numbers, and timeline.",
+            leadership_clause,
+        ],
+        8,
+        "1-2",
     )
-    actions.append(
-        {
-            "priority": "P2",
-            "action": "Tailor resume variant per role cluster and submit in focused batches.",
-            "estimated_score_lift": 6,
-            "timeline_weeks": "1-3",
-        }
+    add_action(
+        "Run focused weekly application strategy",
+        "Use role-specific resume variants and submit in focused weekly batches.",
+        "Targeted applications outperform broad, generic submissions.",
+        [
+            "Create 2 resume variants for adjacent job-title clusters.",
+            "Apply in weekly batches and track callback % and rejection reasons.",
+            "Improve one weak section every week based on recruiter signal.",
+        ],
+        6,
+        "1-3",
     )
 
     if adjacent_missing:
-        actions.append(
-            {
-                "priority": "P3",
-                "action": f"Add 2 adjacent differentiators: {', '.join(adjacent_missing[:3])}.",
-                "estimated_score_lift": 5,
-                "timeline_weeks": "2-4",
-            }
+        add_action(
+            "Add 2 differentiators to beat similar profiles",
+            f"Add practical differentiators: {', '.join(adjacent_missing[:3])}.",
+            "Differentiators increase confidence when many candidates have similar fundamentals.",
+            [
+                f"Choose 2 differentiators most used in {industry_label} hiring.",
+                "Ship one mini-project or case proof for each differentiator.",
+                "Mention business impact and not just tool usage.",
+            ],
+            5,
+            "2-4",
         )
 
     projected_lift = min(32, sum(item["estimated_score_lift"] for item in actions[:4]))
@@ -3409,14 +3546,21 @@ def analyze_profile(
         or (exp_value is None and seniority == "junior" and profile_details["listed_count"] <= 2)
     )
 
-    quick_wins = [
-        "In the first 10 seconds, recruiters look for role-fit proof, not potential. Lead with strongest role-aligned outcomes.",
-        "Use exact language from target JDs so your profile feels instantly relevant to the hiring team.",
-        "Keep one clear role narrative and remove side-signals that create doubt.",
-    ]
+    experience_band = infer_experience_band(experience_years, seniority)
+    quick_wins = build_quick_wins(
+        role_track,
+        role,
+        industry,
+        critical_missing,
+        core_missing,
+        adjacent_missing,
+        experience_band,
+    )
 
     areas_to_improve = build_improvement_areas(
         role_track,
+        role,
+        industry,
         critical_missing,
         core_missing,
         adjacent_missing,
@@ -3424,7 +3568,16 @@ def analyze_profile(
         consistency_score,
     )
     applications_used = normalize_applications_count(applications_count)
-    ninety_plus_strategy = build_ninety_plus_plan(overall_score, critical_missing, core_missing, adjacent_missing)
+    ninety_plus_strategy = build_ninety_plus_plan(
+        overall_score,
+        role_track,
+        role,
+        industry,
+        experience_band,
+        critical_missing,
+        core_missing,
+        adjacent_missing,
+    )
     interview_call_likelihood = build_interview_call_likelihood(overall_score, confidence)
     salary_insight = build_salary_insight(
         role_track=role_track,
