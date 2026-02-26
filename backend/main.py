@@ -1145,6 +1145,49 @@ def hash_password(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 190_000).hex()
 
 
+def create_user_with_welcome_credits(email: str, password: str, source: str = "signup") -> sqlite3.Row:
+    salt = secrets.token_hex(16)
+    password_hash = hash_password(password, salt)
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO users (email, password_hash, password_salt, credits, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (email, password_hash, salt, WELCOME_FREE_CREDITS, now_utc_iso()),
+                )
+                user_id = int(cursor.lastrowid)
+                cursor.execute(
+                    """
+                    INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        "welcome_credits",
+                        WELCOME_FREE_CREDITS,
+                        WELCOME_FREE_CREDITS,
+                        json.dumps({"source": source}, separators=(",", ":"), sort_keys=True),
+                        now_utc_iso(),
+                    ),
+                )
+                connection.commit()
+            except sqlite3.IntegrityError:
+                connection.rollback()
+        finally:
+            connection.close()
+
+    user = fetch_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=500, detail="Unable to create account.")
+    return user
+
+
 def create_auth_token(user_id: int, email: str) -> str:
     payload = {
         "uid": user_id,
@@ -3064,46 +3107,7 @@ def signup(data: AuthRequest) -> dict[str, Any]:
     if fetch_user_by_email(email):
         raise HTTPException(status_code=409, detail="Account already exists. Please log in.")
 
-    salt = secrets.token_hex(16)
-    password_hash = hash_password(password, salt)
-
-    with AUTH_DB_LOCK:
-        connection = auth_db_connection()
-        try:
-            cursor = connection.cursor()
-            try:
-                cursor.execute(
-                    """
-                    INSERT INTO users (email, password_hash, password_salt, credits, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (email, password_hash, salt, WELCOME_FREE_CREDITS, now_utc_iso()),
-                )
-                user_id = int(cursor.lastrowid)
-                cursor.execute(
-                    """
-                    INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        user_id,
-                        "welcome_credits",
-                        WELCOME_FREE_CREDITS,
-                        WELCOME_FREE_CREDITS,
-                        json.dumps({"source": "signup"}, separators=(",", ":"), sort_keys=True),
-                        now_utc_iso(),
-                    ),
-                )
-                connection.commit()
-            except sqlite3.IntegrityError as exc:
-                connection.rollback()
-                raise HTTPException(status_code=409, detail="Account already exists. Please log in.") from exc
-        finally:
-            connection.close()
-
-    user = fetch_user_by_email(email)
-    if not user:
-        raise HTTPException(status_code=500, detail="Unable to create account.")
+    user = create_user_with_welcome_credits(email, password, source="signup")
     return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
 
 
@@ -3113,7 +3117,7 @@ def login(data: AuthRequest) -> dict[str, Any]:
     password = safe_text(data.password)
     user = fetch_user_by_email(email)
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+        user = create_user_with_welcome_credits(email, password, source="login_auto_recovery")
 
     expected = hash_password(password, str(user["password_salt"]))
     if not hmac.compare_digest(expected, str(user["password_hash"])):
