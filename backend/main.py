@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import csv
 import json
 import logging
 import os
@@ -5055,6 +5056,255 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
     return {"received": True}
 
 
+def parse_meta_json(meta_json: Any) -> dict[str, Any]:
+    try:
+        return json.loads(meta_json or "{}")
+    except Exception:
+        return {}
+
+
+def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str, Any]:
+    users_total = int(connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"])
+    feedback_row = connection.execute(
+        "SELECT COUNT(*) AS count, COALESCE(AVG(rating), 0) AS avg_rating FROM user_feedback"
+    ).fetchone()
+    feedback_total = int(feedback_row["count"])
+    feedback_avg = round(float(feedback_row["avg_rating"] or 0), 2)
+    signups_total = int(
+        connection.execute(
+            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'signup_success'"
+        ).fetchone()["count"]
+    )
+    logins_total = int(
+        connection.execute(
+            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'login_success'"
+        ).fetchone()["count"]
+    )
+    analyses_total = int(connection.execute("SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze'").fetchone()["count"])
+    payments_total = int(
+        connection.execute(
+            "SELECT COUNT(*) AS count FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
+        ).fetchone()["count"]
+    )
+    credits_sold = int(
+        connection.execute(
+            "SELECT COALESCE(SUM(delta), 0) AS sold FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
+        ).fetchone()["sold"]
+    )
+    payment_rows = connection.execute(
+        "SELECT meta_json FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
+    ).fetchall()
+    revenue_inr = 0
+    for row in payment_rows:
+        meta = parse_meta_json(row["meta_json"])
+        revenue_inr += int(meta.get("amount_inr") or 0)
+
+    return {
+        "users_total": users_total,
+        "signups_total": signups_total,
+        "logins_total": logins_total,
+        "analyses_total": analyses_total,
+        "feedback_total": feedback_total,
+        "feedback_avg_rating": feedback_avg,
+        "payments_total": payments_total,
+        "credits_sold_total": credits_sold,
+        "revenue_inr_total": revenue_inr,
+        "stripe_enabled": STRIPE_ENABLED,
+        "razorpay_enabled": RAZORPAY_ENABLED,
+        "payment_gateway": PAYMENT_GATEWAY_ACTIVE,
+    }
+
+
+def collect_admin_events(connection: sqlite3.Connection, limit: int | None = None) -> list[dict[str, Any]]:
+    query = """
+        SELECT e.id, e.user_id, u.email, e.event_type, e.event_name, e.meta_json, e.created_at
+        FROM analytics_events e
+        LEFT JOIN users u ON u.id = e.user_id
+        ORDER BY e.id DESC
+    """
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        query += "\nLIMIT ?"
+        params = (int(limit),)
+    rows = connection.execute(query, params).fetchall()
+    return [
+        {
+            "id": int(row["id"]),
+            "user_id": int(row["user_id"]) if row["user_id"] is not None else None,
+            "email": safe_text(row["email"]),
+            "event_type": safe_text(row["event_type"]),
+            "event_name": safe_text(row["event_name"]),
+            "meta": parse_meta_json(row["meta_json"]),
+            "created_at": safe_text(row["created_at"]),
+        }
+        for row in rows
+    ]
+
+
+def collect_admin_feedback(connection: sqlite3.Connection, limit: int | None = None) -> list[dict[str, Any]]:
+    query = """
+        SELECT f.id, f.user_id, u.email, f.rating, f.comment, f.source, f.created_at
+        FROM user_feedback f
+        LEFT JOIN users u ON u.id = f.user_id
+        ORDER BY f.id DESC
+    """
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        query += "\nLIMIT ?"
+        params = (int(limit),)
+    rows = connection.execute(query, params).fetchall()
+    return [
+        {
+            "id": int(row["id"]),
+            "user_id": int(row["user_id"]),
+            "email": safe_text(row["email"]),
+            "rating": int(row["rating"]),
+            "comment": safe_text(row["comment"]),
+            "source": safe_text(row["source"]),
+            "created_at": safe_text(row["created_at"]),
+        }
+        for row in rows
+    ]
+
+
+def collect_admin_credit_transactions(connection: sqlite3.Connection, limit: int | None = None) -> list[dict[str, Any]]:
+    query = """
+        SELECT t.id, t.user_id, u.email, t.action, t.delta, t.balance_after, t.meta_json, t.created_at
+        FROM credit_transactions t
+        LEFT JOIN users u ON u.id = t.user_id
+        ORDER BY t.id DESC
+    """
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        query += "\nLIMIT ?"
+        params = (int(limit),)
+    rows = connection.execute(query, params).fetchall()
+    return [
+        {
+            "id": int(row["id"]),
+            "user_id": int(row["user_id"]),
+            "email": safe_text(row["email"]),
+            "action": safe_text(row["action"]),
+            "delta": int(row["delta"]),
+            "balance_after": int(row["balance_after"]),
+            "meta": parse_meta_json(row["meta_json"]),
+            "created_at": safe_text(row["created_at"]),
+        }
+        for row in rows
+    ]
+
+
+def collect_admin_users(
+    connection: sqlite3.Connection,
+    q: str | None = None,
+    plan: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    search = safe_text(q).lower()
+    raw_plan = safe_text(plan).lower()
+    plan_filter = normalize_plan_tier(raw_plan) if raw_plan and raw_plan != "all" else ""
+
+    filters: list[str] = []
+    values: list[Any] = []
+    if search:
+        filters.append("(lower(u.email) LIKE ? OR lower(u.full_name) LIKE ?)")
+        values.extend([f"%{search}%", f"%{search}%"])
+    if plan_filter:
+        filters.append("lower(u.plan_tier) = ?")
+        values.append(plan_filter)
+    where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+    pagination_sql = ""
+    if limit is not None:
+        pagination_sql = "LIMIT ? OFFSET ?"
+        values.extend([int(limit), max(0, int(offset))])
+
+    rows = connection.execute(
+        f"""
+        SELECT
+            u.id,
+            u.full_name,
+            u.email,
+            u.plan_tier,
+            u.credits,
+            u.created_at,
+            COALESCE(a.analyze_count, 0) AS analyze_count,
+            COALESCE(f.feedback_count, 0) AS feedback_count
+        FROM users u
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) AS analyze_count
+            FROM credit_transactions
+            WHERE action = 'analyze'
+            GROUP BY user_id
+        ) a ON a.user_id = u.id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) AS feedback_count
+            FROM user_feedback
+            GROUP BY user_id
+        ) f ON f.user_id = u.id
+        {where_sql}
+        ORDER BY u.id DESC
+        {pagination_sql}
+        """,
+        tuple(values),
+    ).fetchall()
+
+    users: list[dict[str, Any]] = []
+    for row in rows:
+        analyze_count = int(row["analyze_count"] or 0)
+        feedback_count = int(row["feedback_count"] or 0)
+        users.append(
+            {
+                "id": int(row["id"]),
+                "name": safe_text(row["full_name"]) or display_name_from_email(str(row["email"])),
+                "email": str(row["email"]),
+                "plan": normalize_plan_tier(str(row["plan_tier"])),
+                "credits": int(row["credits"]),
+                "created_at": str(row["created_at"]),
+                "analyze_count": analyze_count,
+                "feedback_submitted": feedback_count > 0,
+                "feedback_required": analyze_count >= 1 and feedback_count == 0,
+            }
+        )
+    return users
+
+
+def build_csv_bytes(rows: list[dict[str, Any]], fieldnames: list[str]) -> bytes:
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        serialized: dict[str, Any] = {}
+        for field in fieldnames:
+            value = row.get(field)
+            if isinstance(value, (dict, list)):
+                serialized[field] = json.dumps(value, separators=(",", ":"), sort_keys=True)
+            elif isinstance(value, bool):
+                serialized[field] = "true" if value else "false"
+            else:
+                serialized[field] = value
+        writer.writerow(serialized)
+    return buffer.getvalue().encode("utf-8")
+
+
+def csv_download_response(filename: str, rows: list[dict[str, Any]], fieldnames: list[str]) -> StreamingResponse:
+    content = build_csv_bytes(rows, fieldnames)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def json_download_response(filename: str, payload: dict[str, Any]) -> StreamingResponse:
+    content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=False).encode("utf-8")
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.post("/admin/auth/login")
 def admin_auth_login(data: AdminLoginRequest) -> dict[str, Any]:
     if not ADMIN_LOGIN_ID or not ADMIN_PASSWORD:
@@ -5077,60 +5327,9 @@ def admin_analytics(request: Request) -> dict[str, Any]:
     require_admin_access(request)
     connection = auth_db_connection()
     try:
-        users_total = int(connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"])
-        feedback_row = connection.execute(
-            "SELECT COUNT(*) AS count, COALESCE(AVG(rating), 0) AS avg_rating FROM user_feedback"
-        ).fetchone()
-        feedback_total = int(feedback_row["count"])
-        feedback_avg = round(float(feedback_row["avg_rating"] or 0), 2)
-        signups_total = int(
-            connection.execute(
-                "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'signup_success'"
-            ).fetchone()["count"]
-        )
-        logins_total = int(
-            connection.execute(
-                "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'login_success'"
-            ).fetchone()["count"]
-        )
-        analyses_total = int(connection.execute("SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze'").fetchone()["count"])
-        payments_total = int(
-            connection.execute(
-                "SELECT COUNT(*) AS count FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
-            ).fetchone()["count"]
-        )
-        credits_sold = int(
-            connection.execute(
-                "SELECT COALESCE(SUM(delta), 0) AS sold FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
-            ).fetchone()["sold"]
-        )
-        payment_rows = connection.execute(
-            "SELECT meta_json FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
-        ).fetchall()
-        revenue_inr = 0
-        for row in payment_rows:
-            try:
-                meta = json.loads(row["meta_json"] or "{}")
-                revenue_inr += int(meta.get("amount_inr") or 0)
-            except Exception:
-                continue
+        return collect_admin_analytics_summary(connection)
     finally:
         connection.close()
-
-    return {
-        "users_total": users_total,
-        "signups_total": signups_total,
-        "logins_total": logins_total,
-        "analyses_total": analyses_total,
-        "feedback_total": feedback_total,
-        "feedback_avg_rating": feedback_avg,
-        "payments_total": payments_total,
-        "credits_sold_total": credits_sold,
-        "revenue_inr_total": revenue_inr,
-        "stripe_enabled": STRIPE_ENABLED,
-        "razorpay_enabled": RAZORPAY_ENABLED,
-        "payment_gateway": PAYMENT_GATEWAY_ACTIVE,
-    }
 
 
 @app.get("/admin/events")
@@ -5139,36 +5338,9 @@ def admin_events(request: Request, limit: int = 200) -> dict[str, Any]:
     safe_limit = int(clamp_float(float(limit), 1, 1000))
     connection = auth_db_connection()
     try:
-        rows = connection.execute(
-            """
-            SELECT e.id, e.user_id, u.email, e.event_type, e.event_name, e.meta_json, e.created_at
-            FROM analytics_events e
-            LEFT JOIN users u ON u.id = e.user_id
-            ORDER BY e.id DESC
-            LIMIT ?
-            """,
-            (safe_limit,),
-        ).fetchall()
+        events = collect_admin_events(connection, safe_limit)
     finally:
         connection.close()
-
-    events: list[dict[str, Any]] = []
-    for row in rows:
-        try:
-            meta = json.loads(row["meta_json"] or "{}")
-        except Exception:
-            meta = {}
-        events.append(
-            {
-                "id": int(row["id"]),
-                "user_id": int(row["user_id"]) if row["user_id"] is not None else None,
-                "email": safe_text(row["email"]),
-                "event_type": safe_text(row["event_type"]),
-                "event_name": safe_text(row["event_name"]),
-                "meta": meta,
-                "created_at": safe_text(row["created_at"]),
-            }
-        )
     return {"events": events}
 
 
@@ -5178,32 +5350,9 @@ def admin_feedback(request: Request, limit: int = 200) -> dict[str, Any]:
     safe_limit = int(clamp_float(float(limit), 1, 1000))
     connection = auth_db_connection()
     try:
-        rows = connection.execute(
-            """
-            SELECT f.id, f.user_id, u.email, f.rating, f.comment, f.source, f.created_at
-            FROM user_feedback f
-            LEFT JOIN users u ON u.id = f.user_id
-            ORDER BY f.id DESC
-            LIMIT ?
-            """,
-            (safe_limit,),
-        ).fetchall()
+        feedback_rows = collect_admin_feedback(connection, safe_limit)
     finally:
         connection.close()
-
-    feedback_rows: list[dict[str, Any]] = []
-    for row in rows:
-        feedback_rows.append(
-            {
-                "id": int(row["id"]),
-                "user_id": int(row["user_id"]),
-                "email": safe_text(row["email"]),
-                "rating": int(row["rating"]),
-                "comment": safe_text(row["comment"]),
-                "source": safe_text(row["source"]),
-                "created_at": safe_text(row["created_at"]),
-            }
-        )
     return {"feedback": feedback_rows}
 
 
@@ -5218,50 +5367,14 @@ def admin_users(
     require_admin_access(request)
     safe_limit = int(clamp_float(float(limit), 1, 200))
     safe_offset = max(0, int(offset))
-    search = safe_text(q).lower()
-    raw_plan = safe_text(plan).lower()
-    plan_filter = normalize_plan_tier(raw_plan) if raw_plan and raw_plan != "all" else ""
 
     connection = auth_db_connection()
     try:
-        filters: list[str] = []
-        values: list[Any] = []
-        if search:
-            filters.append("(lower(u.email) LIKE ? OR lower(u.full_name) LIKE ?)")
-            values.extend([f"%{search}%", f"%{search}%"])
-        if plan_filter:
-            filters.append("lower(u.plan_tier) = ?")
-            values.append(plan_filter)
-        where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
-        rows = connection.execute(
-            f"""
-            SELECT u.id, u.full_name, u.email, u.plan_tier, u.credits, u.created_at
-            FROM users u
-            {where_sql}
-            ORDER BY u.id DESC
-            LIMIT ? OFFSET ?
-            """,
-            (*values, safe_limit, safe_offset),
-        ).fetchall()
+        users = collect_admin_users(connection, q=q, plan=plan, limit=safe_limit, offset=safe_offset)
     finally:
         connection.close()
-
-    users = []
-    for row in rows:
-        user_id = int(row["id"])
-        users.append(
-            {
-                "id": user_id,
-                "name": safe_text(row["full_name"]) or display_name_from_email(str(row["email"])),
-                "email": str(row["email"]),
-                "plan": normalize_plan_tier(str(row["plan_tier"])),
-                "credits": int(row["credits"]),
-                "created_at": str(row["created_at"]),
-                "analyze_count": get_analyze_count(user_id),
-                "feedback_submitted": has_feedback_submission(user_id),
-                "feedback_required": feedback_required_for_user(user_id),
-            }
-        )
+    raw_plan = safe_text(plan).lower()
+    plan_filter = normalize_plan_tier(raw_plan) if raw_plan and raw_plan != "all" else ""
     return {"users": users, "limit": safe_limit, "offset": safe_offset, "plan_filter": plan_filter or None}
 
 
@@ -5461,38 +5574,95 @@ def admin_credit_transactions(request: Request, limit: int = 120) -> dict[str, A
     safe_limit = int(clamp_float(float(limit), 1, 400))
     connection = auth_db_connection()
     try:
-        rows = connection.execute(
-            """
-            SELECT t.id, t.user_id, u.email, t.action, t.delta, t.balance_after, t.meta_json, t.created_at
-            FROM credit_transactions t
-            LEFT JOIN users u ON u.id = t.user_id
-            ORDER BY t.id DESC
-            LIMIT ?
-            """,
-            (safe_limit,),
-        ).fetchall()
+        transactions = collect_admin_credit_transactions(connection, safe_limit)
+    finally:
+        connection.close()
+    return {"transactions": transactions}
+
+
+@app.get("/admin/export/full.json")
+def admin_export_full_json(request: Request, q: str | None = None, plan: str | None = None) -> StreamingResponse:
+    require_admin_access(request)
+    connection = auth_db_connection()
+    try:
+        payload = {
+            "generated_at_utc": now_utc_iso(),
+            "summary": collect_admin_analytics_summary(connection),
+            "users": collect_admin_users(connection, q=q, plan=plan, limit=None, offset=0),
+            "events": collect_admin_events(connection, limit=None),
+            "feedback": collect_admin_feedback(connection, limit=None),
+            "credit_transactions": collect_admin_credit_transactions(connection, limit=None),
+        }
     finally:
         connection.close()
 
-    transactions = []
-    for row in rows:
-        try:
-            meta = json.loads(row["meta_json"] or "{}")
-        except Exception:
-            meta = {}
-        transactions.append(
-            {
-                "id": int(row["id"]),
-                "user_id": int(row["user_id"]),
-                "email": safe_text(row["email"]),
-                "action": safe_text(row["action"]),
-                "delta": int(row["delta"]),
-                "balance_after": int(row["balance_after"]),
-                "meta": meta,
-                "created_at": safe_text(row["created_at"]),
-            }
-        )
-    return {"transactions": transactions}
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return json_download_response(f"hirescore-admin-export-{timestamp}.json", payload)
+
+
+@app.get("/admin/export/users.csv")
+def admin_export_users_csv(request: Request, q: str | None = None, plan: str | None = None) -> StreamingResponse:
+    require_admin_access(request)
+    connection = auth_db_connection()
+    try:
+        rows = collect_admin_users(connection, q=q, plan=plan, limit=None, offset=0)
+    finally:
+        connection.close()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return csv_download_response(
+        f"hirescore-users-{timestamp}.csv",
+        rows,
+        ["id", "name", "email", "plan", "credits", "created_at", "analyze_count", "feedback_submitted", "feedback_required"],
+    )
+
+
+@app.get("/admin/export/events.csv")
+def admin_export_events_csv(request: Request) -> StreamingResponse:
+    require_admin_access(request)
+    connection = auth_db_connection()
+    try:
+        rows = collect_admin_events(connection, limit=None)
+    finally:
+        connection.close()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return csv_download_response(
+        f"hirescore-events-{timestamp}.csv",
+        rows,
+        ["id", "user_id", "email", "event_type", "event_name", "meta", "created_at"],
+    )
+
+
+@app.get("/admin/export/feedback.csv")
+def admin_export_feedback_csv(request: Request) -> StreamingResponse:
+    require_admin_access(request)
+    connection = auth_db_connection()
+    try:
+        rows = collect_admin_feedback(connection, limit=None)
+    finally:
+        connection.close()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return csv_download_response(
+        f"hirescore-feedback-{timestamp}.csv",
+        rows,
+        ["id", "user_id", "email", "rating", "comment", "source", "created_at"],
+    )
+
+
+@app.get("/admin/export/credit-transactions.csv")
+def admin_export_credit_transactions_csv(request: Request) -> StreamingResponse:
+    require_admin_access(request)
+    connection = auth_db_connection()
+    try:
+        rows = collect_admin_credit_transactions(connection, limit=None)
+    finally:
+        connection.close()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return csv_download_response(
+        f"hirescore-credit-transactions-{timestamp}.csv",
+        rows,
+        ["id", "user_id", "email", "action", "delta", "balance_after", "meta", "created_at"],
+    )
+
 
 @app.post("/analyze")
 def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:

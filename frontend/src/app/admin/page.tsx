@@ -107,6 +107,7 @@ export default function AdminPage() {
   const [rowEditors, setRowEditors] = useState<Record<number, RowEditorState>>({});
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
   const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
+  const [exportingKey, setExportingKey] = useState<string | null>(null);
 
   const canLoad = useMemo(() => adminToken.trim().length > 0, [adminToken]);
 
@@ -313,6 +314,44 @@ export default function AdminPage() {
     }
   };
 
+  const downloadAdminExport = async (path: string, fallbackName: string, key: string) => {
+    const effectiveToken = adminToken.trim();
+    if (!effectiveToken) {
+      setError("Admin session token missing. Please login again.");
+      return;
+    }
+    setExportingKey(key);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch(apiUrl(path), {
+        method: "GET",
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(payload?.detail || `Download failed (${response.status})`);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") || "";
+      const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+      const fileName = match?.[1] || fallbackName;
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+      setSuccess(`Downloaded ${fileName}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to download export.");
+    } finally {
+      setExportingKey(null);
+    }
+  };
+
   const metricCardClass =
     "rounded-2xl border border-slate-200/16 bg-gradient-to-br from-slate-900/82 via-slate-900/70 to-indigo-900/36 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.4)]";
   const inputClass =
@@ -475,6 +514,52 @@ export default function AdminPage() {
                 >
                   {loading ? "Refreshing..." : "Refresh Data"}
                 </button>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-slate-200/14 bg-slate-900/35 p-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-300/72">Exports</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdminExport(`/admin/export/full.json?q=${encodeURIComponent(search.trim())}&plan=${encodeURIComponent(planFilter)}`, "hirescore-admin-export.json", "full-json")}
+                    disabled={!canLoad || Boolean(exportingKey)}
+                    className="rounded-xl border border-cyan-200/28 bg-cyan-300/12 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60"
+                  >
+                    {exportingKey === "full-json" ? "Downloading..." : "Full JSON"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdminExport(`/admin/export/users.csv?q=${encodeURIComponent(search.trim())}&plan=${encodeURIComponent(planFilter)}`, "hirescore-users.csv", "users-csv")}
+                    disabled={!canLoad || Boolean(exportingKey)}
+                    className="rounded-xl border border-cyan-200/28 bg-cyan-300/12 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60"
+                  >
+                    {exportingKey === "users-csv" ? "Downloading..." : "Users CSV"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdminExport("/admin/export/events.csv", "hirescore-events.csv", "events-csv")}
+                    disabled={!canLoad || Boolean(exportingKey)}
+                    className="rounded-xl border border-cyan-200/28 bg-cyan-300/12 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60"
+                  >
+                    {exportingKey === "events-csv" ? "Downloading..." : "Events CSV"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdminExport("/admin/export/feedback.csv", "hirescore-feedback.csv", "feedback-csv")}
+                    disabled={!canLoad || Boolean(exportingKey)}
+                    className="rounded-xl border border-cyan-200/28 bg-cyan-300/12 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60"
+                  >
+                    {exportingKey === "feedback-csv" ? "Downloading..." : "Feedback CSV"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void downloadAdminExport("/admin/export/credit-transactions.csv", "hirescore-credit-transactions.csv", "tx-csv")}
+                    disabled={!canLoad || Boolean(exportingKey)}
+                    className="rounded-xl border border-cyan-200/28 bg-cyan-300/12 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60"
+                  >
+                    {exportingKey === "tx-csv" ? "Downloading..." : "Credits CSV"}
+                  </button>
+                </div>
               </div>
             </div>
 
