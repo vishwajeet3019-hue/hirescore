@@ -37,7 +37,7 @@ export default function SiteHeader() {
     syncHash();
     window.addEventListener("hashchange", syncHash);
     return () => window.removeEventListener("hashchange", syncHash);
-  }, []);
+  }, [pathname]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-cyan-100/12 bg-[#030c1b]/78 backdrop-blur-2xl">

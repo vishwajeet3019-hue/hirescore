@@ -865,18 +865,19 @@ export default function UploadPage() {
               </h1>
 
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-cyan-50/80 sm:text-base">
-                Analyze any role title with no family restrictions. Get shortlist score, interview-call likelihood, 90% improvement path,
-                salary range modeling, and callback projections before resume building.
+                Check your real shortlisting chances before applying. You will get a clear score, interview likelihood, salary estimate, and
+                a practical improvement plan written in simple terms.
               </p>
 
               <form
                 onSubmit={analysisMode === "manual" ? handleManualAnalyze : handleUploadAnalyze}
-                className="mt-6 rounded-3xl border border-cyan-200/36 bg-[#04182f]/92 p-5 shadow-[0_24px_55px_rgba(2,10,24,0.55)] sm:p-6"
+                className="mt-6 rounded-3xl border border-amber-100/40 bg-[linear-gradient(145deg,rgba(9,35,58,0.96),rgba(4,19,41,0.96))] p-5 shadow-[0_24px_55px_rgba(2,10,24,0.55)] ring-1 ring-amber-100/14 sm:p-6"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/72">Step 1</p>
-                    <h2 className="mt-1 text-xl font-semibold text-cyan-50 sm:text-2xl">Run Analysis</h2>
+                    <h2 className="mt-1 text-xl font-semibold text-cyan-50 sm:text-2xl">Start Your Score Check</h2>
+                    <p className="mt-1 text-xs text-cyan-100/72">Enter details below to get your personalized shortlist report.</p>
                   </div>
                   <div className="inline-flex rounded-xl border border-cyan-100/30 bg-cyan-100/8 p-1 text-xs">
                     <button
@@ -915,8 +916,8 @@ export default function UploadPage() {
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-50/74">
                         <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Credits: {wallet.credits}</span>
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Analyze left: {remainingAnalyze}</span>
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">1 free analysis = 5 credits</span>
+                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Reports left: {remainingAnalyze}</span>
+                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Each report uses 5 credits</span>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-50/74">
                         <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">AI Resume: {wallet.pricing.ai_resume_generation} credits</span>
@@ -1256,12 +1257,13 @@ export default function UploadPage() {
               </div>
 
               <div className="neon-panel rounded-3xl p-5 sm:p-6">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/66 sm:text-xs sm:tracking-[0.2em]">Open-Role Engine</p>
-                <h3 className="mt-2 text-lg font-semibold text-cyan-50">No Role Family Lock</h3>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/66 sm:text-xs sm:tracking-[0.2em]">Smart Role Matching</p>
+                <h3 className="mt-2 text-lg font-semibold text-cyan-50">Find Your Best-Fit Job Direction Faster</h3>
                 <div className="mt-4 space-y-2 text-sm text-cyan-50/76">
-                  <p>- Works with any job title you type.</p>
-                  <p>- Suggests adjacent higher-probability roles when relevant.</p>
-                  <p>- Builds a custom roadmap for your desired role transition.</p>
+                  <p>- Type any target job title and get a role-fit score instantly.</p>
+                  <p>- Discover nearby roles where your current profile has stronger shortlisting chances.</p>
+                  <p>- Get a personalized action plan to improve interview callbacks quickly.</p>
+                  <p className="text-cyan-100">Tip: users who follow the suggested plan usually improve score and callback rate in a few weeks.</p>
                 </div>
               </div>
             </aside>

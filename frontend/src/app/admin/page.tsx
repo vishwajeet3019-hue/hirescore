@@ -19,7 +19,9 @@ type AdminAnalytics = {
 
 type AdminUser = {
   id: number;
+  name: string;
   email: string;
+  plan: string;
   credits: number;
   created_at: string;
   analyze_count: number;
@@ -59,8 +61,10 @@ type AdminCreditTx = {
 };
 
 type RowEditorState = {
+  name: string;
   email: string;
   password: string;
+  plan: string;
   creditsSet: string;
   delta: string;
   reason: string;
@@ -70,35 +74,51 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://ap
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
 const defaultRowEditor = (): RowEditorState => ({
+  name: "",
   email: "",
   password: "",
+  plan: "",
   creditsSet: "",
   delta: "",
   reason: "",
 });
 
+const planOptions = ["all", "free", "starter", "pro", "elite"] as const;
+
 export default function AdminPage() {
-  const [adminKey, setAdminKey] = useState("");
+  const [adminLoginId, setAdminLoginId] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminToken, setAdminToken] = useState("");
+
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const [search, setSearch] = useState("");
+  const [planFilter, setPlanFilter] = useState<(typeof planOptions)[number]>("all");
+
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [events, setEvents] = useState<AdminEvent[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<AdminFeedback[]>([]);
   const [transactions, setTransactions] = useState<AdminCreditTx[]>([]);
+
   const [rowEditors, setRowEditors] = useState<Record<number, RowEditorState>>({});
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
+  const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
 
-  const canLoad = useMemo(() => adminKey.trim().length > 0, [adminKey]);
+  const canLoad = useMemo(() => adminToken.trim().length > 0, [adminToken]);
 
   useEffect(() => {
-    const existing = window.localStorage.getItem("hirescore_admin_key");
-    if (existing) {
-      setAdminKey(existing);
+    const existingToken = window.localStorage.getItem("hirescore_admin_token");
+    const existingLogin = window.localStorage.getItem("hirescore_admin_login_id");
+    if (existingToken) {
+      setAdminToken(existingToken);
+      setConnected(true);
+    }
+    if (existingLogin) {
+      setAdminLoginId(existingLogin);
     }
   }, []);
 
@@ -114,12 +134,13 @@ export default function AdminPage() {
     });
   };
 
-  const adminFetch = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+  const adminFetch = async <T,>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> => {
+    const effectiveToken = (tokenOverride ?? adminToken).trim();
     const response = await fetch(apiUrl(path), {
       ...init,
       headers: {
         "Content-Type": "application/json",
-        "x-admin-key": adminKey.trim(),
+        Authorization: `Bearer ${effectiveToken}`,
         ...(init?.headers || {}),
       },
     });
@@ -128,21 +149,29 @@ export default function AdminPage() {
       const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
       throw new Error(payload?.detail || `Request failed (${response.status})`);
     }
+
     return (await response.json()) as T;
   };
 
-  const loadAdminData = async () => {
-    if (!canLoad) return;
+  const loadAdminData = async (tokenOverride?: string) => {
+    const effectiveToken = (tokenOverride ?? adminToken).trim();
+    if (!effectiveToken) return;
     setLoading(true);
     setError("");
     setSuccess("");
+
     try {
+      const query = new URLSearchParams();
+      query.set("limit", "120");
+      if (search.trim()) query.set("q", search.trim());
+      if (planFilter !== "all") query.set("plan", planFilter);
+
       const [analyticsData, usersData, eventsData, feedbackData, txData] = await Promise.all([
-        adminFetch<AdminAnalytics>("/admin/analytics"),
-        adminFetch<{ users: AdminUser[] }>(`/admin/users?limit=120&q=${encodeURIComponent(search.trim())}`),
-        adminFetch<{ events: AdminEvent[] }>("/admin/events?limit=120"),
-        adminFetch<{ feedback: AdminFeedback[] }>("/admin/feedback?limit=120"),
-        adminFetch<{ transactions: AdminCreditTx[] }>("/admin/credit-transactions?limit=120"),
+        adminFetch<AdminAnalytics>("/admin/analytics", undefined, effectiveToken),
+        adminFetch<{ users: AdminUser[] }>(`/admin/users?${query.toString()}`, undefined, effectiveToken),
+        adminFetch<{ events: AdminEvent[] }>("/admin/events?limit=120", undefined, effectiveToken),
+        adminFetch<{ feedback: AdminFeedback[] }>("/admin/feedback?limit=120", undefined, effectiveToken),
+        adminFetch<{ transactions: AdminCreditTx[] }>("/admin/credit-transactions?limit=120", undefined, effectiveToken),
       ]);
 
       setAnalytics(analyticsData);
@@ -151,10 +180,51 @@ export default function AdminPage() {
       setFeedbackRows(feedbackData.feedback || []);
       setTransactions(txData.transactions || []);
       setConnected(true);
-      window.localStorage.setItem("hirescore_admin_key", adminKey.trim());
+      window.localStorage.setItem("hirescore_admin_token", effectiveToken);
+      if (adminLoginId.trim()) {
+        window.localStorage.setItem("hirescore_admin_login_id", adminLoginId.trim());
+      }
     } catch (err) {
       setConnected(false);
       setError(err instanceof Error ? err.message : "Unable to load admin data.");
+      if (err instanceof Error && err.message.toLowerCase().includes("authentication")) {
+        setAdminToken("");
+        window.localStorage.removeItem("hirescore_admin_token");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdminLogin = async () => {
+    const loginId = adminLoginId.trim();
+    const password = adminPassword;
+    if (!loginId || !password) {
+      setError("Enter admin login id and password.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch(apiUrl("/admin/auth/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login_id: loginId, password }),
+      });
+      const payload = (await response.json().catch(() => null)) as { admin_token?: string; detail?: string } | null;
+      if (!response.ok || !payload?.admin_token) {
+        throw new Error(payload?.detail || "Invalid admin login.");
+      }
+      setAdminToken(payload.admin_token);
+      setConnected(true);
+      setAdminPassword("");
+      setSuccess("Admin login successful.");
+      window.localStorage.setItem("hirescore_admin_token", payload.admin_token);
+      window.localStorage.setItem("hirescore_admin_login_id", loginId);
+      await loadAdminData(payload.admin_token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to login.");
     } finally {
       setLoading(false);
     }
@@ -162,19 +232,23 @@ export default function AdminPage() {
 
   const runUserUpdate = async (userId: number) => {
     const row = getRowEditor(userId);
-    const payload: { email?: string; password?: string; credits_set?: number } = {};
+    const payload: { name?: string; email?: string; password?: string; credits_set?: number; plan?: string } = {};
+
+    if (row.name.trim()) payload.name = row.name.trim();
     if (row.email.trim()) payload.email = row.email.trim();
     if (row.password.trim()) payload.password = row.password.trim();
+    if (row.plan.trim()) payload.plan = row.plan.trim().toLowerCase();
     if (row.creditsSet.trim()) {
       const value = Number(row.creditsSet);
       if (!Number.isFinite(value)) {
-        setError("Credits set value must be numeric.");
+        setError("Set credits value must be numeric.");
         return;
       }
       payload.credits_set = Math.max(0, Math.floor(value));
     }
+
     if (Object.keys(payload).length === 0) {
-      setError("Provide at least one value to update.");
+      setError("Add at least one field to update.");
       return;
     }
 
@@ -199,8 +273,8 @@ export default function AdminPage() {
   const runCreditAdjust = async (userId: number) => {
     const row = getRowEditor(userId);
     const deltaValue = Number(row.delta);
-    if (!Number.isFinite(deltaValue) || deltaValue === 0) {
-      setError("Credit delta must be a non-zero number.");
+    if (!Number.isFinite(deltaValue) || Math.floor(deltaValue) === 0) {
+      setError("Enter a positive or negative number, for example 10 or -10.");
       return;
     }
 
@@ -215,11 +289,27 @@ export default function AdminPage() {
           reason: row.reason.trim() || "admin_panel",
         }),
       });
-      setSuccess(`Credits adjusted for user ${userId}.`);
+      setSuccess(`Credits updated for user ${userId}.`);
       setRowEditor(userId, (prev) => ({ ...prev, delta: "", reason: "" }));
       await loadAdminData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to adjust credits.");
+    } finally {
+      setRowBusy((prev) => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const runUserDelete = async (userId: number) => {
+    if (!window.confirm(`Delete user #${userId}? This cannot be undone.`)) return;
+    setRowBusy((prev) => ({ ...prev, [userId]: true }));
+    setError("");
+    setSuccess("");
+    try {
+      await adminFetch(`/admin/users/${userId}`, { method: "DELETE" });
+      setSuccess(`User ${userId} deleted.`);
+      await loadAdminData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete user.");
     } finally {
       setRowBusy((prev) => ({ ...prev, [userId]: false }));
     }
@@ -251,18 +341,25 @@ export default function AdminPage() {
         <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
           <aside className="rounded-[2rem] border border-slate-200/16 bg-gradient-to-b from-slate-900/95 via-slate-900/88 to-indigo-950/70 p-5 shadow-[0_24px_70px_rgba(8,15,36,0.55)] sm:p-6">
             <p className="text-xs uppercase tracking-[0.16em] text-sky-100/70">Master Control</p>
-            <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">CRM Command Console</h1>
+            <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">CRM Admin Console</h1>
             <p className="mt-2 text-sm text-slate-200/75">
-              Full ops visibility for users, authentication, credits, payments, and product signal quality.
+              Manage users, credits, plans, events, and feedback from one secure admin panel.
             </p>
 
-            <div className="mt-5">
-              <label className="mb-2 block text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin API Key</label>
+            <div className="mt-5 space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin Login ID</label>
+              <input
+                type="text"
+                value={adminLoginId}
+                onChange={(event) => setAdminLoginId(event.target.value)}
+                placeholder="admin@hirescore.in"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+              />
               <input
                 type="password"
-                value={adminKey}
-                onChange={(event) => setAdminKey(event.target.value)}
-                placeholder="Enter ADMIN_API_KEYS value"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
+                placeholder="Password"
                 className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
             </div>
@@ -270,16 +367,17 @@ export default function AdminPage() {
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => void loadAdminData()}
-                disabled={!canLoad || loading}
+                onClick={() => void handleAdminLogin()}
+                disabled={loading}
                 className="rounded-xl border border-sky-300/36 bg-sky-400/16 px-3 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-55"
               >
-                {loading ? "Syncing..." : connected ? "Refresh" : "Connect"}
+                {loading ? "Please wait..." : "Login"}
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setAdminKey("");
+                  setAdminPassword("");
+                  setAdminToken("");
                   setConnected(false);
                   setAnalytics(null);
                   setUsers([]);
@@ -288,21 +386,16 @@ export default function AdminPage() {
                   setTransactions([]);
                   setError("");
                   setSuccess("");
-                  window.localStorage.removeItem("hirescore_admin_key");
+                  window.localStorage.removeItem("hirescore_admin_token");
                 }}
                 className="rounded-xl border border-rose-200/28 bg-rose-300/10 px-3 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-300/16"
               >
-                Reset
+                Logout
               </button>
             </div>
 
-            <div className="mt-4 grid gap-2">
-              <div className="rounded-xl border border-slate-200/16 bg-slate-700/14 px-3 py-2 text-xs text-slate-200/88">
-                Status: <span className="font-semibold text-white">{connected ? "Connected" : "Disconnected"}</span>
-              </div>
-              <div className="rounded-xl border border-slate-200/16 bg-slate-700/14 px-3 py-2 text-xs text-slate-200/88">
-                Search, edit user identity, reset password, and adjust credits in one place.
-              </div>
+            <div className="mt-4 rounded-xl border border-slate-200/16 bg-slate-700/14 px-3 py-2 text-xs text-slate-200/88">
+              Status: <span className="font-semibold text-white">{connected ? "Connected" : "Disconnected"}</span>
             </div>
 
             {error && <p className="mt-3 rounded-xl border border-rose-200/26 bg-rose-300/12 px-3 py-2 text-xs text-rose-100">{error}</p>}
@@ -311,11 +404,20 @@ export default function AdminPage() {
 
           <div className="space-y-6">
             <div className="rounded-[2rem] border border-slate-200/15 bg-gradient-to-br from-slate-900/92 via-slate-900/82 to-indigo-950/58 p-5 shadow-[0_24px_70px_rgba(8,15,36,0.48)] sm:p-6">
-              <p className="text-xs uppercase tracking-[0.16em] text-sky-100/70">Control Plane</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Backend Operations Grid</h2>
-              <p className="mt-2 text-sm text-slate-200/72">
-                Live operational panel for acquisition, engagement, conversion, payments, and admin interventions.
-              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-sky-100/70">Control Plane</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">User + Billing Operations</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadAdminData()}
+                  disabled={!canLoad || loading}
+                  className="ml-auto rounded-xl border border-sky-300/30 bg-sky-400/14 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
+                >
+                  {loading ? "Refreshing..." : "Refresh Data"}
+                </button>
+              </div>
             </div>
 
             {analytics && (
@@ -332,24 +434,36 @@ export default function AdminPage() {
             <section className="rounded-[2rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">User Master</p>
-                  <h3 className="mt-1 text-xl font-semibold text-white sm:text-2xl">Identity, Password, Credits</h3>
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">User Management</p>
+                  <h3 className="mt-1 text-xl font-semibold text-white sm:text-2xl">Search, filter, and manage accounts</h3>
                 </div>
-                <div className="ml-auto flex gap-2">
+
+                <div className="ml-auto flex flex-wrap gap-2">
                   <input
                     type="text"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search email..."
+                    placeholder="Search name/email"
                     className={`${inputClass} w-52`}
                   />
+                  <select
+                    value={planFilter}
+                    onChange={(event) => setPlanFilter(event.target.value as (typeof planOptions)[number])}
+                    className={inputClass}
+                  >
+                    {planOptions.map((plan) => (
+                      <option key={plan} value={plan} className="bg-slate-900">
+                        Plan: {plan}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     onClick={() => void loadAdminData()}
                     disabled={!connected || loading}
                     className="rounded-xl border border-sky-300/28 bg-sky-400/14 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
                   >
-                    Search
+                    Apply
                   </button>
                 </div>
               </div>
@@ -358,110 +472,144 @@ export default function AdminPage() {
                 {users.map((user) => {
                   const row = getRowEditor(user.id);
                   const busy = Boolean(rowBusy[user.id]);
+                  const isOpen = expandedUserId === user.id;
                   return (
                     <article key={user.id} className="rounded-2xl border border-slate-200/14 bg-slate-800/38 p-4">
                       <div className="flex flex-wrap items-center gap-2 text-sm text-slate-100">
                         <span className="font-semibold text-sky-200">#{user.id}</span>
+                        <span className="font-semibold">{user.name || "User"}</span>
                         <span>{user.email}</span>
+                        <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs uppercase">{user.plan}</span>
                         <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs">Credits: {user.credits}</span>
                         <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs">Analyses: {user.analyze_count}</span>
-                        <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs">
-                          Feedback: {user.feedback_submitted ? "Submitted" : user.feedback_required ? "Required" : "Pending"}
-                        </span>
-                      </div>
-
-                      <div className="mt-3 grid gap-2 md:grid-cols-3">
-                        <input
-                          type="email"
-                          value={row.email}
-                          onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, email: event.target.value }))}
-                          placeholder="New email"
-                          className={inputClass}
-                        />
-                        <input
-                          type="text"
-                          value={row.password}
-                          onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, password: event.target.value }))}
-                          placeholder="New password"
-                          className={inputClass}
-                        />
-                        <input
-                          type="number"
-                          value={row.creditsSet}
-                          onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, creditsSet: event.target.value }))}
-                          placeholder="Set credits"
-                          className={inputClass}
-                        />
-                      </div>
-
-                      <div className="mt-2 grid gap-2 md:grid-cols-[140px_1fr_auto_auto]">
-                        <input
-                          type="number"
-                          value={row.delta}
-                          onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, delta: event.target.value }))}
-                          placeholder="Credit +/-"
-                          className={inputClass}
-                        />
-                        <input
-                          type="text"
-                          value={row.reason}
-                          onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, reason: event.target.value }))}
-                          placeholder="Reason"
-                          className={inputClass}
-                        />
                         <button
                           type="button"
-                          onClick={() => void runUserUpdate(user.id)}
-                          disabled={busy}
-                          className="rounded-xl border border-sky-300/30 bg-sky-400/16 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
+                          onClick={() => setExpandedUserId((prev) => (prev === user.id ? null : user.id))}
+                          className="ml-auto rounded-lg border border-slate-200/22 bg-slate-700/20 px-2.5 py-1 text-sm font-semibold text-slate-100 hover:bg-slate-700/30"
+                          aria-label="Open user actions"
                         >
-                          Update User
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void runCreditAdjust(user.id)}
-                          disabled={busy}
-                          className="rounded-xl border border-amber-300/30 bg-amber-300/15 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-300/24 disabled:opacity-60"
-                        >
-                          Adjust Credits
+                          ...
                         </button>
                       </div>
+
+                      {isOpen && (
+                        <div className="mt-3 space-y-2 rounded-xl border border-slate-200/14 bg-slate-900/38 p-3">
+                          <div className="grid gap-2 md:grid-cols-4">
+                            <input
+                              type="text"
+                              value={row.name}
+                              onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, name: event.target.value }))}
+                              placeholder="Update name"
+                              className={inputClass}
+                            />
+                            <input
+                              type="email"
+                              value={row.email}
+                              onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, email: event.target.value }))}
+                              placeholder="Update email"
+                              className={inputClass}
+                            />
+                            <input
+                              type="text"
+                              value={row.password}
+                              onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, password: event.target.value }))}
+                              placeholder="Reset password"
+                              className={inputClass}
+                            />
+                            <select
+                              value={row.plan}
+                              onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, plan: event.target.value }))}
+                              className={inputClass}
+                            >
+                              <option value="" className="bg-slate-900">Set plan</option>
+                              {planOptions.filter((p) => p !== "all").map((plan) => (
+                                <option key={plan} value={plan} className="bg-slate-900">{plan}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="grid gap-2 md:grid-cols-[140px_140px_1fr_auto]">
+                            <input
+                              type="number"
+                              value={row.creditsSet}
+                              onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, creditsSet: event.target.value }))}
+                              placeholder="Set credits"
+                              className={inputClass}
+                            />
+                            <input
+                              type="number"
+                              value={row.delta}
+                              onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, delta: event.target.value }))}
+                              placeholder="+/- credits"
+                              className={inputClass}
+                            />
+                            <input
+                              type="text"
+                              value={row.reason}
+                              onChange={(event) => setRowEditor(user.id, (prev) => ({ ...prev, reason: event.target.value }))}
+                              placeholder="Reason for credit change"
+                              className={inputClass}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void runCreditAdjust(user.id)}
+                              disabled={busy}
+                              className="rounded-xl border border-amber-300/30 bg-amber-300/15 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-300/24 disabled:opacity-60"
+                            >
+                              Update Credits
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void runUserUpdate(user.id)}
+                              disabled={busy}
+                              className="rounded-xl border border-sky-300/30 bg-sky-400/16 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
+                            >
+                              Save Profile Changes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void runUserDelete(user.id)}
+                              disabled={busy}
+                              className="rounded-xl border border-rose-300/35 bg-rose-300/14 px-3 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-300/24 disabled:opacity-60"
+                            >
+                              Delete User
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </article>
                   );
                 })}
-                {!users.length && <p className="text-sm text-slate-200/72">No users found yet.</p>}
+                {!users.length && <p className="text-sm text-slate-200/72">No users found.</p>}
               </div>
             </section>
 
             <section className="grid gap-4 xl:grid-cols-3">
               <article className="rounded-[1.6rem] border border-slate-200/14 bg-[#0b1120]/94 p-5">
-                <h3 className="text-lg font-semibold text-white">Feedback Queue</h3>
+                <h3 className="text-lg font-semibold text-white">Feedback</h3>
                 <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
                   {feedbackRows.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
-                      <p className="font-semibold text-slate-100">
-                        {item.email || `User ${item.user_id}`} • {item.rating}/5
-                      </p>
+                      <p className="font-semibold text-slate-100">{item.email || `User ${item.user_id}`} • {item.rating}/5</p>
                       <p className="mt-1 text-slate-300/84">{item.comment}</p>
                       <p className="mt-1 text-slate-400/78">{item.created_at}</p>
                     </div>
                   ))}
-                  {!feedbackRows.length && <p className="text-sm text-slate-200/70">No feedback entries yet.</p>}
                 </div>
               </article>
 
               <article className="rounded-[1.6rem] border border-slate-200/14 bg-[#0b1120]/94 p-5">
-                <h3 className="text-lg font-semibold text-white">Event Stream</h3>
+                <h3 className="text-lg font-semibold text-white">Events</h3>
                 <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
                   {events.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
-                      <p className="font-semibold text-slate-100">
-                        {item.event_type} / {item.event_name}
-                      </p>
+                      <p className="font-semibold text-slate-100">{item.event_type} / {item.event_name}</p>
                       <p className="mt-1 text-slate-300/82">{item.email || "anonymous"} • {item.created_at}</p>
                     </div>
                   ))}
-                  {!events.length && <p className="text-sm text-slate-200/70">No events yet.</p>}
                 </div>
               </article>
 
@@ -470,14 +618,10 @@ export default function AdminPage() {
                 <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
                   {transactions.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
-                      <p className="font-semibold text-slate-100">
-                        {item.action} • {item.delta > 0 ? "+" : ""}
-                        {item.delta} • balance {item.balance_after}
-                      </p>
+                      <p className="font-semibold text-slate-100">{item.action} • {item.delta > 0 ? "+" : ""}{item.delta} • balance {item.balance_after}</p>
                       <p className="mt-1 text-slate-300/82">{item.email || `user-${item.user_id}`} • {item.created_at}</p>
                     </div>
                   ))}
-                  {!transactions.length && <p className="text-sm text-slate-200/70">No transactions yet.</p>}
                 </div>
               </article>
             </section>

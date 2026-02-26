@@ -95,7 +95,17 @@ if client is None:
     logger.warning("OPENAI_API_KEY is missing. AI generation requests will not reach OpenAI.")
 
 
-AUTH_DB_PATH = (os.getenv("AUTH_DB_PATH") or "/tmp/hirescore_auth.db").strip()
+def resolve_auth_db_path() -> str:
+    explicit = (os.getenv("AUTH_DB_PATH") or "").strip()
+    if explicit:
+        return explicit
+    if os.path.isdir("/var/data"):
+        return "/var/data/hirescore_auth.db"
+    local_default = os.path.join(os.path.dirname(__file__), "data", "hirescore_auth.db")
+    return local_default
+
+
+AUTH_DB_PATH = resolve_auth_db_path()
 AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
 AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
 ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", True)
@@ -105,10 +115,15 @@ ADMIN_API_KEYS = {
     for key in (os.getenv("ADMIN_API_KEYS") or os.getenv("ADMIN_API_KEY") or "").split(",")
     if key.strip()
 }
+ADMIN_LOGIN_ID = (os.getenv("ADMIN_LOGIN_ID") or os.getenv("ADMIN_USERNAME") or "").strip()
+ADMIN_PASSWORD = (os.getenv("ADMIN_PASSWORD") or "").strip()
+ADMIN_AUTH_SECRET = ((os.getenv("ADMIN_AUTH_SECRET") or "").strip()) or AUTH_TOKEN_SECRET
+ADMIN_TOKEN_TTL_HOURS = max(1, int((os.getenv("ADMIN_TOKEN_TTL_HOURS") or "72").strip()))
 if AUTH_TOKEN_SECRET == "replace-this-in-production":
     logger.warning("AUTH_TOKEN_SECRET is using a default value. Set AUTH_TOKEN_SECRET in production.")
 if AUTH_DB_PATH.startswith("/tmp/"):
     logger.warning("AUTH_DB_PATH is using temporary storage (%s). Use persistent storage in production.", AUTH_DB_PATH)
+logger.info("Using auth database path: %s", AUTH_DB_PATH)
 
 WELCOME_FREE_CREDITS = 5
 CREDIT_COSTS: dict[str, int] = {
@@ -220,14 +235,21 @@ class RazorpayVerifyRequest(BaseModel):
 
 
 class AdminUserUpdateRequest(BaseModel):
+    name: str | None = None
     email: str | None = None
     password: str | None = None
     credits_set: int | None = None
+    plan: str | None = None
 
 
 class AdminCreditAdjustRequest(BaseModel):
     delta: int
     reason: str | None = None
+
+
+class AdminLoginRequest(BaseModel):
+    login_id: str
+    password: str
 
 
 class ResumeExportRequest(BaseModel):
@@ -1250,6 +1272,9 @@ def b64url_decode(value: str) -> bytes:
 
 
 def auth_db_connection() -> sqlite3.Connection:
+    db_dir = os.path.dirname(AUTH_DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     connection = sqlite3.connect(AUTH_DB_PATH, timeout=15, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     return connection
@@ -1264,9 +1289,11 @@ def init_auth_db() -> None:
                 """
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    full_name TEXT NOT NULL DEFAULT '',
                     email TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     password_salt TEXT NOT NULL,
+                    plan_tier TEXT NOT NULL DEFAULT 'free',
                     credits INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 )
@@ -1364,6 +1391,10 @@ def init_auth_db() -> None:
                 """
             )
             user_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(users)").fetchall()]
+            if "full_name" not in user_columns:
+                cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
+            if "plan_tier" not in user_columns:
+                cursor.execute("ALTER TABLE users ADD COLUMN plan_tier TEXT NOT NULL DEFAULT 'free'")
             if "email_verified" not in user_columns:
                 cursor.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_user_time ON credit_transactions (user_id, created_at)")
@@ -1381,6 +1412,42 @@ def init_auth_db() -> None:
 
 def normalize_email(value: str) -> str:
     return safe_text(value).lower()
+
+
+def normalize_plan_tier(value: str | None) -> str:
+    normalized = safe_text(value).lower()
+    if normalized in PLAN_RULES:
+        return normalized
+    aliases = {
+        "starter_50": "starter",
+        "pro_100": "pro",
+        "elite_200": "elite",
+        "basic": "free",
+    }
+    return aliases.get(normalized, "free")
+
+
+def user_plan_from_package_id(package_id: str) -> str:
+    token = safe_text(package_id).lower()
+    if token.startswith("starter"):
+        return "starter"
+    if token.startswith("pro"):
+        return "pro"
+    if token.startswith("elite"):
+        return "elite"
+    return "free"
+
+
+def display_name_from_email(email: str) -> str:
+    normalized = normalize_email(email)
+    local = normalized.split("@", 1)[0]
+    if not local:
+        return "User"
+    cleaned = re.sub(r"[^a-z0-9]+", " ", local).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    if not cleaned:
+        return "User"
+    return " ".join(part.capitalize() for part in cleaned.split(" ")[:3])
 
 
 def hash_password(password: str, salt: str) -> str:
@@ -1570,6 +1637,7 @@ def send_welcome_email(email: str) -> str | None:
 def create_user_with_welcome_credits(email: str, password: str, source: str = "signup") -> sqlite3.Row:
     salt = secrets.token_hex(16)
     password_hash = hash_password(password, salt)
+    full_name = display_name_from_email(email)
 
     with AUTH_DB_LOCK:
         connection = auth_db_connection()
@@ -1578,10 +1646,10 @@ def create_user_with_welcome_credits(email: str, password: str, source: str = "s
             try:
                 cursor.execute(
                     """
-                    INSERT INTO users (email, password_hash, password_salt, credits, created_at)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO users (full_name, email, password_hash, password_salt, plan_tier, credits, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (email, password_hash, salt, WELCOME_FREE_CREDITS, now_utc_iso()),
+                    (full_name, email, password_hash, salt, "free", WELCOME_FREE_CREDITS, now_utc_iso()),
                 )
                 user_id = int(cursor.lastrowid)
                 cursor.execute(
@@ -1644,12 +1712,43 @@ def decode_auth_token(token: str) -> dict[str, Any]:
     return payload
 
 
+def create_admin_token(login_id: str) -> str:
+    payload = {
+        "sub": "admin",
+        "login_id": safe_text(login_id),
+        "exp": int(time.time()) + ADMIN_TOKEN_TTL_HOURS * 3600,
+    }
+    payload_b64 = b64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    signature = hmac.new(ADMIN_AUTH_SECRET.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
+    return f"{payload_b64}.{b64url_encode(signature)}"
+
+
+def decode_admin_token(token: str) -> dict[str, Any]:
+    parts = safe_text(token).split(".")
+    if len(parts) != 2:
+        raise HTTPException(status_code=401, detail="Invalid admin session token.")
+    payload_b64, signature_b64 = parts
+    expected = hmac.new(ADMIN_AUTH_SECRET.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
+    provided = b64url_decode(signature_b64)
+    if not hmac.compare_digest(expected, provided):
+        raise HTTPException(status_code=401, detail="Invalid admin session token.")
+    try:
+        payload = json.loads(b64url_decode(payload_b64).decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid admin session payload.") from exc
+    if safe_text(str(payload.get("sub"))) != "admin":
+        raise HTTPException(status_code=401, detail="Invalid admin session subject.")
+    if int(payload.get("exp", 0)) < int(time.time()):
+        raise HTTPException(status_code=401, detail="Admin session expired. Please login again.")
+    return payload
+
+
 def fetch_user_by_email(email: str) -> sqlite3.Row | None:
     normalized = normalize_email(email)
     connection = auth_db_connection()
     try:
         cursor = connection.execute(
-            "SELECT id, email, password_hash, password_salt, credits, created_at, email_verified FROM users WHERE email = ?",
+            "SELECT id, full_name, email, password_hash, password_salt, plan_tier, credits, created_at, email_verified FROM users WHERE email = ?",
             (normalized,),
         )
         return cursor.fetchone()
@@ -1661,7 +1760,7 @@ def fetch_user_by_id(user_id: int) -> sqlite3.Row | None:
     connection = auth_db_connection()
     try:
         cursor = connection.execute(
-            "SELECT id, email, password_hash, password_salt, credits, created_at, email_verified FROM users WHERE id = ?",
+            "SELECT id, full_name, email, password_hash, password_salt, plan_tier, credits, created_at, email_verified FROM users WHERE id = ?",
             (user_id,),
         )
         return cursor.fetchone()
@@ -1787,13 +1886,15 @@ def verify_signup_otp_and_create_user(email: str, otp: str) -> sqlite3.Row:
                 raise HTTPException(status_code=409, detail="Account already exists. Please log in.")
             cursor.execute(
                 """
-                INSERT INTO users (email, password_hash, password_salt, credits, created_at, email_verified)
-                VALUES (?, ?, ?, ?, ?, 1)
+                INSERT INTO users (full_name, email, password_hash, password_salt, plan_tier, credits, created_at, email_verified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 (
+                    display_name_from_email(normalized_email),
                     normalized_email,
                     safe_text(row["password_hash"]),
                     safe_text(row["password_salt"]),
+                    "free",
                     WELCOME_FREE_CREDITS,
                     now_utc_iso(),
                 ),
@@ -1978,14 +2079,21 @@ def require_feedback_completion(user_id: int) -> None:
 
 
 def require_admin_access(request: Request) -> None:
-    if not ADMIN_API_KEYS:
+    has_api_keys = bool(ADMIN_API_KEYS)
+    has_login = bool(ADMIN_LOGIN_ID and ADMIN_PASSWORD)
+    if not has_api_keys and not has_login:
         raise HTTPException(status_code=503, detail="Admin access is not configured.")
 
+    bearer = safe_text(extract_bearer_token(request))
+    if bearer and has_login:
+        decode_admin_token(bearer)
+        return
+
     header_token = safe_text(request.headers.get("x-admin-key"))
-    auth_token = safe_text(extract_bearer_token(request))
-    provided = header_token or auth_token
-    if not provided or provided not in ADMIN_API_KEYS:
-        raise HTTPException(status_code=401, detail="Invalid admin key.")
+    if header_token and header_token in ADMIN_API_KEYS:
+        return
+
+    raise HTTPException(status_code=401, detail="Admin authentication failed.")
 
 
 def wallet_payload(credits: int) -> dict[str, Any]:
@@ -2007,7 +2115,9 @@ def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> di
     payload: dict[str, Any] = {
         "user": {
             "id": user_id,
+            "name": safe_text(str(user_row["full_name"])) or display_name_from_email(str(user_row["email"])),
             "email": str(user_row["email"]),
+            "plan": normalize_plan_tier(str(user_row["plan_tier"])),
             "created_at": str(user_row["created_at"]),
         },
         "wallet": wallet_payload(int(user_row["credits"])),
@@ -2061,7 +2171,7 @@ def debit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] |
             cursor = connection.cursor()
             cursor.execute("BEGIN IMMEDIATE")
             user = cursor.execute(
-                "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
+                "SELECT id, full_name, email, password_hash, password_salt, plan_tier, credits, created_at FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
             if not user:
@@ -4593,7 +4703,11 @@ def verify_razorpay_payment(data: RazorpayVerifyRequest, request: Request) -> di
                 updated_credits = int(user_row["credits"]) + credits_delta
                 package_id = safe_text(order_row["package_id"])
                 amount_inr = int(order_row["amount_inr"])
-                cursor.execute("UPDATE users SET credits = ? WHERE id = ?", (updated_credits, int(user["id"])))
+                plan_tier = user_plan_from_package_id(package_id)
+                cursor.execute(
+                    "UPDATE users SET credits = ?, plan_tier = ? WHERE id = ?",
+                    (updated_credits, plan_tier, int(user["id"])),
+                )
                 cursor.execute(
                     """
                     INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
@@ -4641,6 +4755,7 @@ def verify_razorpay_payment(data: RazorpayVerifyRequest, request: Request) -> di
                 checkout_logged_meta = {
                     "gateway": "razorpay",
                     "package_id": package_id,
+                    "plan": plan_tier,
                     "credits": credits_delta,
                     "order_id": order_id,
                     "payment_id": payment_id,
@@ -4712,7 +4827,11 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
                             connection.rollback()
                             return {"received": True}
                         updated_credits = int(user_row["credits"]) + credits
-                        cursor.execute("UPDATE users SET credits = ? WHERE id = ?", (updated_credits, user_id))
+                        plan_tier = user_plan_from_package_id(package_id)
+                        cursor.execute(
+                            "UPDATE users SET credits = ?, plan_tier = ? WHERE id = ?",
+                            (updated_credits, plan_tier, user_id),
+                        )
                         cursor.execute(
                             """
                             INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
@@ -4738,6 +4857,7 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
                         connection.commit()
                         checkout_logged_meta = {
                             "package_id": package_id,
+                            "plan": plan_tier,
                             "credits": credits,
                             "stripe_session_id": stripe_session_id,
                             "credits_after": updated_credits,
@@ -4755,6 +4875,23 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
                 )
 
     return {"received": True}
+
+
+@app.post("/admin/auth/login")
+def admin_auth_login(data: AdminLoginRequest) -> dict[str, Any]:
+    if not ADMIN_LOGIN_ID or not ADMIN_PASSWORD:
+        raise HTTPException(status_code=503, detail="Admin login is not configured.")
+    login_id = safe_text(data.login_id)
+    password = safe_text(data.password)
+    if not login_id or not password:
+        raise HTTPException(status_code=400, detail="Enter admin login id and password.")
+    if login_id != ADMIN_LOGIN_ID or password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid admin login credentials.")
+    token = create_admin_token(login_id)
+    return {
+        "admin_token": token,
+        "expires_in_hours": ADMIN_TOKEN_TTL_HOURS,
+    }
 
 
 @app.get("/admin/analytics")
@@ -4893,35 +5030,41 @@ def admin_feedback(request: Request, limit: int = 200) -> dict[str, Any]:
 
 
 @app.get("/admin/users")
-def admin_users(request: Request, q: str | None = None, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+def admin_users(
+    request: Request,
+    q: str | None = None,
+    plan: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
     require_admin_access(request)
     safe_limit = int(clamp_float(float(limit), 1, 200))
     safe_offset = max(0, int(offset))
     search = safe_text(q).lower()
+    raw_plan = safe_text(plan).lower()
+    plan_filter = normalize_plan_tier(raw_plan) if raw_plan and raw_plan != "all" else ""
 
     connection = auth_db_connection()
     try:
+        filters: list[str] = []
+        values: list[Any] = []
         if search:
-            rows = connection.execute(
-                """
-                SELECT u.id, u.email, u.credits, u.created_at
-                FROM users u
-                WHERE lower(u.email) LIKE ?
-                ORDER BY u.id DESC
-                LIMIT ? OFFSET ?
-                """,
-                (f"%{search}%", safe_limit, safe_offset),
-            ).fetchall()
-        else:
-            rows = connection.execute(
-                """
-                SELECT u.id, u.email, u.credits, u.created_at
-                FROM users u
-                ORDER BY u.id DESC
-                LIMIT ? OFFSET ?
-                """,
-                (safe_limit, safe_offset),
-            ).fetchall()
+            filters.append("(lower(u.email) LIKE ? OR lower(u.full_name) LIKE ?)")
+            values.extend([f"%{search}%", f"%{search}%"])
+        if plan_filter:
+            filters.append("lower(u.plan_tier) = ?")
+            values.append(plan_filter)
+        where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+        rows = connection.execute(
+            f"""
+            SELECT u.id, u.full_name, u.email, u.plan_tier, u.credits, u.created_at
+            FROM users u
+            {where_sql}
+            ORDER BY u.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (*values, safe_limit, safe_offset),
+        ).fetchall()
     finally:
         connection.close()
 
@@ -4931,7 +5074,9 @@ def admin_users(request: Request, q: str | None = None, limit: int = 50, offset:
         users.append(
             {
                 "id": user_id,
+                "name": safe_text(row["full_name"]) or display_name_from_email(str(row["email"])),
                 "email": str(row["email"]),
+                "plan": normalize_plan_tier(str(row["plan_tier"])),
                 "credits": int(row["credits"]),
                 "created_at": str(row["created_at"]),
                 "analyze_count": get_analyze_count(user_id),
@@ -4939,7 +5084,7 @@ def admin_users(request: Request, q: str | None = None, limit: int = 50, offset:
                 "feedback_required": feedback_required_for_user(user_id),
             }
         )
-    return {"users": users, "limit": safe_limit, "offset": safe_offset}
+    return {"users": users, "limit": safe_limit, "offset": safe_offset, "plan_filter": plan_filter or None}
 
 
 @app.patch("/admin/users/{user_id}")
@@ -4954,7 +5099,7 @@ def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Reque
             cursor = connection.cursor()
             cursor.execute("BEGIN IMMEDIATE")
             user = cursor.execute(
-                "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
+                "SELECT id, full_name, email, password_hash, password_salt, plan_tier, credits, created_at FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
             if not user:
@@ -4964,6 +5109,12 @@ def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Reque
             updates: list[str] = []
             values: list[Any] = []
             meta: dict[str, Any] = {}
+
+            if data.name is not None:
+                new_name = safe_text(data.name)
+                updates.append("full_name = ?")
+                values.append(new_name)
+                meta["name_updated"] = True
 
             if data.email is not None:
                 new_email = normalize_email(data.email)
@@ -4984,6 +5135,12 @@ def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Reque
                 updates.extend(["password_hash = ?", "password_salt = ?"])
                 values.extend([new_hash, new_salt])
                 meta["password_updated"] = True
+
+            if data.plan is not None:
+                new_plan = normalize_plan_tier(data.plan)
+                updates.append("plan_tier = ?")
+                values.append(new_plan)
+                meta["plan_updated"] = new_plan
 
             if updates:
                 values.append(user_id)
@@ -5026,7 +5183,9 @@ def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Reque
     return {
         "user": {
             "id": int(refreshed["id"]),
+            "name": safe_text(refreshed["full_name"]) or display_name_from_email(str(refreshed["email"])),
             "email": str(refreshed["email"]),
+            "plan": normalize_plan_tier(str(refreshed["plan_tier"])),
             "credits": int(refreshed["credits"]),
             "created_at": str(refreshed["created_at"]),
         },
@@ -5082,10 +5241,40 @@ def admin_adjust_credits(user_id: int, data: AdminCreditAdjustRequest, request: 
         "wallet": wallet_payload(int(refreshed["credits"])),
         "user": {
             "id": int(refreshed["id"]),
+            "name": safe_text(refreshed["full_name"]) or display_name_from_email(str(refreshed["email"])),
             "email": str(refreshed["email"]),
+            "plan": normalize_plan_tier(str(refreshed["plan_tier"])),
             "credits": int(refreshed["credits"]),
         },
     }
+
+
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: int, request: Request) -> dict[str, Any]:
+    require_admin_access(request)
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            user = cursor.execute("SELECT id, email FROM users WHERE id = ? LIMIT 1", (user_id,)).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="User not found.")
+            cursor.execute("DELETE FROM payment_orders WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM credit_transactions WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM user_feedback WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM analytics_events WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM password_reset_otps WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            connection.commit()
+        finally:
+            connection.close()
+    log_analytics_event("admin", "user_deleted", user_id=user_id, meta={"email": safe_text(user["email"]) if user else ""})
+    return {"deleted": True, "user_id": user_id}
 
 
 @app.get("/admin/credit-transactions")
