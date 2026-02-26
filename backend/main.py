@@ -880,7 +880,19 @@ ROLE_TRACK_KEYWORDS = {
     "frontend": ["frontend", "ui", "web", "react", "next", "javascript", "typescript", "ux"],
     "data": ["data", "analyst", "scientist", "ml", "ai", "analytics", "bi"],
     "product": ["product", "pm", "growth", "strategy", "roadmap"],
-    "sales": ["sales", "account executive", "business development", "bdm", "inside sales", "pre sales"],
+    "sales": [
+        "sales",
+        "account executive",
+        "business development",
+        "bdm",
+        "inside sales",
+        "pre sales",
+        "sales manager",
+        "automobile sales",
+        "automotive sales",
+        "dealer sales",
+        "territory sales",
+    ],
     "marketing": [
         "marketing",
         "digital marketing",
@@ -2338,6 +2350,19 @@ def normalize_token(value: str) -> str:
     return SKILL_ALIASES.get(token, token)
 
 
+def normalize_search_text(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9+#./]+", " ", safe_text(value).lower())
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def phrase_in_text(text: str, phrase: str) -> bool:
+    normalized_text = normalize_search_text(text)
+    normalized_phrase = normalize_search_text(phrase)
+    if not normalized_text or not normalized_phrase:
+        return False
+    return f" {normalized_phrase} " in f" {normalized_text} "
+
+
 def dedupe_preserve_order(values: list[str]) -> list[str]:
     seen: set[str] = set()
     ordered: list[str] = []
@@ -2355,18 +2380,18 @@ def tokenize_keywords(text: str) -> set[str]:
 
 
 def infer_role_track_with_score(role: str, industry: str = "") -> tuple[str, int]:
-    role_lower = f"{role} {industry}".lower()
-    role_compact = re.sub(r"[^a-z0-9]+", " ", role_lower).strip()
+    role_text = f"{safe_text(role)} {safe_text(industry)}"
+    role_compact = normalize_search_text(role_text)
 
     for title, track in ROLE_TITLE_OVERRIDES.items():
-        if title in role_compact:
+        if phrase_in_text(role_compact, title):
             return track, 5
 
     best_track = "general"
     best_score = 0
 
     for track, keywords in ROLE_TRACK_KEYWORDS.items():
-        score = sum(1 for keyword in keywords if keyword in role_lower)
+        score = sum(1 for keyword in keywords if phrase_in_text(role_compact, keyword))
         if score > best_score:
             best_score = score
             best_track = track
@@ -2853,14 +2878,14 @@ def infer_experience_band(experience_years: float | None, seniority: str) -> str
 
 def market_segment_for_track(role_track: str, industry: str) -> str:
     inferred = TRACK_TO_MARKET_SEGMENT.get(role_track, "general")
-    industry_text = safe_text(industry).lower()
-    if any(token in industry_text for token in ["ai", "software", "technology", "saas", "it services"]):
+    industry_text = normalize_search_text(industry)
+    if any(phrase_in_text(industry_text, token) for token in ["ai", "software", "technology", "saas", "it services"]):
         return "technology"
-    if any(token in industry_text for token in ["bank", "finance", "insurance", "consulting", "retail"]):
+    if any(phrase_in_text(industry_text, token) for token in ["bank", "finance", "insurance", "consulting", "retail"]):
         return "business"
-    if any(token in industry_text for token in ["healthcare", "hospital", "education", "edtech"]):
+    if any(phrase_in_text(industry_text, token) for token in ["healthcare", "hospital", "education", "edtech"]):
         return "service"
-    if any(token in industry_text for token in ["media", "content", "creative", "design", "advertising"]):
+    if any(phrase_in_text(industry_text, token) for token in ["media", "content", "creative", "design", "advertising"]):
         return "creative"
     return inferred if inferred in INDIA_MARKET_SEGMENTS else "general"
 
@@ -3031,9 +3056,11 @@ def track_fit_score(track: str, skills_list: list[str], role: str, industry: str
     hits = [skill for skill in skills_list if skill in catalog_set]
     ratio = len(hits) / max(1, min(14, len(catalog_set)))
 
-    role_hint = f"{safe_text(role)} {safe_text(industry)}".lower()
-    keyword_bonus = min(18, sum(1 for keyword in ROLE_TRACK_KEYWORDS.get(track, []) if keyword in role_hint) * 4)
+    role_hint = normalize_search_text(f"{safe_text(role)} {safe_text(industry)}")
+    keyword_bonus = min(18, sum(1 for keyword in ROLE_TRACK_KEYWORDS.get(track, []) if phrase_in_text(role_hint, keyword)) * 4)
     score = clamp(ratio * 92 + keyword_bonus)
+    if not hits and keyword_bonus < 8:
+        return 0, []
     return score, dedupe_preserve_order(hits)[:6]
 
 
@@ -3061,11 +3088,12 @@ def build_positioning_strategy(role_track: str, role: str, industry: str, skills
     score_lookup = {track: (score, hits) for track, score, hits in track_scores}
 
     alternatives: list[dict[str, Any]] = []
+    minimum_fit_threshold = max(22, target_score - 12)
     for track in preferred_tracks:
         if track in {"general", target_track} or track not in score_lookup:
             continue
         score, hits = score_lookup[track]
-        if score <= 0:
+        if score < minimum_fit_threshold:
             continue
         stronger_fit = score >= target_score + 4
         options = TRACK_ROLE_OPTIONS.get(track, TRACK_ROLE_OPTIONS["general"])
@@ -3082,7 +3110,11 @@ def build_positioning_strategy(role_track: str, role: str, industry: str, skills
 
     if len(alternatives) < 3:
         for track, score, hits in track_scores:
-            if track == target_track or score <= 0 or any(item["role"] in TRACK_ROLE_OPTIONS.get(track, []) for item in alternatives):
+            if (
+                track == target_track
+                or score < minimum_fit_threshold
+                or any(item["role"] in TRACK_ROLE_OPTIONS.get(track, []) for item in alternatives)
+            ):
                 continue
             stronger_fit = score >= target_score + 4
             options = TRACK_ROLE_OPTIONS.get(track, TRACK_ROLE_OPTIONS["general"])
@@ -3098,11 +3130,10 @@ def build_positioning_strategy(role_track: str, role: str, industry: str, skills
                 break
 
     target_role_options = TRACK_ROLE_OPTIONS.get(target_track, TRACK_ROLE_OPTIONS["general"])
-    summary = (
-        "Your profile can convert faster by applying to your target role plus adjacent role titles with similar skill demand."
-        if alternatives
-        else "Focus on your target role first; adjacent field recommendations will appear after stronger role-skill signals."
-    )
+    if alternatives:
+        summary = "Your profile has adjacent role options with stronger shortlisting odds in the same hiring segment."
+    else:
+        summary = "No strong adjacent role shift detected yet. Focus on your target direction and execute the roadmap milestones first."
     return {
         "target_role": safe_text(role),
         "target_fit_score": target_score,
@@ -3139,40 +3170,125 @@ def learning_roadmap_phase2(role_track: str) -> tuple[list[str], str]:
     )
 
 
+def industry_focus_modules(role_track: str, industry: str) -> list[str]:
+    industry_text = normalize_search_text(industry)
+    if any(phrase_in_text(industry_text, token) for token in ["automobile", "automotive", "dealership"]):
+        if role_track == "sales":
+            return [
+                "Dealer network expansion",
+                "Test-drive to booking conversion",
+                "Financing and insurance attach rate",
+                "Territory and outlet productivity",
+            ]
+        if role_track == "marketing":
+            return [
+                "Local showroom lead-gen campaigns",
+                "Model launch conversion funnels",
+                "Regional demand seasonality planning",
+            ]
+        return ["Automotive customer journey", "Dealer-channel operations"]
+    if any(phrase_in_text(industry_text, token) for token in ["saas", "software", "technology"]):
+        return ["Pipeline hygiene and CRM velocity" if role_track == "sales" else "Product-led growth metrics", "Retention and expansion workflows"]
+    if any(phrase_in_text(industry_text, token) for token in ["bank", "finance", "insurance"]):
+        return ["Compliance-safe client communication", "Risk-aware conversion process"]
+    if any(phrase_in_text(industry_text, token) for token in ["healthcare", "hospital", "pharma"]):
+        return ["Clinical stakeholder communication", "Audit-ready documentation standards"]
+    return []
+
+
+def roadmap_deliverables(role_track: str, experience_band: str) -> tuple[list[str], list[str], list[str]]:
+    phase1 = [
+        "Map target JD must-haves vs current profile and identify top 5 gaps.",
+        "Build one-page role narrative with role keywords and proof bullets.",
+    ]
+    phase2 = [
+        "Create 2 proof projects/case studies aligned to target role expectations.",
+        "Rewrite 8-12 resume bullets with quantified outcomes and scope.",
+    ]
+    phase3 = [
+        "Run weekly application batches with role-specific resume variants.",
+        "Track callback, rejection reason, and adjust targeting every week.",
+    ]
+
+    if role_track == "sales":
+        phase1 = [
+            "Build target-account and territory map with ICP, segment priority, and outreach plan.",
+            "Create objection-handling playbook by deal stage with confidence scripts.",
+        ]
+        phase2 = [
+            "Build deal story bank: 5 wins + 2 recoveries with conversion metrics.",
+            "Document funnel metrics by stage (lead->meeting->proposal->close) and explain lift levers.",
+        ]
+        phase3 = [
+            "Apply with role-tailored narratives (hunter/farmer/enterprise) and weekly follow-up cadence.",
+            "Run callback post-mortem each week and improve pitch, domain story, and quantified evidence.",
+        ]
+        if experience_band == "senior":
+            phase2.insert(0, "Create regional revenue plan with quota split, channel mix, and forecast confidence.")
+    elif role_track in {"marketing", "content"}:
+        phase2 = [
+            "Ship campaign case studies with CAC/ROAS/CTR outcomes and channel mix rationale.",
+            "Build monthly experiment backlog and publish win/loss learnings.",
+        ]
+    elif role_track in {"business", "consulting", "finance"}:
+        phase2 = [
+            "Prepare 3 structured business cases with hypotheses, analysis, and decision impact.",
+            "Build dashboard snapshots linking recommendations to measurable outcomes.",
+        ]
+    elif role_track in {"operations", "support", "hr"}:
+        phase2 = [
+            "Document process-improvement before/after metrics (TAT, SLA, quality, cost).",
+            "Build stakeholder communication templates for escalation and closure.",
+        ]
+
+    return phase1, phase2, phase3
+
+
 def build_learning_roadmap(
     role_track: str,
     role: str,
+    industry: str,
+    experience_years: float | None,
     critical_missing: list[str],
     core_missing: list[str],
     adjacent_missing: list[str],
 ) -> dict[str, Any]:
+    experience_band = infer_experience_band(experience_years, infer_seniority(role))
     foundation_focus = dedupe_preserve_order([*critical_missing[:3], *core_missing[:2]])[:4]
     execution_focus = dedupe_preserve_order([*core_missing[2:6], *adjacent_missing[:3]])[:4]
     phase2_default_focus, phase2_default_outcome = learning_roadmap_phase2(role_track)
+    context_modules = industry_focus_modules(role_track, industry)
+    phase1_deliverables, phase2_deliverables, phase3_deliverables = roadmap_deliverables(role_track, experience_band)
 
     phases: list[dict[str, Any]] = [
         {
             "phase": "Phase 1: Foundation",
             "duration_weeks": "1-3",
-            "focus": foundation_focus or ["Role fundamentals", "Keyword-ready skill language"],
+            "focus": dedupe_preserve_order([*foundation_focus, *context_modules[:2]])[:4]
+            or ["Role fundamentals", "Keyword-ready skill language"],
             "outcome": "Cover must-have gaps and baseline readiness for interviews.",
+            "deliverables": phase1_deliverables,
         },
         {
             "phase": "Phase 2: Proof Of Work",
             "duration_weeks": "3-6",
-            "focus": execution_focus or phase2_default_focus,
+            "focus": dedupe_preserve_order([*execution_focus, *phase2_default_focus, *context_modules])[:5] or phase2_default_focus,
             "outcome": phase2_default_outcome,
+            "deliverables": phase2_deliverables,
         },
         {
             "phase": "Phase 3: Conversion Sprint",
             "duration_weeks": "2-4",
             "focus": ["Resume variants", "Interview stories", "Targeted application batching"],
             "outcome": "Increase interview call rate through sharper positioning.",
+            "deliverables": phase3_deliverables,
         },
     ]
 
     return {
         "target_role": safe_text(role),
+        "target_industry": safe_text(industry),
+        "experience_band": experience_band,
         "total_duration_weeks": "6-13",
         "phases": phases,
     }
@@ -3321,7 +3437,15 @@ def analyze_profile(
         selected_toggle_ids=salary_boost_toggles,
     )
     positioning_strategy = None if is_fresher_profile else build_positioning_strategy(role_track, role, industry, skills_list)
-    learning_roadmap = build_learning_roadmap(role_track, role, critical_missing, core_missing, adjacent_missing)
+    learning_roadmap = build_learning_roadmap(
+        role_track,
+        role,
+        industry,
+        experience_years,
+        critical_missing,
+        core_missing,
+        adjacent_missing,
+    )
     hiring_market_insights = build_hiring_timing_insights(role_track, industry)
     callback_forecast = build_callback_estimator(overall_score, confidence, applications_used, ninety_plus_strategy)
 

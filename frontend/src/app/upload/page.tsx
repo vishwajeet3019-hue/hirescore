@@ -110,10 +110,13 @@ type LearningRoadmapPhase = {
   duration_weeks: string;
   focus: string[];
   outcome: string;
+  deliverables?: string[];
 };
 
 type LearningRoadmap = {
   target_role: string;
+  target_industry?: string;
+  experience_band?: string;
   total_duration_weeks: string;
   phases: LearningRoadmapPhase[];
 };
@@ -1319,6 +1322,13 @@ export default function UploadPage() {
             className="fixed inset-0 z-[120] bg-[#020915]/88 px-3 py-4 backdrop-blur-xl sm:px-6 sm:py-6"
             onClick={() => setShowResultModal(false)}
           >
+            <button
+              type="button"
+              onClick={() => setShowResultModal(false)}
+              className="fixed right-4 top-4 z-[130] rounded-xl border border-cyan-100/30 bg-[#082640]/92 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50 shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition hover:bg-[#0d3358] sm:hidden"
+            >
+              Close
+            </button>
             <motion.section
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1496,12 +1506,24 @@ export default function UploadPage() {
                           <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
                             <h3 className="text-xl font-semibold text-cyan-50">Learning Roadmap</h3>
                             <p className="mt-2 text-sm text-cyan-50/72">Timeline: {result.learning_roadmap.total_duration_weeks} weeks</p>
+                            {result.learning_roadmap.experience_band && (
+                              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cyan-100/72">
+                                Experience band: {result.learning_roadmap.experience_band}
+                              </p>
+                            )}
                             <div className="mt-3 space-y-2">
                               {result.learning_roadmap.phases.map((phase, idx) => (
                                 <div key={`road-${idx}`} className="rounded-xl border border-cyan-100/18 bg-cyan-100/6 p-3">
                                   <p className="text-sm font-semibold text-cyan-50">{phase.phase} ({phase.duration_weeks} weeks)</p>
                                   <p className="mt-1 text-xs text-cyan-50/72">Focus: {phase.focus.join(", ")}</p>
                                   <p className="mt-1 text-xs text-cyan-50/72">Outcome: {phase.outcome}</p>
+                                  {(phase.deliverables || []).length > 0 && (
+                                    <ul className="mt-2 space-y-1 text-xs text-cyan-50/72">
+                                      {(phase.deliverables || []).map((item, deliverableIndex) => (
+                                        <li key={`deliverable-${idx}-${deliverableIndex}`}>- {item}</li>
+                                      ))}
+                                    </ul>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1644,6 +1666,15 @@ export default function UploadPage() {
                     </div>
                   </div>
                 )}
+              </div>
+              <div className="border-t border-cyan-100/14 bg-[#041427]/96 p-3 sm:hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowResultModal(false)}
+                  className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
+                >
+                  Close Report
+                </button>
               </div>
             </motion.section>
           </motion.div>
