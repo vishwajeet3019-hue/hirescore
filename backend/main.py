@@ -116,9 +116,9 @@ CREDIT_COSTS: dict[str, int] = {
 }
 
 PAYMENT_CREDIT_PACKS: dict[str, dict[str, Any]] = {
-    "starter_100": {"label": "Starter 100", "credits": 100, "amount_inr": 199},
-    "pro_300": {"label": "Pro 300", "credits": 300, "amount_inr": 499},
-    "elite_800": {"label": "Elite 800", "credits": 800, "amount_inr": 999},
+    "starter_50": {"label": "Starter 50", "credits": 50, "amount_inr": 199},
+    "pro_100": {"label": "Pro 100", "credits": 100, "amount_inr": 499},
+    "elite_200": {"label": "Elite 200", "credits": 200, "amount_inr": 999},
 }
 PAYMENT_SUCCESS_URL = (os.getenv("PAYMENT_SUCCESS_URL") or "").strip() or "https://hirescore.in/pricing?payment=success"
 PAYMENT_CANCEL_URL = (os.getenv("PAYMENT_CANCEL_URL") or "").strip() or "https://hirescore.in/pricing?payment=cancelled"
