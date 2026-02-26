@@ -1426,6 +1426,8 @@ def send_email_message_resend(to_email: str, subject: str, text_body: str) -> st
         headers={
             "Authorization": f"Bearer {RESEND_API_KEY}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "HireScoreBackend/1.0 (+https://hirescore.in)",
         },
     )
     try:
@@ -1435,11 +1437,22 @@ def send_email_message_resend(to_email: str, subject: str, text_body: str) -> st
                 return f"Resend API rejected the request (HTTP {status_code})."
         return None
     except urllib.error.HTTPError as exc:
+        details = ""
         try:
             details = exc.read().decode("utf-8", errors="ignore")
         except Exception:
             details = ""
         logger.exception("Resend HTTP error while sending email to %s", to_email)
+        try:
+            parsed = json.loads(details or "{}")
+        except Exception:
+            parsed = {}
+        error_name = safe_text(str(parsed.get("name") or ""))
+        error_message = safe_text(str(parsed.get("message") or ""))
+        if error_name or error_message:
+            return f"Resend API error ({exc.code}) {error_name}: {error_message}".strip()
+        if "error code: 1010" in details.lower():
+            return "Resend API blocked this request (Cloudflare 1010). Check API key account/domain match or contact Resend support."
         if details:
             return f"Resend API error ({exc.code}): {details[:220]}"
         return f"Resend API error ({exc.code})."
