@@ -908,6 +908,11 @@ ROLE_TRACK_KEYWORDS = {
         "business development",
         "bdm",
         "inside sales",
+        "field sales",
+        "retail sales",
+        "channel sales",
+        "relationship manager",
+        "regional sales manager",
         "pre sales",
         "sales manager",
         "automobile sales",
@@ -929,6 +934,9 @@ ROLE_TRACK_KEYWORDS = {
         "email marketer",
         "social media manager",
         "seo specialist",
+        "brand manager",
+        "demand generation",
+        "marketing manager",
     ],
     "finance": ["finance", "financial", "fp&a", "accounting", "investment", "audit", "analyst"],
     "operations": ["operations", "ops", "supply chain", "process", "logistics", "procurement"],
@@ -1106,6 +1114,106 @@ TRACK_TO_MARKET_SEGMENT = {
     "mobile": "technology",
     "content": "creative",
     "general": "general",
+}
+
+TRACK_FIELD_FAMILIES: dict[str, str] = {
+    "backend": "technology",
+    "frontend": "technology",
+    "data": "technology",
+    "devops": "technology",
+    "qa": "technology",
+    "cybersecurity": "technology",
+    "mobile": "technology",
+    "product": "product_design",
+    "design": "product_design",
+    "sales": "go_to_market",
+    "marketing": "go_to_market",
+    "content": "go_to_market",
+    "support": "go_to_market",
+    "finance": "business_ops",
+    "operations": "business_ops",
+    "hr": "business_ops",
+    "business": "business_ops",
+    "consulting": "business_ops",
+    "legal": "business_ops",
+    "healthcare": "services",
+    "education": "services",
+    "general": "general",
+}
+
+FIELD_FAMILY_TRACKS: dict[str, list[str]] = {
+    "technology": ["backend", "frontend", "data", "devops", "qa", "cybersecurity", "mobile"],
+    "product_design": ["product", "design", "business", "marketing"],
+    "go_to_market": ["sales", "marketing", "content", "support", "business", "operations"],
+    "business_ops": ["business", "operations", "finance", "hr", "consulting", "legal", "support"],
+    "services": ["healthcare", "education", "support", "operations", "business"],
+    "general": [],
+}
+
+NON_TECH_ROLE_TRACKS = {"sales", "marketing", "content", "support", "finance", "operations", "hr", "business", "consulting", "legal", "healthcare", "education"}
+
+TECH_HEAVY_TERMS = {
+    "python",
+    "sql",
+    "api design",
+    "javascript",
+    "react",
+    "next.js",
+    "typescript",
+    "docker",
+    "kubernetes",
+    "ci/cd",
+    "microservices",
+    "system design",
+    "tensorflow",
+    "pytorch",
+    "node.js",
+    "java",
+    "aws",
+    "gcp",
+    "azure",
+    "devops",
+    "backend",
+    "frontend",
+    "mobile app development",
+}
+
+ROLE_HUMAN_INSIGHT_PACKS: dict[str, dict[str, str]] = {
+    "sales": {
+        "hiring_lens": "Sales hiring teams trust pipeline evidence, conversion outcomes, and client handling maturity over generic claims.",
+        "proof_style": "Use bullets that show deal stage movement, average ticket size, win-rate lift, and renewal/expansion wins.",
+        "weekly_move": "Every week, add one quantified deal story and one objection-handling example from live conversations.",
+    },
+    "marketing": {
+        "hiring_lens": "Marketing shortlisting is driven by channel ownership, CAC/ROAS discipline, and clear campaign outcomes.",
+        "proof_style": "Show campaign hypothesis, execution, and measured outcome (lead quality, CPL, CTR/CVR, ROI).",
+        "weekly_move": "Each week, publish one campaign teardown: what changed, why, and what improved in numbers.",
+    },
+    "hr": {
+        "hiring_lens": "HR hiring evaluates quality-of-hire impact, funnel discipline, and stakeholder trust.",
+        "proof_style": "Show time-to-hire improvements, offer-acceptance lift, onboarding quality, and retention support metrics.",
+        "weekly_move": "Every week, add one hiring/process case where you diagnosed a bottleneck and fixed it.",
+    },
+    "operations": {
+        "hiring_lens": "Operations hiring rewards execution reliability, SLA discipline, and process improvement ownership.",
+        "proof_style": "Show before/after metrics for cycle-time, quality errors, cost, and throughput.",
+        "weekly_move": "Each week, document one workflow improvement with measurable impact and stakeholder adoption.",
+    },
+    "business": {
+        "hiring_lens": "Business roles prioritize structured thinking, requirement clarity, and measurable business impact.",
+        "proof_style": "Show problem framing, analysis path, recommendation, and measurable result in plain business language.",
+        "weekly_move": "Publish one mini business case per week tied to your target role and industry reality.",
+    },
+    "finance": {
+        "hiring_lens": "Finance hiring screens for analytical rigor, variance control, and decision-quality reporting.",
+        "proof_style": "Show forecast accuracy, variance reduction, margin/cashflow impact, and decision influence.",
+        "weekly_move": "Add one case weekly showing how your analysis changed a financial decision.",
+    },
+    "support": {
+        "hiring_lens": "Support teams shortlist candidates who can de-escalate quickly and protect customer trust at scale.",
+        "proof_style": "Show response/resolution improvements, CSAT gains, and repeat-ticket reduction outcomes.",
+        "weekly_move": "Each week, add one complex escalation story with root-cause fix and customer outcome.",
+    },
 }
 
 INDIA_MARKET_SEGMENTS: dict[str, dict[str, Any]] = {
@@ -2856,6 +2964,25 @@ def role_execution_examples(role_track: str, industry: str) -> list[str]:
     ]
 
 
+def filter_field_specific_terms(role_track: str, terms: list[str]) -> list[str]:
+    if role_track not in NON_TECH_ROLE_TRACKS:
+        return dedupe_preserve_order(terms)
+
+    filtered = [term for term in terms if normalize_token(term) not in TECH_HEAVY_TERMS]
+    return dedupe_preserve_order(filtered)
+
+
+def human_insight_pack(role_track: str) -> dict[str, str]:
+    return ROLE_HUMAN_INSIGHT_PACKS.get(
+        role_track,
+        {
+            "hiring_lens": "Recruiters shortlist profiles that look role-ready, measurable, and immediately useful.",
+            "proof_style": "Show concrete evidence, measurable outcomes, and clear ownership in each bullet.",
+            "weekly_move": "Add one strong proof story per week tied directly to your target role.",
+        },
+    )
+
+
 def build_quick_wins(
     role_track: str,
     role: str,
@@ -2869,9 +2996,11 @@ def build_quick_wins(
     industry_label = safe_text(industry) or "your target industry"
     metrics = ", ".join(role_metric_signals(role_track)[:3])
     examples = role_execution_examples(role_track, industry)
+    insight_pack = human_insight_pack(role_track)
 
     wins: list[str] = [
-        f"For {role_label} in {industry_label}, lead your profile with measurable outcomes ({metrics}) before listing tools/skills.",
+        f"For {role_label} hiring in {industry_label}, first show measurable outcomes ({metrics}) before listing tools/skills.",
+        insight_pack["hiring_lens"],
         f"Add one proof story this week: {examples[0]} with numbers, timeline, and your exact ownership.",
     ]
 
@@ -2886,6 +3015,8 @@ def build_quick_wins(
 
     if experience_band == "senior":
         wins.append("As a senior profile, highlight team outcomes, forecasting quality, and business decisions you influenced.")
+    else:
+        wins.append(insight_pack["weekly_move"])
 
     return wins[:4]
 
@@ -2905,6 +3036,18 @@ def build_improvement_areas(
     industry_label = safe_text(industry) or "your target industry"
     metrics_text = ", ".join(role_metric_signals(role_track)[:3])
     execution_examples = role_execution_examples(role_track, industry)
+    insight_pack = human_insight_pack(role_track)
+
+    areas.append(
+        {
+            "category": "How Recruiters Read Your Profile",
+            "details": [
+                insight_pack["hiring_lens"],
+                insight_pack["proof_style"],
+                f"For {role_label} in {industry_label}, clarity + proof usually beats keyword stuffing.",
+            ],
+        }
+    )
 
     if critical_missing:
         areas.append(
@@ -2998,6 +3141,28 @@ def build_improvement_areas(
                     "Hiring managers in sales trust numbers before claims.",
                     "Lead with pipeline, win-rate, conversion, or revenue outcomes in top bullets.",
                     "Show one objection-handling or deal-recovery example to signal real field strength.",
+                ],
+            }
+        )
+    elif role_track == "marketing":
+        areas.append(
+            {
+                "category": "Marketing Credibility Signals",
+                "details": [
+                    "Teams shortlist marketers who can link actions to business outcomes quickly.",
+                    "Show channel ownership with CAC/ROAS/CTR-CVR metrics and campaign decision logic.",
+                    "Add one campaign case showing what changed, why it worked, and what improved.",
+                ],
+            }
+        )
+    elif role_track in {"hr", "operations", "business", "finance"}:
+        areas.append(
+            {
+                "category": "Execution Credibility",
+                "details": [
+                    "Hiring panels look for ownership, not task lists.",
+                    "Show process or decision impact with before/after numbers and stakeholder outcomes.",
+                    "Use one story per capability: problem, action, measurable result, and learning.",
                 ],
             }
         )
@@ -3175,6 +3340,7 @@ def build_ninety_plus_plan(
     industry_label = safe_text(industry) or "your target industry"
     metrics = ", ".join(role_metric_signals(role_track)[:3])
     execution_examples = role_execution_examples(role_track, industry)
+    insight_pack = human_insight_pack(role_track)
 
     def add_action(
         title: str,
@@ -3228,9 +3394,9 @@ def build_ninety_plus_plan(
 
     leadership_clause = "Include team impact, planning quality, and decision ownership in each story." if experience_band == "senior" else "Highlight direct individual contribution and outcome ownership in each story."
     add_action(
-        "Rewrite resume for role-fit clarity",
+        "Rewrite resume for recruiter-first clarity",
         f"Rewrite top bullets for {role_label} with measurable outcomes and clean role language.",
-        "A clear, role-aligned resume raises screening confidence quickly.",
+        f"{insight_pack['hiring_lens']} A clear, role-aligned resume raises screening confidence quickly.",
         [
             f"Lead bullets with outcome metrics ({metrics}) instead of responsibilities.",
             "Remove generic claims and replace with specific scope, numbers, and timeline.",
@@ -3314,6 +3480,8 @@ def track_fit_score(track: str, skills_list: list[str], role: str, industry: str
 def build_positioning_strategy(role_track: str, role: str, industry: str, skills_list: list[str]) -> dict[str, Any]:
     target_track = role_track if role_track in ROLE_BLUEPRINTS else infer_role_track(role, industry)
     track_scores: list[tuple[str, int, list[str]]] = []
+    target_family = TRACK_FIELD_FAMILIES.get(target_track, "general")
+    family_tracks = set(FIELD_FAMILY_TRACKS.get(target_family, [])) if target_family != "general" else set()
 
     for track in ROLE_BLUEPRINTS:
         if track == "general":
@@ -3335,9 +3503,11 @@ def build_positioning_strategy(role_track: str, role: str, industry: str, skills
     score_lookup = {track: (score, hits) for track, score, hits in track_scores}
 
     alternatives: list[dict[str, Any]] = []
-    minimum_fit_threshold = max(22, target_score - 12)
+    minimum_fit_threshold = max(28, target_score - 10)
     for track in preferred_tracks:
         if track in {"general", target_track} or track not in score_lookup:
+            continue
+        if family_tracks and track not in family_tracks:
             continue
         score, hits = score_lookup[track]
         if score < minimum_fit_threshold:
@@ -3363,6 +3533,8 @@ def build_positioning_strategy(role_track: str, role: str, industry: str, skills
                 or any(item["role"] in TRACK_ROLE_OPTIONS.get(track, []) for item in alternatives)
             ):
                 continue
+            if family_tracks and track not in family_tracks:
+                continue
             stronger_fit = score >= target_score + 4
             options = TRACK_ROLE_OPTIONS.get(track, TRACK_ROLE_OPTIONS["general"])
             alternatives.append(
@@ -3378,9 +3550,9 @@ def build_positioning_strategy(role_track: str, role: str, industry: str, skills
 
     target_role_options = TRACK_ROLE_OPTIONS.get(target_track, TRACK_ROLE_OPTIONS["general"])
     if alternatives:
-        summary = "Your profile has adjacent role options with stronger shortlisting odds in the same hiring segment."
+        summary = "Based on your current proof signals, these adjacent roles in your field may give faster interview traction."
     else:
-        summary = "No strong adjacent role shift detected yet. Focus on your target direction and execute the roadmap milestones first."
+        summary = "Your profile is currently best aligned to your chosen field path. Execute the roadmap to raise fit before role expansion."
     return {
         "target_role": safe_text(role),
         "target_fit_score": target_score,
@@ -3501,6 +3673,8 @@ def build_learning_roadmap(
     adjacent_missing: list[str],
 ) -> dict[str, Any]:
     experience_band = infer_experience_band(experience_years, infer_seniority(role))
+    role_label = safe_text(role) or "your target role"
+    insight_pack = human_insight_pack(role_track)
     foundation_focus = dedupe_preserve_order([*critical_missing[:3], *core_missing[:2]])[:4]
     execution_focus = dedupe_preserve_order([*core_missing[2:6], *adjacent_missing[:3]])[:4]
     phase2_default_focus, phase2_default_outcome = learning_roadmap_phase2(role_track)
@@ -3513,7 +3687,7 @@ def build_learning_roadmap(
             "duration_weeks": "1-3",
             "focus": dedupe_preserve_order([*foundation_focus, *context_modules[:2]])[:4]
             or ["Role fundamentals", "Keyword-ready skill language"],
-            "outcome": "Cover must-have gaps and baseline readiness for interviews.",
+            "outcome": f"Cover must-have gaps and become baseline interview-ready for {role_label}.",
             "deliverables": phase1_deliverables,
         },
         {
@@ -3526,8 +3700,8 @@ def build_learning_roadmap(
         {
             "phase": "Phase 3: Conversion Sprint",
             "duration_weeks": "2-4",
-            "focus": ["Resume variants", "Interview stories", "Targeted application batching"],
-            "outcome": "Increase interview call rate through sharper positioning.",
+            "focus": ["Resume variants", "Interview stories", "Targeted application batching", "Weekly proof updates"],
+            "outcome": "Increase interview call rate through sharper positioning and stronger recruiter trust signals.",
             "deliverables": phase3_deliverables,
         },
     ]
@@ -3537,6 +3711,7 @@ def build_learning_roadmap(
         "target_industry": safe_text(industry),
         "experience_band": experience_band,
         "total_duration_weeks": "6-13",
+        "coach_note": insight_pack["weekly_move"],
         "phases": phases,
     }
 
@@ -3611,6 +3786,9 @@ def analyze_profile(
     profile_score, profile_details = score_skill_profile_quality(normalized_skills_text, skills_list)
     coverage_score, core_hits, core_missing, adjacent_hits, adjacent_missing = score_blueprint_coverage(blueprint, skills_list)
     critical_coverage, critical_missing = score_critical_coverage(critical_skills, skills_list)
+    critical_missing = filter_field_specific_terms(role_track, critical_missing)
+    core_missing = filter_field_specific_terms(role_track, core_missing)
+    adjacent_missing = filter_field_specific_terms(role_track, adjacent_missing)
     consistency_score = score_track_consistency(role_track, skills_list, blueprint)
 
     raw_overall = clamp(
