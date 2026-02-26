@@ -1143,6 +1143,30 @@ TRACK_ROLE_OPTIONS: dict[str, list[str]] = {
     "general": ["Business Analyst", "Operations Executive", "Project Coordinator", "Program Associate"],
 }
 
+ROLE_TRACK_NEIGHBORS: dict[str, list[str]] = {
+    "backend": ["devops", "data", "cybersecurity", "qa"],
+    "frontend": ["design", "product", "mobile", "qa"],
+    "data": ["business", "finance", "product", "marketing"],
+    "product": ["business", "marketing", "operations", "design"],
+    "sales": ["marketing", "support", "business", "operations"],
+    "marketing": ["content", "sales", "product", "business"],
+    "finance": ["business", "consulting", "operations", "data"],
+    "operations": ["business", "finance", "support", "consulting"],
+    "hr": ["operations", "support", "business", "consulting"],
+    "design": ["frontend", "product", "content", "marketing"],
+    "devops": ["backend", "cybersecurity", "qa", "data"],
+    "qa": ["backend", "frontend", "devops", "mobile"],
+    "support": ["sales", "operations", "business", "hr"],
+    "legal": ["business", "consulting", "finance", "operations"],
+    "healthcare": ["support", "operations", "business", "education"],
+    "education": ["content", "operations", "business", "support"],
+    "business": ["consulting", "operations", "product", "finance"],
+    "consulting": ["business", "product", "finance", "operations"],
+    "cybersecurity": ["devops", "backend", "qa", "data"],
+    "mobile": ["frontend", "backend", "product", "qa"],
+    "content": ["marketing", "design", "sales", "product"],
+}
+
 GLOBAL_SALARY_BOOSTERS: list[dict[str, Any]] = [
     {
         "id": "quantified_outcomes",
@@ -3026,32 +3050,65 @@ def build_positioning_strategy(role_track: str, role: str, industry: str, skills
     track_scores.sort(key=lambda item: item[1], reverse=True)
     target_score = next((item[1] for item in track_scores if item[0] == target_track), 0)
 
+    segment = TRACK_TO_MARKET_SEGMENT.get(target_track, "general")
+    same_segment_tracks = [
+        track
+        for track in ROLE_BLUEPRINTS.keys()
+        if track not in {"general", target_track} and TRACK_TO_MARKET_SEGMENT.get(track, "general") == segment
+    ]
+    neighbor_tracks = ROLE_TRACK_NEIGHBORS.get(target_track, [])
+    preferred_tracks = dedupe_preserve_order([*neighbor_tracks, *same_segment_tracks])
+    score_lookup = {track: (score, hits) for track, score, hits in track_scores}
+
     alternatives: list[dict[str, Any]] = []
-    for track, score, hits in track_scores:
-        if track == target_track:
+    for track in preferred_tracks:
+        if track in {"general", target_track} or track not in score_lookup:
+            continue
+        score, hits = score_lookup[track]
+        if score <= 0:
             continue
         stronger_fit = score >= target_score + 4
-        if not stronger_fit and len(alternatives) >= 3:
-            continue
         options = TRACK_ROLE_OPTIONS.get(track, TRACK_ROLE_OPTIONS["general"])
         alternatives.append(
             {
                 "role": options[0],
                 "fit_score": score,
                 "fit_signal": "higher_fit" if stronger_fit else "comparable_fit",
-                "why": f"Current profile already signals {', '.join(hits[:3]) or 'transferable capabilities'} for this role.",
+                "why": f"Skills signal strongest relevance for {', '.join(hits[:3]) or 'transferable capabilities'} in this role direction.",
             }
         )
         if len(alternatives) == 3:
             break
 
+    if len(alternatives) < 3:
+        for track, score, hits in track_scores:
+            if track == target_track or score <= 0 or any(item["role"] in TRACK_ROLE_OPTIONS.get(track, []) for item in alternatives):
+                continue
+            stronger_fit = score >= target_score + 4
+            options = TRACK_ROLE_OPTIONS.get(track, TRACK_ROLE_OPTIONS["general"])
+            alternatives.append(
+                {
+                    "role": options[0],
+                    "fit_score": score,
+                    "fit_signal": "higher_fit" if stronger_fit else "comparable_fit",
+                    "why": f"Adjacent fit emerges from {', '.join(hits[:3]) or 'cross-functional capability overlap'}.",
+                }
+            )
+            if len(alternatives) == 3:
+                break
+
     target_role_options = TRACK_ROLE_OPTIONS.get(target_track, TRACK_ROLE_OPTIONS["general"])
+    summary = (
+        "Your profile can convert faster by applying to your target role plus adjacent role titles with similar skill demand."
+        if alternatives
+        else "Focus on your target role first; adjacent field recommendations will appear after stronger role-skill signals."
+    )
     return {
         "target_role": safe_text(role),
         "target_fit_score": target_score,
         "target_role_examples": target_role_options[:3],
         "higher_probability_roles": alternatives,
-        "summary": "Positioning can improve by applying to both your desired role and adjacent higher-fit role titles in parallel.",
+        "summary": summary,
     }
 
 
@@ -3227,6 +3284,15 @@ def analyze_profile(
     if adaptive_profile:
         prediction_reasoning.append("Adaptive open-role profiling is active for this title.")
 
+    role_text = safe_text(role).lower()
+    exp_value = float(experience_years) if experience_years is not None else None
+    explicit_fresher_role = any(token in role_text for token in ["intern", "fresher", "trainee", "entry level", "entry-level"])
+    is_fresher_profile = bool(
+        explicit_fresher_role
+        or (exp_value is not None and exp_value <= 1.0)
+        or (exp_value is None and seniority == "junior" and profile_details["listed_count"] <= 2)
+    )
+
     quick_wins = [
         "In the first 10 seconds, recruiters look for role-fit proof, not potential. Lead with strongest role-aligned outcomes.",
         "Use exact language from target JDs so your profile feels instantly relevant to the hiring team.",
@@ -3254,7 +3320,7 @@ def analyze_profile(
         experience_years=experience_years,
         selected_toggle_ids=salary_boost_toggles,
     )
-    positioning_strategy = build_positioning_strategy(role_track, role, industry, skills_list)
+    positioning_strategy = None if is_fresher_profile else build_positioning_strategy(role_track, role, industry, skills_list)
     learning_roadmap = build_learning_roadmap(role_track, role, critical_missing, core_missing, adjacent_missing)
     hiring_market_insights = build_hiring_timing_insights(role_track, industry)
     callback_forecast = build_callback_estimator(overall_score, confidence, applications_used, ninety_plus_strategy)
@@ -3304,6 +3370,7 @@ def analyze_profile(
         "learning_roadmap": learning_roadmap,
         "hiring_market_insights": hiring_market_insights,
         "callback_forecast": callback_forecast,
+        "is_fresher_profile": is_fresher_profile,
     }
 
 

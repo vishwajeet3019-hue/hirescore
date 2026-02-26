@@ -155,6 +155,7 @@ type AnalysisResult = {
   learning_roadmap?: LearningRoadmap;
   hiring_market_insights?: HiringMarketInsights;
   callback_forecast?: CallbackForecast;
+  is_fresher_profile?: boolean;
   source?: string;
   extracted_chars?: number;
   role_universe_mode?: string;
@@ -255,6 +256,7 @@ export default function UploadPage() {
   const [forgotOtp, setForgotOtp] = useState("");
   const [forgotNewPassword, setForgotNewPassword] = useState("");
   const [feedbackRequired, setFeedbackRequired] = useState(false);
+  const [deferredFeedbackPrompt, setDeferredFeedbackPrompt] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [feedbackComment, setFeedbackComment] = useState("");
@@ -285,9 +287,6 @@ export default function UploadPage() {
     }
     if (typeof payload?.feedback_required === "boolean") {
       setFeedbackRequired(payload.feedback_required);
-      if (payload.feedback_required) {
-        setShowFeedbackModal(true);
-      }
     }
   };
 
@@ -387,7 +386,6 @@ export default function UploadPage() {
       }
       if (payload.detail.feedback_required) {
         setFeedbackRequired(true);
-        setShowFeedbackModal(true);
       }
       return payload.detail.message || `Request failed (${response.status})`;
     }
@@ -477,6 +475,12 @@ export default function UploadPage() {
     return (await response.json()) as AuthPayload;
   };
 
+  useEffect(() => {
+    if (!result || showResultModal || !deferredFeedbackPrompt || !feedbackRequired) return;
+    setShowFeedbackModal(true);
+    setDeferredFeedbackPrompt(false);
+  }, [result, showResultModal, deferredFeedbackPrompt, feedbackRequired]);
+
   const runWithMinimumLoading = async <T,>(task: () => Promise<T>) => {
     const startedAt = Date.now();
     setLoading(true);
@@ -500,7 +504,7 @@ export default function UploadPage() {
     }
     if (data.feedback_required) {
       setFeedbackRequired(true);
-      setShowFeedbackModal(true);
+      setDeferredFeedbackPrompt(true);
     }
     setResult(data);
     setActiveResultTab("summary");
@@ -553,6 +557,9 @@ export default function UploadPage() {
       setFeedbackSubmitting(false);
     }
   };
+
+  const feedbackRatingLabel =
+    feedbackRating >= 5 ? "Excellent" : feedbackRating >= 4 ? "Good" : feedbackRating >= 3 ? "Average" : feedbackRating >= 2 ? "Needs Work" : "Poor";
 
   const handleAuthSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
@@ -1310,20 +1317,23 @@ export default function UploadPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[120] bg-[#020915]/88 px-3 py-4 backdrop-blur-xl sm:px-6 sm:py-6"
+            onClick={() => setShowResultModal(false)}
           >
-            <button
-              type="button"
-              onClick={() => setShowResultModal(false)}
-              aria-label="Close analysis report"
-              className="absolute right-5 top-5 z-[130] rounded-full border border-cyan-100/45 bg-[#06233e]/92 px-4 py-2 text-sm font-semibold text-cyan-50 shadow-[0_0_24px_rgba(94,228,255,0.2)] transition hover:bg-[#0a3358]"
-            >
-              Close
-            </button>
             <motion.section
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
+              onClick={(event) => event.stopPropagation()}
               className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)]"
             >
+              <div className="sticky top-0 z-20 flex justify-end border-b border-cyan-100/14 bg-[#041427]/96 px-4 py-3 sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => setShowResultModal(false)}
+                  className="rounded-xl border border-cyan-100/28 bg-[#082640]/78 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50/90 transition hover:bg-[#0d3358]"
+                >
+                  Close Report
+                </button>
+              </div>
               <div className="border-b border-cyan-100/14 px-4 py-4 sm:px-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -1464,10 +1474,10 @@ export default function UploadPage() {
                       </div>
                     )}
 
-                    {result.positioning_strategy && (
+                    {result.positioning_strategy && !result.is_fresher_profile && (
                       <div className="grid gap-4 lg:grid-cols-2">
                         <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                          <h3 className="text-xl font-semibold text-cyan-50">Positioning Strategy Generator</h3>
+                          <h3 className="text-xl font-semibold text-cyan-50">Your Suggested Field Matches</h3>
                           <p className="mt-2 text-sm text-cyan-50/72">
                             Target role fit: <span className="font-semibold text-cyan-100">{result.positioning_strategy.target_fit_score}%</span>
                           </p>
@@ -1497,6 +1507,12 @@ export default function UploadPage() {
                             </div>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {result.is_fresher_profile && (
+                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5 text-sm text-cyan-50/78">
+                        Positioning field suggestions unlock after you build initial skill signals. Focus on the roadmap and improvement actions first.
                       </div>
                     )}
                   </div>
@@ -1650,24 +1666,29 @@ export default function UploadPage() {
                 Please share feedback once to unlock your next analysis attempt.
               </p>
 
-              <div className="mt-5 flex flex-wrap gap-2">
-                {[1, 2, 3, 4, 5].map((value) => {
-                  const active = feedbackRating >= value;
-                  return (
-                    <button
-                      key={`star-${value}`}
-                      type="button"
-                      onClick={() => setFeedbackRating(value)}
-                      className={`rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                        active
-                          ? "border-amber-100/60 bg-amber-100/22 text-amber-100"
-                          : "border-cyan-100/20 bg-cyan-100/6 text-cyan-50/72"
-                      }`}
-                    >
-                      {value} Star{value > 1 ? "s" : ""}
-                    </button>
-                  );
-                })}
+              <div className="mt-5 rounded-2xl border border-cyan-100/20 bg-[#06233f]/72 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">Your Rating</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[1, 2, 3, 4, 5].map((value) => {
+                    const active = feedbackRating >= value;
+                    return (
+                      <button
+                        key={`star-${value}`}
+                        type="button"
+                        onClick={() => setFeedbackRating(value)}
+                        aria-label={`Rate ${value} stars`}
+                        className={`rounded-xl border px-3 py-2 text-lg leading-none transition ${
+                          active
+                            ? "border-amber-100/60 bg-amber-100/22 text-amber-100"
+                            : "border-cyan-100/20 bg-cyan-100/6 text-cyan-50/50"
+                        }`}
+                      >
+                        ★
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-3 text-sm font-semibold text-cyan-100">{feedbackRating}/5 - {feedbackRatingLabel}</p>
               </div>
 
               <div className="mt-4">

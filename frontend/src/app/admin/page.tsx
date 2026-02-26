@@ -13,6 +13,8 @@ type AdminAnalytics = {
   credits_sold_total: number;
   revenue_inr_total: number;
   stripe_enabled: boolean;
+  razorpay_enabled?: boolean;
+  payment_gateway?: string;
 };
 
 type AdminUser = {
@@ -223,36 +225,36 @@ export default function AdminPage() {
     }
   };
 
-  const cardClass = "rounded-2xl border border-cyan-100/22 bg-cyan-100/8 p-4";
+  const cardClass = "rounded-2xl border border-emerald-200/22 bg-emerald-100/6 p-4";
   const inputClass =
-    "rounded-xl border border-cyan-100/28 bg-[#021327]/92 px-3 py-2 text-xs text-cyan-50 placeholder:text-cyan-100/40 outline-none focus:border-cyan-100";
+    "rounded-xl border border-emerald-200/26 bg-[#111923]/92 px-3 py-2 text-xs text-emerald-50 placeholder:text-emerald-100/40 outline-none focus:border-emerald-100";
 
   return (
-    <main className="min-h-screen px-4 pb-16 pt-8 sm:px-6 sm:pt-10 lg:px-8">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(251,191,36,0.1),_transparent_50%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.14),_transparent_55%),linear-gradient(180deg,#0b1119_0%,#070b11_100%)] px-4 pb-16 pt-8 sm:px-6 sm:pt-10 lg:px-8">
       <section className="mx-auto max-w-7xl space-y-6">
-        <div className="premium-panel rounded-[2rem] p-6 sm:p-8">
-          <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Admin Console</p>
-          <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-4xl">Users, Analytics, Credits, Payments</h1>
-          <p className="mt-2 text-sm text-cyan-50/74">
-            Use an admin key to view event analytics and manually update user email, password, and credits.
+        <div className="rounded-[2rem] border border-emerald-200/20 bg-[#111823]/92 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.5)] sm:p-8">
+          <p className="text-xs uppercase tracking-[0.16em] text-emerald-100/74">Master Control</p>
+          <h1 className="mt-2 text-3xl font-semibold text-emerald-50 sm:text-4xl">Core Ops Dashboard</h1>
+          <p className="mt-2 text-sm text-emerald-50/74">
+            Unified control for user access, credits, auth, analytics, payments, and feedback operations.
           </p>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.12em] text-cyan-100/70">Admin API Key</label>
+              <label className="mb-2 block text-xs uppercase tracking-[0.12em] text-emerald-100/70">Admin API Key</label>
               <input
                 type="password"
                 value={adminKey}
                 onChange={(event) => setAdminKey(event.target.value)}
                 placeholder="Enter ADMIN_API_KEYS value"
-                className="w-full rounded-2xl border border-cyan-100/28 bg-[#021327]/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/42 outline-none focus:border-cyan-100"
+                className="w-full rounded-2xl border border-emerald-100/28 bg-[#0d141f]/92 px-4 py-3 text-emerald-50 placeholder:text-emerald-100/40 outline-none focus:border-emerald-100"
               />
             </div>
             <button
               type="button"
               onClick={() => void loadAdminData()}
               disabled={!canLoad || loading}
-              className="rounded-xl border border-cyan-100/38 bg-cyan-200/16 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+              className="rounded-xl border border-emerald-100/38 bg-emerald-200/14 px-4 py-3 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-200/24 disabled:opacity-60"
             >
               {loading ? "Loading..." : connected ? "Refresh" : "Connect"}
             </button>
@@ -270,17 +272,17 @@ export default function AdminPage() {
                 setSuccess("");
                 window.localStorage.removeItem("hirescore_admin_key");
               }}
-              className="rounded-xl border border-cyan-100/24 bg-transparent px-4 py-3 text-sm font-semibold text-cyan-50/85 transition hover:bg-cyan-100/10"
+              className="rounded-xl border border-rose-100/24 bg-transparent px-4 py-3 text-sm font-semibold text-rose-100/90 transition hover:bg-rose-100/10"
             >
               Reset
             </button>
           </div>
-          {error && <p className="mt-3 text-sm text-amber-100">{error}</p>}
-          {success && <p className="mt-3 text-sm text-emerald-100">{success}</p>}
+          {error && <p className="mt-3 rounded-xl border border-rose-100/32 bg-rose-100/10 px-3 py-2 text-sm text-rose-100">{error}</p>}
+          {success && <p className="mt-3 rounded-xl border border-emerald-100/32 bg-emerald-100/10 px-3 py-2 text-sm text-emerald-100">{success}</p>}
         </div>
 
         {analytics && (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             {[
               { label: "Total Users", value: analytics.users_total },
               { label: "Signups", value: analytics.signups_total },
@@ -290,20 +292,21 @@ export default function AdminPage() {
               { label: "Avg Rating", value: analytics.feedback_avg_rating },
               { label: "Payments", value: analytics.payments_total },
               { label: "Revenue (INR)", value: analytics.revenue_inr_total },
+              { label: "Gateway", value: (analytics.payment_gateway || "none").toUpperCase() },
             ].map((item) => (
               <article key={item.label} className={cardClass}>
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">{item.label}</p>
-                <p className="mt-2 text-2xl font-semibold text-cyan-50">{item.value}</p>
+                <p className="text-xs uppercase tracking-[0.12em] text-emerald-100/72">{item.label}</p>
+                <p className="mt-2 text-2xl font-semibold text-emerald-50">{item.value}</p>
               </article>
             ))}
           </div>
         )}
 
-        <section className="neon-panel rounded-[2rem] p-5 sm:p-6">
+        <section className="rounded-[2rem] border border-emerald-200/18 bg-[#0f1722]/94 p-5 sm:p-6">
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">Users</p>
-              <h2 className="mt-1 text-2xl font-semibold text-cyan-50">Edit Email, Password, Credits</h2>
+              <p className="text-xs uppercase tracking-[0.14em] text-emerald-100/70">User Control</p>
+              <h2 className="mt-1 text-2xl font-semibold text-emerald-50">Edit Identity, Password, Credits</h2>
             </div>
             <div className="ml-auto flex gap-2">
               <input
@@ -317,7 +320,7 @@ export default function AdminPage() {
                 type="button"
                 onClick={() => void loadAdminData()}
                 disabled={!connected || loading}
-                className="rounded-xl border border-cyan-100/28 bg-cyan-100/12 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/20 disabled:opacity-60"
+                className="rounded-xl border border-emerald-100/30 bg-emerald-100/12 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-100/20 disabled:opacity-60"
               >
                 Search
               </button>
@@ -329,13 +332,13 @@ export default function AdminPage() {
               const row = getRowEditor(user.id);
               const busy = Boolean(rowBusy[user.id]);
               return (
-                <article key={user.id} className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4">
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-cyan-50">
+                <article key={user.id} className="rounded-2xl border border-emerald-100/16 bg-emerald-100/5 p-4">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-emerald-50">
                     <span className="font-semibold">#{user.id}</span>
                     <span>{user.email}</span>
-                    <span className="rounded-full border border-cyan-100/24 bg-cyan-100/8 px-2 py-0.5 text-xs">Credits: {user.credits}</span>
-                    <span className="rounded-full border border-cyan-100/24 bg-cyan-100/8 px-2 py-0.5 text-xs">Analyses: {user.analyze_count}</span>
-                    <span className="rounded-full border border-cyan-100/24 bg-cyan-100/8 px-2 py-0.5 text-xs">
+                    <span className="rounded-full border border-emerald-100/24 bg-emerald-100/8 px-2 py-0.5 text-xs">Credits: {user.credits}</span>
+                    <span className="rounded-full border border-emerald-100/24 bg-emerald-100/8 px-2 py-0.5 text-xs">Analyses: {user.analyze_count}</span>
+                    <span className="rounded-full border border-emerald-100/24 bg-emerald-100/8 px-2 py-0.5 text-xs">
                       Feedback: {user.feedback_submitted ? "Submitted" : user.feedback_required ? "Required" : "Pending"}
                     </span>
                   </div>
@@ -383,7 +386,7 @@ export default function AdminPage() {
                       type="button"
                       onClick={() => void runUserUpdate(user.id)}
                       disabled={busy}
-                      className="rounded-xl border border-cyan-100/30 bg-cyan-100/14 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/22 disabled:opacity-60"
+                      className="rounded-xl border border-emerald-100/30 bg-emerald-100/14 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-100/22 disabled:opacity-60"
                     >
                       Update User
                     </button>
@@ -391,7 +394,7 @@ export default function AdminPage() {
                       type="button"
                       onClick={() => void runCreditAdjust(user.id)}
                       disabled={busy}
-                      className="rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+                      className="rounded-xl border border-amber-100/34 bg-amber-100/16 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/24 disabled:opacity-60"
                     >
                       Adjust Credits
                     </button>
@@ -399,56 +402,56 @@ export default function AdminPage() {
                 </article>
               );
             })}
-            {!users.length && <p className="text-sm text-cyan-50/72">No users found yet.</p>}
+            {!users.length && <p className="text-sm text-emerald-50/72">No users found yet.</p>}
           </div>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
-          <article className="neon-panel rounded-[1.6rem] p-5">
-            <h3 className="text-lg font-semibold text-cyan-50">Recent Feedback</h3>
+          <article className="rounded-[1.6rem] border border-emerald-100/18 bg-[#0f1722]/94 p-5">
+            <h3 className="text-lg font-semibold text-emerald-50">Recent Feedback</h3>
             <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
               {feedbackRows.map((item) => (
-                <div key={item.id} className="rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3 text-xs text-cyan-50/82">
-                  <p className="font-semibold text-cyan-50">
+                <div key={item.id} className="rounded-xl border border-emerald-100/16 bg-emerald-100/6 p-3 text-xs text-emerald-50/82">
+                  <p className="font-semibold text-emerald-50">
                     {item.email || `User ${item.user_id}`} • {item.rating}/5
                   </p>
-                  <p className="mt-1 text-cyan-50/74">{item.comment}</p>
-                  <p className="mt-1 text-cyan-50/62">{item.created_at}</p>
+                  <p className="mt-1 text-emerald-50/74">{item.comment}</p>
+                  <p className="mt-1 text-emerald-50/62">{item.created_at}</p>
                 </div>
               ))}
-              {!feedbackRows.length && <p className="text-sm text-cyan-50/70">No feedback entries yet.</p>}
+              {!feedbackRows.length && <p className="text-sm text-emerald-50/70">No feedback entries yet.</p>}
             </div>
           </article>
 
-          <article className="neon-panel rounded-[1.6rem] p-5">
-            <h3 className="text-lg font-semibold text-cyan-50">Recent Events</h3>
+          <article className="rounded-[1.6rem] border border-emerald-100/18 bg-[#0f1722]/94 p-5">
+            <h3 className="text-lg font-semibold text-emerald-50">Recent Events</h3>
             <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
               {events.map((item) => (
-                <div key={item.id} className="rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3 text-xs text-cyan-50/82">
-                  <p className="font-semibold text-cyan-50">
+                <div key={item.id} className="rounded-xl border border-emerald-100/16 bg-emerald-100/6 p-3 text-xs text-emerald-50/82">
+                  <p className="font-semibold text-emerald-50">
                     {item.event_type} / {item.event_name}
                   </p>
-                  <p className="mt-1 text-cyan-50/70">{item.email || "anonymous"} • {item.created_at}</p>
+                  <p className="mt-1 text-emerald-50/70">{item.email || "anonymous"} • {item.created_at}</p>
                 </div>
               ))}
-              {!events.length && <p className="text-sm text-cyan-50/70">No events yet.</p>}
+              {!events.length && <p className="text-sm text-emerald-50/70">No events yet.</p>}
             </div>
           </article>
         </section>
 
-        <section className="neon-panel rounded-[1.6rem] p-5">
-          <h3 className="text-lg font-semibold text-cyan-50">Recent Credit Transactions</h3>
+        <section className="rounded-[1.6rem] border border-emerald-100/18 bg-[#0f1722]/94 p-5">
+          <h3 className="text-lg font-semibold text-emerald-50">Recent Credit Transactions</h3>
           <div className="mt-3 max-h-[26rem] space-y-2 overflow-y-auto pr-1">
             {transactions.map((item) => (
-              <div key={item.id} className="rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3 text-xs text-cyan-50/82">
-                <p className="font-semibold text-cyan-50">
+              <div key={item.id} className="rounded-xl border border-emerald-100/16 bg-emerald-100/6 p-3 text-xs text-emerald-50/82">
+                <p className="font-semibold text-emerald-50">
                   {item.action} • {item.delta > 0 ? "+" : ""}
                   {item.delta} • balance {item.balance_after}
                 </p>
-                <p className="mt-1 text-cyan-50/70">{item.email || `user-${item.user_id}`} • {item.created_at}</p>
+                <p className="mt-1 text-emerald-50/70">{item.email || `user-${item.user_id}`} • {item.created_at}</p>
               </div>
             ))}
-            {!transactions.length && <p className="text-sm text-cyan-50/70">No transactions yet.</p>}
+            {!transactions.length && <p className="text-sm text-emerald-50/70">No transactions yet.</p>}
           </div>
         </section>
       </section>

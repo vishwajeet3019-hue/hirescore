@@ -363,9 +363,13 @@ export default function PricingPage() {
     if (!loaded || !window.Razorpay) {
       throw new Error("Unable to initialize Razorpay checkout.");
     }
+    const RazorpayCheckout = window.Razorpay;
+    if (!RazorpayCheckout) {
+      throw new Error("Unable to initialize Razorpay checkout.");
+    }
 
     await new Promise<void>((resolve, reject) => {
-      const rz = new window.Razorpay({
+      const rz = new RazorpayCheckout({
         key: keyId,
         amount: Math.floor(amountPaise),
         currency,
