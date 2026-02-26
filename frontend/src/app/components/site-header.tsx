@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 type NavLink = {
   href: string;
@@ -17,9 +18,9 @@ const navLinks: NavLink[] = [
   { href: "/pricing", label: "Pricing" },
 ];
 
-const isLinkActive = (pathname: string, link: NavLink) => {
+const isLinkActive = (pathname: string, hash: string, link: NavLink) => {
   if (link.isSection) {
-    return pathname === "/";
+    return pathname === "/" && hash === "#workflow";
   }
   if (link.href === "/") {
     return pathname === "/";
@@ -29,6 +30,14 @@ const isLinkActive = (pathname: string, link: NavLink) => {
 
 export default function SiteHeader() {
   const pathname = usePathname() || "/";
+  const [hash, setHash] = useState("");
+
+  useEffect(() => {
+    const syncHash = () => setHash(window.location.hash || "");
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 border-b border-cyan-100/12 bg-[#030c1b]/78 backdrop-blur-2xl">
@@ -52,7 +61,7 @@ export default function SiteHeader() {
 
         <nav className="hidden items-center gap-4 text-sm font-medium text-cyan-50/78 md:flex">
           {navLinks.map((link) => {
-            const active = isLinkActive(pathname, link);
+            const active = isLinkActive(pathname, hash, link);
             return (
               <Link
                 key={link.href}
@@ -81,7 +90,7 @@ export default function SiteHeader() {
       <div className="border-t border-cyan-100/8 px-3 py-2 md:hidden">
         <nav className="mx-auto flex w-full max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-cyan-50/80">
           {navLinks.map((link) => {
-            const active = isLinkActive(pathname, link);
+            const active = isLinkActive(pathname, hash, link);
             return (
               <Link
                 key={link.href}
