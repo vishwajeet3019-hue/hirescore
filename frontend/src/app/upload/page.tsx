@@ -1108,14 +1108,14 @@ export default function UploadPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-cyan-50/86">Applications Planned</label>
+                    <label className="mb-2 block text-sm font-medium text-cyan-50/86">Job Applications Planned Per Week</label>
                     <input
                       type="number"
                       min="1"
                       max="2500"
                       value={applicationsCount}
                       onChange={(event) => setApplicationsCount(event.target.value)}
-                      placeholder="60"
+                      placeholder="30"
                       className={fieldClass}
                     />
                   </div>
