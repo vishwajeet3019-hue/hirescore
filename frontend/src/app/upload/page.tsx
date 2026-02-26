@@ -1325,7 +1325,7 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[220] overflow-y-auto bg-[#020915]/88 px-3 py-3 backdrop-blur-xl sm:px-6 sm:py-5"
+            className="fixed inset-0 z-[220] overflow-y-auto bg-[#020915]/88 px-3 pb-3 pt-3 backdrop-blur-xl sm:px-6 sm:pb-5 sm:pt-5"
             onClick={() => setShowResultModal(false)}
           >
             <button
@@ -1339,7 +1339,7 @@ export default function UploadPage() {
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="mx-auto my-1 flex min-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:my-2 sm:max-h-[calc(100vh-2.5rem)] sm:min-h-0"
+              className="mx-auto my-0 flex h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:my-0 sm:h-[calc(100dvh-2.5rem)]"
             >
               <div className="sticky top-0 z-20 flex justify-end border-b border-cyan-100/14 bg-[#041427]/96 px-4 py-3 sm:px-6">
                 <button

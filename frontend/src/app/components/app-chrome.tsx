@@ -12,14 +12,14 @@ export default function AppChrome({ children }: AppChromeProps) {
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
 
   if (isAdminRoute) {
-    return <main className="relative z-10">{children}</main>;
+    return <main className="relative">{children}</main>;
   }
 
   return (
     <>
       <SiteHeader />
 
-      <main className="relative z-10">{children}</main>
+      <main className="relative">{children}</main>
 
       <footer className="mt-20 border-t border-cyan-50/10 px-4 py-10 sm:mt-24 sm:px-6 sm:py-12">
         <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-3">

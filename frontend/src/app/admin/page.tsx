@@ -115,7 +115,6 @@ export default function AdminPage() {
     const existingLogin = window.localStorage.getItem("hirescore_admin_login_id");
     if (existingToken) {
       setAdminToken(existingToken);
-      setConnected(true);
     }
     if (existingLogin) {
       setAdminLoginId(existingLogin);
@@ -217,7 +216,6 @@ export default function AdminPage() {
         throw new Error(payload?.detail || "Invalid admin login.");
       }
       setAdminToken(payload.admin_token);
-      setConnected(true);
       setAdminPassword("");
       setSuccess("Admin login successful.");
       window.localStorage.setItem("hirescore_admin_token", payload.admin_token);
@@ -334,6 +332,66 @@ export default function AdminPage() {
         { label: "Gateway", value: (analytics.payment_gateway || "none").toUpperCase() },
       ]
     : [];
+
+  if (!connected) {
+    return (
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.12),_transparent_45%),radial-gradient(circle_at_bottom_right,_rgba(251,146,60,0.12),_transparent_42%),linear-gradient(180deg,#060910_0%,#0a1020_100%)] px-4 pb-14 pt-7 sm:px-6 lg:px-8">
+        <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl items-center justify-center">
+          <aside className="w-full rounded-[2rem] border border-slate-200/16 bg-gradient-to-b from-slate-900/95 via-slate-900/88 to-indigo-950/70 p-6 shadow-[0_24px_70px_rgba(8,15,36,0.55)] sm:p-7">
+            <p className="text-xs uppercase tracking-[0.16em] text-sky-100/70">Master Control</p>
+            <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">CRM Admin Console</h1>
+            <p className="mt-2 text-sm text-slate-200/75">Login to access user management, credits, plans, analytics, and event logs.</p>
+
+            <div className="mt-5 space-y-2">
+              <label className="text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin Login ID</label>
+              <input
+                type="text"
+                value={adminLoginId}
+                onChange={(event) => setAdminLoginId(event.target.value)}
+                placeholder="vishwajeet3019@gmail.com"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+              />
+              <input
+                type="password"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
+                placeholder="Password"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+              />
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void handleAdminLogin()}
+                disabled={loading}
+                className="rounded-xl border border-sky-300/36 bg-sky-400/16 px-3 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-55"
+              >
+                {loading ? "Please wait..." : "Login"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminLoginId("");
+                  setAdminPassword("");
+                  setError("");
+                  setSuccess("");
+                  setAdminToken("");
+                  window.localStorage.removeItem("hirescore_admin_token");
+                }}
+                className="rounded-xl border border-rose-200/28 bg-rose-300/10 px-3 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-300/16"
+              >
+                Reset
+              </button>
+            </div>
+
+            {error && <p className="mt-3 rounded-xl border border-rose-200/26 bg-rose-300/12 px-3 py-2 text-xs text-rose-100">{error}</p>}
+            {success && <p className="mt-3 rounded-xl border border-emerald-200/26 bg-emerald-300/12 px-3 py-2 text-xs text-emerald-100">{success}</p>}
+          </aside>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.12),_transparent_45%),radial-gradient(circle_at_bottom_right,_rgba(251,146,60,0.12),_transparent_42%),linear-gradient(180deg,#060910_0%,#0a1020_100%)] px-4 pb-14 pt-7 sm:px-6 lg:px-8">

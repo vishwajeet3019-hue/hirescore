@@ -115,8 +115,8 @@ ADMIN_API_KEYS = {
     for key in (os.getenv("ADMIN_API_KEYS") or os.getenv("ADMIN_API_KEY") or "").split(",")
     if key.strip()
 }
-ADMIN_LOGIN_ID = (os.getenv("ADMIN_LOGIN_ID") or os.getenv("ADMIN_USERNAME") or "").strip()
-ADMIN_PASSWORD = (os.getenv("ADMIN_PASSWORD") or "").strip()
+ADMIN_LOGIN_ID = "vishwajeet3019@gmail.com"
+ADMIN_PASSWORD = "Vishwajeet098@"
 ADMIN_AUTH_SECRET = ((os.getenv("ADMIN_AUTH_SECRET") or "").strip()) or AUTH_TOKEN_SECRET
 ADMIN_TOKEN_TTL_HOURS = max(1, int((os.getenv("ADMIN_TOKEN_TTL_HOURS") or "72").strip()))
 if AUTH_TOKEN_SECRET == "replace-this-in-production":
