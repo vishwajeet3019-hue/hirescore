@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
+  }
+}
+
 type CreditWallet = {
   credits: number;
   welcome_credits: number;
@@ -39,8 +45,26 @@ type PaymentPackage = {
 };
 
 type PaymentPackagesPayload = {
+  payment_gateway?: string;
+  payment_enabled?: boolean;
   stripe_enabled: boolean;
+  razorpay_enabled?: boolean;
+  razorpay_key_id?: string;
   packages: PaymentPackage[];
+};
+
+type CheckoutPayload = {
+  provider?: "stripe" | "razorpay";
+  checkout_url?: string;
+  session_id?: string;
+  order_id?: string;
+  razorpay_key_id?: string;
+  currency?: string;
+  amount_paise?: number;
+  package_id?: string;
+  package_label?: string;
+  credits?: number;
+  prefill_email?: string;
 };
 
 type ApiErrorDetail = {
@@ -101,7 +125,11 @@ export default function PricingPage() {
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [packagesError, setPackagesError] = useState("");
   const [paymentPackages, setPaymentPackages] = useState<PaymentPackage[]>([]);
+  const [paymentGateway, setPaymentGateway] = useState("none");
+  const [paymentEnabled, setPaymentEnabled] = useState(false);
   const [stripeEnabled, setStripeEnabled] = useState(false);
+  const [razorpayEnabled, setRazorpayEnabled] = useState(false);
+  const [razorpayKeyId, setRazorpayKeyId] = useState("");
   const [checkoutLoadingId, setCheckoutLoadingId] = useState<string | null>(null);
 
   const authHeader = useMemo(
@@ -208,7 +236,11 @@ export default function PricingPage() {
           throw new Error(payload?.detail || `Request failed (${response.status})`);
         }
         const payload = (await response.json()) as PaymentPackagesPayload;
+        setPaymentGateway((payload.payment_gateway || "none").toLowerCase());
+        setPaymentEnabled(Boolean(payload.payment_enabled));
         setStripeEnabled(Boolean(payload.stripe_enabled));
+        setRazorpayEnabled(Boolean(payload.razorpay_enabled));
+        setRazorpayKeyId((payload.razorpay_key_id || "").trim());
         setPaymentPackages(payload.packages || []);
       } catch (error) {
         setPackagesError(error instanceof Error ? error.message : "Unable to load payment packages.");
@@ -298,6 +330,86 @@ export default function PricingPage() {
     }
   };
 
+  const ensureRazorpayScript = async () => {
+    if (typeof window === "undefined") return false;
+    if (window.Razorpay) return true;
+    await new Promise<void>((resolve, reject) => {
+      const existing = document.querySelector<HTMLScriptElement>("script[data-razorpay-checkout='true']");
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Unable to load Razorpay SDK.")), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.dataset.razorpayCheckout = "true";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Unable to load Razorpay SDK."));
+      document.body.appendChild(script);
+    });
+    return Boolean(window.Razorpay);
+  };
+
+  const openRazorpayCheckout = async (payload: CheckoutPayload) => {
+    const orderId = payload.order_id?.trim();
+    const keyId = (payload.razorpay_key_id || razorpayKeyId || "").trim();
+    const amountPaise = Number(payload.amount_paise || 0);
+    const currency = (payload.currency || "INR").trim();
+    if (!orderId || !keyId || !Number.isFinite(amountPaise) || amountPaise <= 0) {
+      throw new Error("Invalid Razorpay checkout payload.");
+    }
+    const loaded = await ensureRazorpayScript();
+    if (!loaded || !window.Razorpay) {
+      throw new Error("Unable to initialize Razorpay checkout.");
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const rz = new window.Razorpay({
+        key: keyId,
+        amount: Math.floor(amountPaise),
+        currency,
+        name: "HireScore",
+        description: `${payload.package_label || "Credit Pack"} (${payload.credits || 0} credits)`,
+        order_id: orderId,
+        prefill: {
+          email: payload.prefill_email || authUserEmail || authEmail.trim(),
+        },
+        theme: {
+          color: "#67e8f9",
+        },
+        handler: async (response: Record<string, unknown>) => {
+          try {
+            const verifyResponse = await fetch(apiUrl("/payments/razorpay/verify"), {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...authHeader,
+              },
+              body: JSON.stringify({
+                order_id: String(response.razorpay_order_id || orderId),
+                razorpay_payment_id: String(response.razorpay_payment_id || ""),
+                razorpay_signature: String(response.razorpay_signature || ""),
+                auth_token: authToken,
+              }),
+            });
+            if (!verifyResponse.ok) throw new Error(await parseApiError(verifyResponse));
+            const verifyPayload = (await verifyResponse.json()) as { wallet?: CreditWallet; message?: string };
+            if (verifyPayload.wallet) setWallet(verifyPayload.wallet);
+            setAuthInfo(verifyPayload.message || "Payment successful. Credits added.");
+            resolve();
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error("Unable to verify payment."));
+          }
+        },
+        modal: {
+          ondismiss: () => reject(new Error("Payment cancelled.")),
+        },
+      });
+      rz.open();
+    });
+  };
+
   const handleCheckout = async (packageId: string) => {
     if (!authToken || !authHeader) {
       setAuthError("Login required before purchasing credits.");
@@ -319,11 +431,16 @@ export default function PricingPage() {
         }),
       });
       if (!response.ok) throw new Error(await parseApiError(response));
-      const payload = (await response.json()) as { checkout_url?: string };
-      if (!payload.checkout_url) throw new Error("Payment link was not returned.");
-      window.location.href = payload.checkout_url;
+      const payload = (await response.json()) as CheckoutPayload;
+      if (payload.provider === "razorpay") {
+        await openRazorpayCheckout(payload);
+      } else {
+        if (!payload.checkout_url) throw new Error("Payment link was not returned.");
+        window.location.href = payload.checkout_url;
+      }
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to start payment.");
+      const message = error instanceof Error ? error.message : "Unable to start payment.";
+      if (message !== "Payment cancelled.") setAuthError(message);
     } finally {
       setCheckoutLoadingId(null);
     }
@@ -519,14 +636,20 @@ export default function PricingPage() {
 
         <article className="neon-panel rounded-3xl p-5 sm:p-6">
           <p className="text-xs uppercase tracking-[0.15em] text-cyan-100/70">Payments</p>
-          <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Stripe Credit Packs</h3>
+          <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Credit Packs</h3>
           <p className="mt-2 text-sm text-cyan-50/72">
             Choose a pack and complete checkout. Credits are added automatically after payment confirmation.
           </p>
+          <p className="mt-2 text-xs text-cyan-100/72">
+            Active gateway:{" "}
+            <span className="font-semibold uppercase text-cyan-50">{paymentGateway}</span>
+            {paymentGateway === "razorpay" && razorpayEnabled ? " (UPI/cards/netbanking)" : ""}
+            {paymentGateway === "stripe" && stripeEnabled ? " (card checkout)" : ""}
+          </p>
           {packagesError && <p className="mt-3 text-xs text-amber-100">{packagesError}</p>}
-          {!packagesLoading && !stripeEnabled && (
+          {!packagesLoading && !paymentEnabled && (
             <p className="mt-3 text-xs text-amber-100">
-              Stripe is not enabled yet. Add Stripe env vars on backend to activate live payments.
+              Payment gateway is not enabled yet. Configure Razorpay or Stripe env vars on backend.
             </p>
           )}
           <div className="mt-4 space-y-2">
@@ -540,7 +663,7 @@ export default function PricingPage() {
                   <p className="text-sm font-semibold text-cyan-100">₹{item.amount_inr}</p>
                   <button
                     type="button"
-                    disabled={!stripeEnabled || checkoutLoadingId === item.id}
+                    disabled={!paymentEnabled || checkoutLoadingId === item.id}
                     onClick={() => void handleCheckout(item.id)}
                     className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
                   >

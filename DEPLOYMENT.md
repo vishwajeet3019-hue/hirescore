@@ -33,6 +33,10 @@ This repo includes `render.yaml` for the backend service.
 - `STRIPE_WEBHOOK_SECRET=...`
 - `PAYMENT_SUCCESS_URL=https://hirescore.in/pricing?payment=success`
 - `PAYMENT_CANCEL_URL=https://hirescore.in/pricing?payment=cancelled`
+6a. Optional payments (Razorpay, recommended for India):
+- `PAYMENT_GATEWAY=razorpay` (or `auto`)
+- `RAZORPAY_KEY_ID=rzp_live_...`
+- `RAZORPAY_KEY_SECRET=...`
 7. Email OTP + welcome emails:
 - `EMAIL_OTP_REQUIRED=true`
 - `OTP_SIGNING_SECRET=<random-secret>`

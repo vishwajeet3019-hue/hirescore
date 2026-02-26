@@ -129,6 +129,24 @@ STRIPE_WEBHOOK_SECRET = (os.getenv("STRIPE_WEBHOOK_SECRET") or "").strip()
 STRIPE_ENABLED = bool(stripe and STRIPE_SECRET_KEY)
 if STRIPE_ENABLED and stripe is not None:
     stripe.api_key = STRIPE_SECRET_KEY
+RAZORPAY_KEY_ID = (os.getenv("RAZORPAY_KEY_ID") or "").strip()
+RAZORPAY_KEY_SECRET = (os.getenv("RAZORPAY_KEY_SECRET") or "").strip()
+RAZORPAY_ENABLED = bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
+PAYMENT_GATEWAY = (os.getenv("PAYMENT_GATEWAY") or "auto").strip().lower()
+if PAYMENT_GATEWAY == "razorpay" and RAZORPAY_ENABLED:
+    PAYMENT_GATEWAY_ACTIVE = "razorpay"
+elif PAYMENT_GATEWAY == "stripe" and STRIPE_ENABLED:
+    PAYMENT_GATEWAY_ACTIVE = "stripe"
+elif PAYMENT_GATEWAY == "stripe" and not STRIPE_ENABLED and RAZORPAY_ENABLED:
+    PAYMENT_GATEWAY_ACTIVE = "razorpay"
+elif PAYMENT_GATEWAY == "razorpay" and not RAZORPAY_ENABLED and STRIPE_ENABLED:
+    PAYMENT_GATEWAY_ACTIVE = "stripe"
+elif RAZORPAY_ENABLED:
+    PAYMENT_GATEWAY_ACTIVE = "razorpay"
+elif STRIPE_ENABLED:
+    PAYMENT_GATEWAY_ACTIVE = "stripe"
+else:
+    PAYMENT_GATEWAY_ACTIVE = "none"
 
 EMAIL_SMTP_HOST = (os.getenv("EMAIL_SMTP_HOST") or "").strip()
 EMAIL_SMTP_PORT = int((os.getenv("EMAIL_SMTP_PORT") or "587").strip())
@@ -191,6 +209,13 @@ class FeedbackSubmitRequest(BaseModel):
 
 class PaymentCheckoutRequest(BaseModel):
     package_id: str
+    auth_token: str | None = None
+
+
+class RazorpayVerifyRequest(BaseModel):
+    order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
     auth_token: str | None = None
 
 
@@ -1253,6 +1278,27 @@ def init_auth_db() -> None:
             )
             cursor.execute(
                 """
+                CREATE TABLE IF NOT EXISTS payment_orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    gateway TEXT NOT NULL,
+                    order_id TEXT NOT NULL UNIQUE,
+                    user_id INTEGER NOT NULL,
+                    package_id TEXT NOT NULL,
+                    credits INTEGER NOT NULL,
+                    amount_inr INTEGER NOT NULL,
+                    currency TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payment_id TEXT,
+                    signature TEXT,
+                    created_at TEXT NOT NULL,
+                    verified_at TEXT,
+                    meta_json TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS signup_otps (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     email TEXT NOT NULL,
@@ -1288,6 +1334,8 @@ def init_auth_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedback_user_time ON user_feedback (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_user_time ON analytics_events (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_time ON analytics_events (created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_orders_user_time ON payment_orders (user_id, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_orders_status ON payment_orders (status, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_signup_otps_email_time ON signup_otps (email, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reset_otps_email_time ON password_reset_otps (email, created_at)")
             connection.commit()
@@ -3926,7 +3974,11 @@ def submit_feedback(data: FeedbackSubmitRequest, request: Request) -> dict[str, 
 @app.get("/payments/packages")
 def payment_packages() -> dict[str, Any]:
     return {
+        "payment_gateway": PAYMENT_GATEWAY_ACTIVE,
+        "payment_enabled": PAYMENT_GATEWAY_ACTIVE in {"stripe", "razorpay"},
         "stripe_enabled": STRIPE_ENABLED,
+        "razorpay_enabled": RAZORPAY_ENABLED,
+        "razorpay_key_id": RAZORPAY_KEY_ID if RAZORPAY_ENABLED else "",
         "packages": [
             {
                 "id": package_id,
@@ -3939,9 +3991,61 @@ def payment_packages() -> dict[str, Any]:
     }
 
 
+def razorpay_request(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if not RAZORPAY_ENABLED:
+        raise HTTPException(status_code=503, detail="Razorpay is not configured yet.")
+    url = f"https://api.razorpay.com/v1/{path.lstrip('/')}"
+    basic_token = base64.b64encode(f"{RAZORPAY_KEY_ID}:{RAZORPAY_KEY_SECRET}".encode("utf-8")).decode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Basic {basic_token}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+            parsed = json.loads(raw or "{}")
+            if int(resp.getcode() or 0) >= 400:
+                raise HTTPException(status_code=502, detail="Razorpay rejected checkout request.")
+            return parsed
+    except urllib.error.HTTPError as exc:
+        details = ""
+        try:
+            details = exc.read().decode("utf-8", errors="ignore")
+        except Exception:
+            details = ""
+        logger.exception("Razorpay HTTP error on %s", path)
+        if details:
+            raise HTTPException(status_code=502, detail=f"Razorpay error: {details[:220]}") from exc
+        raise HTTPException(status_code=502, detail="Unable to initialize Razorpay checkout.") from exc
+    except urllib.error.URLError as exc:
+        logger.exception("Razorpay network error on %s", path)
+        raise HTTPException(status_code=502, detail="Unable to reach Razorpay right now. Please retry.") from exc
+    except TimeoutError as exc:
+        logger.exception("Razorpay timeout on %s", path)
+        raise HTTPException(status_code=502, detail="Razorpay timed out. Please retry.") from exc
+    except Exception as exc:
+        logger.exception("Unexpected Razorpay error on %s", path)
+        raise HTTPException(status_code=502, detail="Unable to initialize Razorpay checkout.") from exc
+
+
+def razorpay_signature_valid(order_id: str, payment_id: str, signature: str) -> bool:
+    payload = f"{safe_text(order_id)}|{safe_text(payment_id)}"
+    expected = hmac.new(
+        RAZORPAY_KEY_SECRET.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, safe_text(signature))
+
+
 @app.post("/payments/checkout")
 def create_payment_checkout(data: PaymentCheckoutRequest, request: Request) -> dict[str, Any]:
-    if not STRIPE_ENABLED or stripe is None:
+    if PAYMENT_GATEWAY_ACTIVE not in {"stripe", "razorpay"}:
         raise HTTPException(status_code=503, detail="Payment gateway is not configured yet.")
 
     package_id = safe_text(data.package_id)
@@ -3950,43 +4054,259 @@ def create_payment_checkout(data: PaymentCheckoutRequest, request: Request) -> d
         raise HTTPException(status_code=400, detail="Invalid payment package.")
 
     user = require_authenticated_user(request, data.auth_token)
-    try:
-        session = stripe.checkout.Session.create(
-            mode="payment",
-            payment_method_types=["card"],
-            line_items=[
-                {
-                    "price_data": {
-                        "currency": "inr",
-                        "unit_amount": int(package["amount_inr"]) * 100,
-                        "product_data": {
-                            "name": f"HireScore Credits - {package['label']}",
-                            "description": f"{package['credits']} credit pack",
+    if PAYMENT_GATEWAY_ACTIVE == "stripe":
+        if not STRIPE_ENABLED or stripe is None:
+            raise HTTPException(status_code=503, detail="Stripe is not configured yet.")
+        try:
+            session = stripe.checkout.Session.create(
+                mode="payment",
+                payment_method_types=["card"],
+                line_items=[
+                    {
+                        "price_data": {
+                            "currency": "inr",
+                            "unit_amount": int(package["amount_inr"]) * 100,
+                            "product_data": {
+                                "name": f"HireScore Credits - {package['label']}",
+                                "description": f"{package['credits']} credit pack",
+                            },
                         },
-                    },
-                    "quantity": 1,
-                }
-            ],
-            success_url=PAYMENT_SUCCESS_URL,
-            cancel_url=PAYMENT_CANCEL_URL,
-            metadata={
+                        "quantity": 1,
+                    }
+                ],
+                success_url=PAYMENT_SUCCESS_URL,
+                cancel_url=PAYMENT_CANCEL_URL,
+                metadata={
+                    "user_id": str(int(user["id"])),
+                    "package_id": package_id,
+                    "credits": str(int(package["credits"])),
+                },
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Unable to initialize payment session right now.") from exc
+
+        log_analytics_event(
+            "payment",
+            "checkout_created",
+            user_id=int(user["id"]),
+            meta={"gateway": "stripe", "package_id": package_id, "stripe_session_id": safe_text(session.get("id"))},
+        )
+        return {
+            "provider": "stripe",
+            "checkout_url": safe_text(session.get("url")),
+            "session_id": safe_text(session.get("id")),
+        }
+
+    amount_inr = int(package["amount_inr"])
+    credits = int(package["credits"])
+    amount_paise = amount_inr * 100
+    receipt = f"hs_{int(user['id'])}_{int(time.time())}_{secrets.token_hex(2)}"[:40]
+    order = razorpay_request(
+        "/orders",
+        {
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": receipt,
+            "notes": {
                 "user_id": str(int(user["id"])),
                 "package_id": package_id,
-                "credits": str(int(package["credits"])),
+                "credits": str(credits),
             },
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail="Unable to initialize payment session right now.") from exc
+        },
+    )
+    order_id = safe_text(order.get("id"))
+    if not order_id:
+        raise HTTPException(status_code=502, detail="Razorpay did not return order id.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO payment_orders
+                (gateway, order_id, user_id, package_id, credits, amount_inr, currency, status, created_at, meta_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "razorpay",
+                    order_id,
+                    int(user["id"]),
+                    package_id,
+                    credits,
+                    amount_inr,
+                    "INR",
+                    "created",
+                    now_utc_iso(),
+                    json.dumps(
+                        {"receipt": receipt, "gateway_order_status": safe_text(order.get("status"))},
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
 
     log_analytics_event(
         "payment",
         "checkout_created",
         user_id=int(user["id"]),
-        meta={"package_id": package_id, "stripe_session_id": safe_text(session.get("id"))},
+        meta={"gateway": "razorpay", "package_id": package_id, "order_id": order_id},
     )
     return {
-        "checkout_url": safe_text(session.get("url")),
-        "session_id": safe_text(session.get("id")),
+        "provider": "razorpay",
+        "order_id": order_id,
+        "razorpay_key_id": RAZORPAY_KEY_ID,
+        "currency": "INR",
+        "amount_paise": amount_paise,
+        "package_id": package_id,
+        "package_label": safe_text(package["label"]),
+        "credits": credits,
+        "prefill_email": safe_text(user["email"]),
+    }
+
+
+@app.post("/payments/razorpay/verify")
+def verify_razorpay_payment(data: RazorpayVerifyRequest, request: Request) -> dict[str, Any]:
+    if not RAZORPAY_ENABLED:
+        raise HTTPException(status_code=503, detail="Razorpay is not configured yet.")
+    user = require_authenticated_user(request, data.auth_token)
+    order_id = safe_text(data.order_id)
+    payment_id = safe_text(data.razorpay_payment_id)
+    signature = safe_text(data.razorpay_signature)
+    if not order_id or not payment_id or not signature:
+        raise HTTPException(status_code=400, detail="Missing Razorpay verification fields.")
+    if not razorpay_signature_valid(order_id, payment_id, signature):
+        raise HTTPException(status_code=400, detail="Invalid Razorpay signature.")
+
+    checkout_logged_meta: dict[str, Any] | None = None
+    refreshed_user = None
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            order_row = cursor.execute(
+                """
+                SELECT id, user_id, package_id, credits, amount_inr, status, payment_id
+                FROM payment_orders
+                WHERE gateway = 'razorpay' AND order_id = ?
+                LIMIT 1
+                """,
+                (order_id,),
+            ).fetchone()
+            if not order_row:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="Payment order not found.")
+            if int(order_row["user_id"]) != int(user["id"]):
+                connection.rollback()
+                raise HTTPException(status_code=403, detail="This payment order belongs to a different user.")
+
+            status = safe_text(order_row["status"]).lower()
+            existing_payment_id = safe_text(order_row["payment_id"])
+            if status == "paid":
+                if existing_payment_id and existing_payment_id != payment_id:
+                    connection.rollback()
+                    raise HTTPException(status_code=409, detail="Payment already verified with a different payment id.")
+                refreshed_user = cursor.execute("SELECT id, email, credits FROM users WHERE id = ?", (int(user["id"]),)).fetchone()
+                connection.rollback()
+            else:
+                duplicate = cursor.execute(
+                    """
+                    SELECT order_id FROM payment_orders
+                    WHERE gateway = 'razorpay' AND payment_id = ? AND status = 'paid' AND order_id != ?
+                    LIMIT 1
+                    """,
+                    (payment_id, order_id),
+                ).fetchone()
+                if duplicate:
+                    connection.rollback()
+                    raise HTTPException(status_code=409, detail="This payment id is already consumed.")
+                user_row = cursor.execute(
+                    "SELECT id, email, credits FROM users WHERE id = ?",
+                    (int(user["id"]),),
+                ).fetchone()
+                if not user_row:
+                    connection.rollback()
+                    raise HTTPException(status_code=404, detail="User account was not found.")
+
+                credits_delta = int(order_row["credits"])
+                updated_credits = int(user_row["credits"]) + credits_delta
+                package_id = safe_text(order_row["package_id"])
+                amount_inr = int(order_row["amount_inr"])
+                cursor.execute("UPDATE users SET credits = ? WHERE id = ?", (updated_credits, int(user["id"])))
+                cursor.execute(
+                    """
+                    INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        int(user["id"]),
+                        "razorpay_credit_pack",
+                        credits_delta,
+                        updated_credits,
+                        json.dumps(
+                            {
+                                "gateway": "razorpay",
+                                "order_id": order_id,
+                                "payment_id": payment_id,
+                                "package_id": package_id,
+                                "amount_inr": amount_inr,
+                            },
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                        now_utc_iso(),
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE payment_orders
+                    SET status = 'paid', payment_id = ?, signature = ?, verified_at = ?, meta_json = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        payment_id,
+                        signature,
+                        now_utc_iso(),
+                        json.dumps(
+                            {"verified_by": "frontend_callback"},
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                        int(order_row["id"]),
+                    ),
+                )
+                refreshed_user = cursor.execute("SELECT id, email, credits FROM users WHERE id = ?", (int(user["id"]),)).fetchone()
+                connection.commit()
+                checkout_logged_meta = {
+                    "gateway": "razorpay",
+                    "package_id": package_id,
+                    "credits": credits_delta,
+                    "order_id": order_id,
+                    "payment_id": payment_id,
+                    "credits_after": updated_credits,
+                }
+        finally:
+            connection.close()
+
+    if checkout_logged_meta:
+        log_analytics_event(
+            "payment",
+            "checkout_completed",
+            user_id=int(user["id"]),
+            meta=checkout_logged_meta,
+        )
+    if not refreshed_user:
+        refreshed_user = fetch_user_by_id(int(user["id"]))
+    if not refreshed_user:
+        raise HTTPException(status_code=500, detail="Unable to refresh wallet after payment.")
+    return {
+        "message": "Payment verified and credits added.",
+        "wallet": wallet_payload(int(refreshed_user["credits"])),
+        "provider": "razorpay",
     }
 
 
@@ -4103,15 +4423,17 @@ def admin_analytics(request: Request) -> dict[str, Any]:
         )
         analyses_total = int(connection.execute("SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze'").fetchone()["count"])
         payments_total = int(
-            connection.execute("SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'stripe_credit_pack'").fetchone()["count"]
+            connection.execute(
+                "SELECT COUNT(*) AS count FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
+            ).fetchone()["count"]
         )
         credits_sold = int(
             connection.execute(
-                "SELECT COALESCE(SUM(delta), 0) AS sold FROM credit_transactions WHERE action = 'stripe_credit_pack'"
+                "SELECT COALESCE(SUM(delta), 0) AS sold FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
             ).fetchone()["sold"]
         )
         payment_rows = connection.execute(
-            "SELECT meta_json FROM credit_transactions WHERE action = 'stripe_credit_pack'"
+            "SELECT meta_json FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
         ).fetchall()
         revenue_inr = 0
         for row in payment_rows:
@@ -4134,6 +4456,8 @@ def admin_analytics(request: Request) -> dict[str, Any]:
         "credits_sold_total": credits_sold,
         "revenue_inr_total": revenue_inr,
         "stripe_enabled": STRIPE_ENABLED,
+        "razorpay_enabled": RAZORPAY_ENABLED,
+        "payment_gateway": PAYMENT_GATEWAY_ACTIVE,
     }
 
 

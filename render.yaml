@@ -21,6 +21,12 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      - key: PAYMENT_GATEWAY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
       - key: EMAIL_OTP_REQUIRED
         value: "true"
       - key: OTP_SIGNING_SECRET
@@ -80,6 +86,12 @@ services:
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PAYMENT_GATEWAY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
         sync: false
       - key: EMAIL_OTP_REQUIRED
         value: "true"
