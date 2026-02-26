@@ -1,19 +1,33 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 import re
+import html
+import sqlite3
+import threading
 import time
+import hashlib
+import hmac
+import base64
+import secrets
 from datetime import datetime, timezone
 from typing import Any
 
 import PyPDF2
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from openai import OpenAI
 from pydantic import BaseModel
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.pdfgen import canvas
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
 
 load_dotenv()
 
@@ -71,6 +85,39 @@ if client is None:
     logger.warning("OPENAI_API_KEY is missing. AI generation requests will not reach OpenAI.")
 
 
+AUTH_DB_PATH = (os.getenv("AUTH_DB_PATH") or os.path.join(os.path.dirname(__file__), "hirescore_auth.db")).strip()
+AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
+AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
+ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", True)
+if AUTH_TOKEN_SECRET == "replace-this-in-production":
+    logger.warning("AUTH_TOKEN_SECRET is using a default value. Set AUTH_TOKEN_SECRET in production.")
+
+WELCOME_FREE_CREDITS = 5
+CREDIT_COSTS: dict[str, int] = {
+    "analyze": 5,
+    "ai_resume_generation": 15,
+    "template_pdf_download": 20,
+}
+
+AUTH_DB_LOCK = threading.Lock()
+
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TopupRequest(BaseModel):
+    credits: int
+
+
+class ResumeExportRequest(BaseModel):
+    name: str | None = None
+    template: str | None = None
+    resume_text: str
+    auth_token: str | None = None
+
+
 class ResumeRequest(BaseModel):
     industry: str
     role: str
@@ -81,6 +128,7 @@ class ResumeRequest(BaseModel):
     salary_boost_toggles: list[str] | None = None
     plan: str | None = None
     session_id: str | None = None
+    auth_token: str | None = None
 
 
 class ResumeBuildRequest(BaseModel):
@@ -94,6 +142,7 @@ class ResumeBuildRequest(BaseModel):
     education: str
     plan: str | None = None
     session_id: str | None = None
+    auth_token: str | None = None
 
 
 class ResumeImproviseRequest(BaseModel):
@@ -104,6 +153,7 @@ class ResumeImproviseRequest(BaseModel):
     focus_areas: list[str] | None = None
     plan: str | None = None
     session_id: str | None = None
+    auth_token: str | None = None
 
 
 PLAN_RULES: dict[str, dict[str, Any]] = {
@@ -1031,6 +1081,281 @@ def safe_text(value: str | None) -> str:
     return (value or "").strip()
 
 
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def b64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("utf-8").rstrip("=")
+
+
+def b64url_decode(value: str) -> bytes:
+    padding = "=" * ((4 - (len(value) % 4)) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def auth_db_connection() -> sqlite3.Connection:
+    connection = sqlite3.connect(AUTH_DB_PATH, timeout=15, check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def init_auth_db() -> None:
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    password_salt TEXT NOT NULL,
+                    credits INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS credit_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    action TEXT NOT NULL,
+                    delta INTEGER NOT NULL,
+                    balance_after INTEGER NOT NULL,
+                    meta_json TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_user_time ON credit_transactions (user_id, created_at)")
+            connection.commit()
+        finally:
+            connection.close()
+
+
+def normalize_email(value: str) -> str:
+    return safe_text(value).lower()
+
+
+def hash_password(password: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 190_000).hex()
+
+
+def create_auth_token(user_id: int, email: str) -> str:
+    payload = {
+        "uid": user_id,
+        "email": normalize_email(email),
+        "exp": int(time.time()) + max(1, AUTH_TOKEN_TTL_HOURS) * 3600,
+    }
+    payload_b64 = b64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    signature = hmac.new(AUTH_TOKEN_SECRET.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
+    return f"{payload_b64}.{b64url_encode(signature)}"
+
+
+def decode_auth_token(token: str) -> dict[str, Any]:
+    parts = token.split(".")
+    if len(parts) != 2:
+        raise HTTPException(status_code=401, detail="Invalid authentication token.")
+
+    payload_b64, signature_b64 = parts
+    expected = hmac.new(AUTH_TOKEN_SECRET.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
+    provided = b64url_decode(signature_b64)
+
+    if not hmac.compare_digest(expected, provided):
+        raise HTTPException(status_code=401, detail="Invalid authentication token signature.")
+
+    try:
+        payload = json.loads(b64url_decode(payload_b64).decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid authentication token payload.") from exc
+
+    if int(payload.get("exp", 0)) < int(time.time()):
+        raise HTTPException(status_code=401, detail="Authentication token expired. Please log in again.")
+
+    return payload
+
+
+def fetch_user_by_email(email: str) -> sqlite3.Row | None:
+    normalized = normalize_email(email)
+    connection = auth_db_connection()
+    try:
+        cursor = connection.execute(
+            "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE email = ?",
+            (normalized,),
+        )
+        return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def fetch_user_by_id(user_id: int) -> sqlite3.Row | None:
+    connection = auth_db_connection()
+    try:
+        cursor = connection.execute(
+            "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
+            (user_id,),
+        )
+        return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def wallet_payload(credits: int) -> dict[str, Any]:
+    return {
+        "credits": max(0, int(credits)),
+        "welcome_credits": WELCOME_FREE_CREDITS,
+        "pricing": {
+            "analyze": CREDIT_COSTS["analyze"],
+            "ai_resume_generation": CREDIT_COSTS["ai_resume_generation"],
+            "template_pdf_download": CREDIT_COSTS["template_pdf_download"],
+        },
+        "free_analysis_included": 1,
+    }
+
+
+def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "user": {
+            "id": int(user_row["id"]),
+            "email": str(user_row["email"]),
+            "created_at": str(user_row["created_at"]),
+        },
+        "wallet": wallet_payload(int(user_row["credits"])),
+    }
+    if token:
+        payload["auth_token"] = token
+    return payload
+
+
+def extract_bearer_token(request: Request) -> str | None:
+    auth_header = safe_text(request.headers.get("authorization"))
+    if auth_header.lower().startswith("bearer "):
+        return safe_text(auth_header[7:])
+    return None
+
+
+def require_authenticated_user(request: Request, explicit_auth_token: str | None = None) -> sqlite3.Row:
+    token = safe_text(explicit_auth_token) or safe_text(extract_bearer_token(request))
+    if not token:
+        raise HTTPException(status_code=401, detail="Login required. Please sign in to continue.")
+
+    payload = decode_auth_token(token)
+    user = fetch_user_by_id(int(payload.get("uid", 0)))
+    if not user:
+        raise HTTPException(status_code=401, detail="Account not found. Please log in again.")
+
+    if normalize_email(str(user["email"])) != normalize_email(str(payload.get("email", ""))):
+        raise HTTPException(status_code=401, detail="Invalid authentication token.")
+
+    return user
+
+
+def credit_error(user_row: sqlite3.Row, message: str, status_code: int = 402) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "message": message,
+            "wallet": wallet_payload(int(user_row["credits"])),
+        },
+    )
+
+
+def debit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            user = cursor.execute(
+                "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=401, detail="Account not found.")
+
+            current_credits = int(user["credits"])
+            if current_credits < amount:
+                connection.rollback()
+                raise credit_error(
+                    user,
+                    f"Insufficient credits for {action.replace('_', ' ')}. You need {amount} credits.",
+                    402,
+                )
+
+            updated_credits = current_credits - amount
+            cursor.execute("UPDATE users SET credits = ? WHERE id = ?", (updated_credits, user_id))
+            cursor.execute(
+                """
+                INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    action,
+                    -amount,
+                    updated_credits,
+                    json.dumps(meta or {}, separators=(",", ":"), sort_keys=True),
+                    now_utc_iso(),
+                ),
+            )
+            transaction_id = int(cursor.lastrowid)
+            connection.commit()
+            return {
+                "transaction_id": transaction_id,
+                "wallet": wallet_payload(updated_credits),
+            }
+        finally:
+            connection.close()
+
+
+def credit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            user = cursor.execute(
+                "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=401, detail="Account not found.")
+
+            updated_credits = int(user["credits"]) + int(amount)
+            cursor.execute("UPDATE users SET credits = ? WHERE id = ?", (updated_credits, user_id))
+            cursor.execute(
+                """
+                INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    action,
+                    amount,
+                    updated_credits,
+                    json.dumps(meta or {}, separators=(",", ":"), sort_keys=True),
+                    now_utc_iso(),
+                ),
+            )
+            transaction_id = int(cursor.lastrowid)
+            connection.commit()
+            return {
+                "transaction_id": transaction_id,
+                "wallet": wallet_payload(updated_credits),
+            }
+        finally:
+            connection.close()
+
+
+init_auth_db()
+
+
 def normalize_experience_years(value: float | None) -> float | None:
     if value is None:
         return None
@@ -1573,6 +1898,7 @@ def build_shortlist_prediction(score: int) -> str:
 
 
 def build_improvement_areas(
+    role_track: str,
     critical_missing: list[str],
     core_missing: list[str],
     adjacent_missing: list[str],
@@ -1587,8 +1913,8 @@ def build_improvement_areas(
                 "category": "Must-Have Skill Gaps",
                 "details": [
                     f"Missing must-have skills: {', '.join(critical_missing[:4])}.",
-                    "These are high-weight filters in shortlist decisions for your target role.",
-                    "Prioritize learning and demonstrating these skills first in projects or experience bullets.",
+                    "Recruiters and screeners treat these as hard filters in the first short scan.",
+                    "Show proof in your most recent work bullets so trust builds immediately.",
                 ],
             }
         )
@@ -1599,8 +1925,8 @@ def build_improvement_areas(
                 "category": "Critical Skill Gaps",
                 "details": [
                     f"Missing core skills: {', '.join(core_missing[:5])}.",
-                    "Core gaps reduce shortlist probability even when overall profile looks decent.",
-                    "Prioritize these skills first and add proof through projects or work outcomes.",
+                    "Right now your profile reads as partially ready, not fully role-ready.",
+                    "Prioritize these first and add evidence through outcomes, ownership, and context.",
                 ],
             }
         )
@@ -1610,9 +1936,9 @@ def build_improvement_areas(
             {
                 "category": "Role Consistency",
                 "details": [
-                    "Your listed skills look scattered across multiple role directions.",
-                    "Low role consistency reduces screening confidence and ranking quality.",
-                    "Refocus profile around one target role and remove unrelated low-signal skills.",
+                    "Your skills currently signal multiple directions, which creates hiring doubt.",
+                    "When the signal is mixed, recruiters move to clearer profiles first.",
+                    "Refocus around one role narrative and cut unrelated low-signal keywords.",
                 ],
             }
         )
@@ -1623,8 +1949,8 @@ def build_improvement_areas(
                 "category": "Competitive Edge",
                 "details": [
                     f"Missing differentiators: {', '.join(adjacent_missing[:5])}.",
-                    "Adjacent stack knowledge helps stand out against equally qualified candidates.",
-                    "Add at least 2 adjacent tools and demonstrate practical usage.",
+                    "These differentiators create the 'strong fit' feeling during shortlisting.",
+                    "Add at least 2 and show practical usage in real work scenarios.",
                 ],
             }
         )
@@ -1635,8 +1961,8 @@ def build_improvement_areas(
                 "category": "Skill Coverage",
                 "details": [
                     "Current skill list is short for strong confidence scoring.",
-                    "Short skill coverage lowers matching confidence for most roles.",
-                    "Expand with role-aligned tools, frameworks, and domain technologies.",
+                    "Short coverage makes the profile look early-stage even when potential is high.",
+                    "Expand with role-aligned tools, workflows, and domain language.",
                 ],
             }
         )
@@ -1647,8 +1973,8 @@ def build_improvement_areas(
                 "category": "Skill Clarity",
                 "details": [
                     "Repeated or overlapping skills reduce profile clarity.",
-                    "Duplicated terms reduce keyword signal quality in screening.",
-                    "Use canonical names and remove duplicates for better clarity.",
+                    "Duplicate wording weakens trust in profile quality.",
+                    "Use clean canonical names and remove repeats for sharper credibility.",
                 ],
             }
         )
@@ -1658,9 +1984,21 @@ def build_improvement_areas(
             {
                 "category": "Positioning",
                 "details": [
-                    "Your profile is in a good range but can be sharpened further.",
-                    "Focused positioning improves conversion from applications to interviews.",
-                    "Tailor top skills to each job post and prioritize evidence-backed claims.",
+                    "Your profile is already strong and close to interview-ready.",
+                    "Small positioning changes can materially increase callback conversion.",
+                    "Tailor top skills per job and keep claims specific and evidence-backed.",
+                ],
+            }
+        )
+
+    if role_track == "sales":
+        areas.append(
+            {
+                "category": "Sales Trust Signals",
+                "details": [
+                    "Hiring managers in sales trust numbers before claims.",
+                    "Lead with pipeline, win-rate, conversion, or revenue outcomes in top bullets.",
+                    "Show one objection-handling or deal-recovery example to signal real field strength.",
                 ],
             }
         )
@@ -1963,7 +2301,35 @@ def build_positioning_strategy(role_track: str, role: str, industry: str, skills
     }
 
 
+def learning_roadmap_phase2(role_track: str) -> tuple[list[str], str]:
+    if role_track == "sales":
+        return (
+            ["Deal story bank", "Objection-handling scripts", "Conversion proof by stage"],
+            "Convert experience into quantified deal evidence and interview-ready stories.",
+        )
+    if role_track in {"marketing", "content"}:
+        return (
+            ["Campaign outcome snapshots", "Channel-specific ROI evidence", "Audience-growth proof"],
+            "Turn campaign work into measurable outcome narratives recruiters trust quickly.",
+        )
+    if role_track in {"operations", "hr", "support"}:
+        return (
+            ["Process improvement evidence", "Service quality metrics", "Stakeholder ownership examples"],
+            "Show operational ownership and measurable business impact clearly.",
+        )
+    if role_track in {"business", "consulting", "finance"}:
+        return (
+            ["Case-style problem breakdowns", "Decision-impact summaries", "Business metrics evidence"],
+            "Demonstrate structured thinking and measurable decision impact.",
+        )
+    return (
+        ["Portfolio artifact", "Role-specific execution evidence"],
+        "Convert skills into outcome-based bullets with strong proof of execution.",
+    )
+
+
 def build_learning_roadmap(
+    role_track: str,
     role: str,
     critical_missing: list[str],
     core_missing: list[str],
@@ -1971,6 +2337,7 @@ def build_learning_roadmap(
 ) -> dict[str, Any]:
     foundation_focus = dedupe_preserve_order([*critical_missing[:3], *core_missing[:2]])[:4]
     execution_focus = dedupe_preserve_order([*core_missing[2:6], *adjacent_missing[:3]])[:4]
+    phase2_default_focus, phase2_default_outcome = learning_roadmap_phase2(role_track)
 
     phases: list[dict[str, Any]] = [
         {
@@ -1982,8 +2349,8 @@ def build_learning_roadmap(
         {
             "phase": "Phase 2: Proof Of Work",
             "duration_weeks": "3-6",
-            "focus": execution_focus or ["Portfolio artifact", "Role-specific execution evidence"],
-            "outcome": "Convert skills into project bullets with measurable outcomes.",
+            "focus": execution_focus or phase2_default_focus,
+            "outcome": phase2_default_outcome,
         },
         {
             "phase": "Phase 3: Conversion Sprint",
@@ -2026,13 +2393,22 @@ def build_callback_estimator(
 
     expected_callbacks = round((application_volume * base_rate) / 100.0, 1)
     improved_callbacks = round((application_volume * improved_rate) / 100.0, 1)
+    analysis_window_weeks = 4
+    applications_per_week = round(application_volume / analysis_window_weeks, 1)
+    expected_callbacks_per_week = round(expected_callbacks / analysis_window_weeks, 2)
+    improved_callbacks_per_week = round(improved_callbacks / analysis_window_weeks, 2)
 
     return {
         "applications_input": application_volume,
+        "analysis_window_weeks": analysis_window_weeks,
+        "applications_per_week": applications_per_week,
         "estimated_callback_rate": round(base_rate, 1),
         "expected_callbacks": expected_callbacks,
+        "expected_callbacks_per_week": expected_callbacks_per_week,
         "improved_callback_rate": round(improved_rate, 1),
         "expected_callbacks_after_improvements": improved_callbacks,
+        "expected_callbacks_after_improvements_per_week": improved_callbacks_per_week,
+        "weekly_note": "Weekly callback view is modeled on a 4-week application cycle.",
         "improvement_actions": [action["action"] for action in ninety_plus_plan.get("actions", [])[:3]],
     }
 
@@ -2098,12 +2474,13 @@ def analyze_profile(
         prediction_reasoning.append("Adaptive open-role profiling is active for this title.")
 
     quick_wins = [
-        "Close must-have skill gaps first, then add adjacent differentiators.",
-        "Match your skill keywords to current job descriptions for your target role.",
-        "Keep role-focused skills and remove low-signal unrelated terms.",
+        "In the first 10 seconds, recruiters look for role-fit proof, not potential. Lead with strongest role-aligned outcomes.",
+        "Use exact language from target JDs so your profile feels instantly relevant to the hiring team.",
+        "Keep one clear role narrative and remove side-signals that create doubt.",
     ]
 
     areas_to_improve = build_improvement_areas(
+        role_track,
         critical_missing,
         core_missing,
         adjacent_missing,
@@ -2124,7 +2501,7 @@ def analyze_profile(
         selected_toggle_ids=salary_boost_toggles,
     )
     positioning_strategy = build_positioning_strategy(role_track, role, industry, skills_list)
-    learning_roadmap = build_learning_roadmap(role, critical_missing, core_missing, adjacent_missing)
+    learning_roadmap = build_learning_roadmap(role_track, role, critical_missing, core_missing, adjacent_missing)
     hiring_market_insights = build_hiring_timing_insights(role_track, industry)
     callback_forecast = build_callback_estimator(overall_score, confidence, applications_used, ninety_plus_strategy)
 
@@ -2332,56 +2709,506 @@ Instructions:
     }
 
 
+def sanitize_download_name(value: str | None) -> str:
+    base = re.sub(r"[^a-zA-Z0-9._-]+", "-", safe_text(value) or "optimized-resume").strip("-").lower()
+    return base or "optimized-resume"
+
+
+RESUME_SECTION_ALIASES = {
+    "summary": "summary",
+    "professional summary": "summary",
+    "profile summary": "summary",
+    "about": "summary",
+    "skills": "skills",
+    "key skills": "skills",
+    "technical skills": "skills",
+    "core skills": "skills",
+    "work experience": "experience",
+    "experience": "experience",
+    "professional experience": "experience",
+    "employment": "experience",
+    "projects": "projects",
+    "project experience": "projects",
+    "education": "education",
+    "certifications": "certifications",
+    "certification": "certifications",
+    "achievements": "achievements",
+    "awards": "achievements",
+    "languages": "languages",
+    "interests": "interests",
+}
+
+RESUME_SECTION_ORDER = [
+    "summary",
+    "skills",
+    "experience",
+    "projects",
+    "education",
+    "certifications",
+    "achievements",
+    "languages",
+    "interests",
+]
+
+RESUME_SECTION_TITLES = {
+    "summary": "Professional Summary",
+    "skills": "Key Skills",
+    "experience": "Work Experience",
+    "projects": "Projects",
+    "education": "Education",
+    "certifications": "Certifications",
+    "achievements": "Achievements",
+    "languages": "Languages",
+    "interests": "Interests",
+}
+
+
+def normalize_resume_section_key(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", " ", safe_text(value).lower()).strip()
+    if normalized in RESUME_SECTION_ALIASES:
+        return RESUME_SECTION_ALIASES[normalized]
+    return normalized or "summary"
+
+
+def looks_like_resume_heading(line: str) -> bool:
+    raw = safe_text(line).strip(":")
+    if not raw:
+        return False
+    normalized = normalize_resume_section_key(raw)
+    if normalized in RESUME_SECTION_ALIASES.values():
+        return True
+    compact = re.sub(r"[^a-zA-Z0-9 ]+", "", raw).strip()
+    if not compact:
+        return False
+    if compact.isupper() and 2 <= len(compact) <= 45 and len(compact.split()) <= 5:
+        return True
+    return False
+
+
+def looks_like_contact_line(line: str) -> bool:
+    text = safe_text(line).lower()
+    return bool(
+        "@" in text
+        or "linkedin" in text
+        or "github" in text
+        or "|" in text
+        or re.search(r"\+?\d[\d\-\s]{7,}", text)
+    )
+
+
+def strip_bullet_prefix(line: str) -> str:
+    return re.sub(r"^(?:[-*•]|(?:\d+[\).\s]))\s*", "", safe_text(line))
+
+
+def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
+    raw_lines = [safe_text(line) for line in resume_text.replace("\r", "\n").split("\n")]
+    lines = [line for line in raw_lines if line]
+
+    guessed_name = safe_text(name)
+    if not guessed_name and lines:
+        first_line = lines[0]
+        if len(first_line) <= 64 and not looks_like_resume_heading(first_line):
+            guessed_name = first_line
+
+    sections: dict[str, list[str]] = {}
+    contact_lines: list[str] = []
+    current = "summary"
+    seen_heading = False
+
+    for index, line in enumerate(lines):
+        if index == 0 and guessed_name and line.lower() == guessed_name.lower():
+            continue
+
+        if looks_like_resume_heading(line):
+            current = normalize_resume_section_key(line.strip(":"))
+            sections.setdefault(current, [])
+            seen_heading = True
+            continue
+
+        if (not seen_heading) and len(contact_lines) < 2 and looks_like_contact_line(line):
+            contact_lines.append(line)
+            continue
+
+        sections.setdefault(current, []).append(line)
+
+    cleaned_sections: dict[str, list[str]] = {}
+    for key, value in sections.items():
+        lines_clean = [safe_text(line) for line in value if safe_text(line)]
+        if lines_clean:
+            cleaned_sections[key] = lines_clean
+
+    if not cleaned_sections:
+        cleaned_sections = {"summary": [safe_text(resume_text) or "Resume content not provided."]}
+
+    ordered_keys = [key for key in RESUME_SECTION_ORDER if key in cleaned_sections]
+    ordered_keys += [key for key in cleaned_sections if key not in ordered_keys]
+
+    headline = ""
+    summary_lines = cleaned_sections.get("summary", [])
+    if summary_lines:
+        first_summary = summary_lines[0]
+        if len(first_summary) <= 115:
+            headline = first_summary
+
+    return {
+        "name": guessed_name or "Candidate",
+        "contact_line": " | ".join(contact_lines),
+        "headline": headline,
+        "sections": [(key, cleaned_sections[key]) for key in ordered_keys],
+    }
+
+
+def template_palette(template_key: str) -> dict[str, colors.Color]:
+    palettes = {
+        "minimal": {
+            "name": colors.HexColor("#0E2438"),
+            "accent": colors.HexColor("#2F6FA5"),
+            "text": colors.HexColor("#1B2733"),
+            "muted": colors.HexColor("#567086"),
+            "line": colors.HexColor("#D4DFE8"),
+        },
+        "executive": {
+            "name": colors.HexColor("#1B1F2A"),
+            "accent": colors.HexColor("#3A4C66"),
+            "text": colors.HexColor("#222A32"),
+            "muted": colors.HexColor("#5F6B78"),
+            "line": colors.HexColor("#C7CED6"),
+        },
+        "quantum": {
+            "name": colors.HexColor("#082847"),
+            "accent": colors.HexColor("#1485B0"),
+            "text": colors.HexColor("#123046"),
+            "muted": colors.HexColor("#4D6A7F"),
+            "line": colors.HexColor("#C5DCE9"),
+        },
+    }
+    return palettes.get(template_key, palettes["minimal"])
+
+
+def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
+    sample = getSampleStyleSheet()
+    palette = template_palette(template_key)
+
+    header_size = 24 if template_key == "executive" else 25
+    section_bg = palette["accent"] if template_key == "executive" else None
+    section_text = colors.white if template_key == "executive" else palette["accent"]
+
+    styles = {
+        "name": ParagraphStyle(
+            "name",
+            parent=sample["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=header_size,
+            leading=header_size + 2,
+            textColor=palette["name"],
+            spaceAfter=3,
+        ),
+        "contact": ParagraphStyle(
+            "contact",
+            parent=sample["Normal"],
+            fontName="Helvetica",
+            fontSize=9.6,
+            leading=12,
+            textColor=palette["muted"],
+            spaceAfter=2,
+        ),
+        "headline": ParagraphStyle(
+            "headline",
+            parent=sample["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=10.8,
+            leading=14,
+            textColor=palette["text"],
+            spaceAfter=6,
+        ),
+        "section": ParagraphStyle(
+            "section",
+            parent=sample["Heading3"],
+            fontName="Helvetica-Bold",
+            fontSize=11.4,
+            leading=14,
+            textColor=section_text,
+            backColor=section_bg,
+            borderPadding=4 if template_key == "executive" else 0,
+            spaceBefore=7,
+            spaceAfter=4,
+        ),
+        "body": ParagraphStyle(
+            "body",
+            parent=sample["Normal"],
+            fontName="Helvetica",
+            fontSize=10.2,
+            leading=13.8,
+            textColor=palette["text"],
+            spaceAfter=3,
+        ),
+        "bullet": ParagraphStyle(
+            "bullet",
+            parent=sample["Normal"],
+            fontName="Helvetica",
+            fontSize=10.2,
+            leading=13.8,
+            textColor=palette["text"],
+            leftIndent=14,
+            spaceAfter=2,
+        ),
+    }
+    return styles
+
+
+def draw_template_page_decoration(pdf: canvas.Canvas, doc: SimpleDocTemplate, template_key: str) -> None:
+    palette = template_palette(template_key)
+    width, height = A4
+    pdf.saveState()
+
+    if template_key == "executive":
+        pdf.setFillColor(palette["accent"])
+        pdf.rect(doc.leftMargin, height - 26, doc.width, 3.2, fill=1, stroke=0)
+    elif template_key == "quantum":
+        pdf.setFillColor(palette["accent"])
+        pdf.rect(doc.leftMargin, height - 26, doc.width, 2.4, fill=1, stroke=0)
+        pdf.setFillColor(colors.Color(0.08, 0.52, 0.68, alpha=0.18))
+        pdf.circle(width - doc.rightMargin - 28, height - 18, 10, fill=1, stroke=0)
+    else:
+        pdf.setStrokeColor(palette["line"])
+        pdf.setLineWidth(0.9)
+        pdf.line(doc.leftMargin, height - 24, doc.leftMargin + doc.width, height - 24)
+
+    pdf.setStrokeColor(palette["line"])
+    pdf.setLineWidth(0.6)
+    pdf.line(doc.leftMargin, 24, doc.leftMargin + doc.width, 24)
+    pdf.setFont("Helvetica", 8)
+    pdf.setFillColor(palette["muted"])
+    pdf.drawRightString(doc.leftMargin + doc.width, 12, f"Page {pdf.getPageNumber()}")
+    pdf.restoreState()
+
+
+def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes:
+    template_key = safe_text(template).lower() or "minimal"
+    if template_key not in {"minimal", "executive", "quantum"}:
+        template_key = "minimal"
+
+    parsed = parse_resume_sections(name, resume_text)
+    styles = build_pdf_styles(template_key)
+    palette = template_palette(template_key)
+
+    output = io.BytesIO()
+    left_margin = 44 if template_key != "executive" else 42
+    right_margin = left_margin
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=A4,
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=42,
+        bottomMargin=34,
+        title=f"{parsed['name']} Resume",
+        author="HireScore AI",
+    )
+
+    story: list[Any] = []
+    story.append(Paragraph(html.escape(parsed["name"]), styles["name"]))
+    if parsed["contact_line"]:
+        story.append(Paragraph(html.escape(parsed["contact_line"]), styles["contact"]))
+    if parsed["headline"]:
+        story.append(Paragraph(html.escape(parsed["headline"]), styles["headline"]))
+    story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.85, spaceBefore=2, spaceAfter=7))
+
+    for section_key, lines in parsed["sections"]:
+        section_title = RESUME_SECTION_TITLES.get(section_key, section_key.replace("_", " ").title())
+        story.append(Paragraph(html.escape(section_title), styles["section"]))
+        if template_key != "executive":
+            story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.5, spaceBefore=1, spaceAfter=4))
+
+        for line in lines:
+            content = safe_text(line)
+            if not content:
+                continue
+            if re.match(r"^(?:[-*•]|(?:\d+[\).\s]))\s*", content):
+                bullet_text = html.escape(strip_bullet_prefix(content))
+                story.append(Paragraph(bullet_text, styles["bullet"], bulletText="•"))
+            else:
+                story.append(Paragraph(html.escape(content), styles["body"]))
+
+        story.append(Spacer(1, 6))
+
+    doc.build(
+        story,
+        onFirstPage=lambda pdf, page_doc: draw_template_page_decoration(pdf, page_doc, template_key),
+        onLaterPages=lambda pdf, page_doc: draw_template_page_decoration(pdf, page_doc, template_key),
+    )
+    output.seek(0)
+    return output.getvalue()
+
+
 @app.get("/")
 def root() -> dict[str, str]:
     return {"message": "Hirescore backend running"}
 
 
 @app.get("/plan-status")
-def plan_status(plan: str = "free", session_id: str = "anonymous") -> dict[str, Any]:
-    normalized_plan = normalize_plan(plan)
-    normalized_session = normalize_session_id(session_id)
-    return {"plan_enforcement": plan_enforcement_payload(normalized_plan, normalized_session)}
+def plan_status(request: Request, auth_token: str | None = None) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    return auth_response_payload(user)
+
+
+@app.post("/auth/signup")
+def signup(data: AuthRequest) -> dict[str, Any]:
+    email = normalize_email(data.email)
+    password = safe_text(data.password)
+
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    if fetch_user_by_email(email):
+        raise HTTPException(status_code=409, detail="Account already exists. Please log in.")
+
+    salt = secrets.token_hex(16)
+    password_hash = hash_password(password, salt)
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO users (email, password_hash, password_salt, credits, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (email, password_hash, salt, WELCOME_FREE_CREDITS, now_utc_iso()),
+                )
+                user_id = int(cursor.lastrowid)
+                cursor.execute(
+                    """
+                    INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        "welcome_credits",
+                        WELCOME_FREE_CREDITS,
+                        WELCOME_FREE_CREDITS,
+                        json.dumps({"source": "signup"}, separators=(",", ":"), sort_keys=True),
+                        now_utc_iso(),
+                    ),
+                )
+                connection.commit()
+            except sqlite3.IntegrityError as exc:
+                connection.rollback()
+                raise HTTPException(status_code=409, detail="Account already exists. Please log in.") from exc
+        finally:
+            connection.close()
+
+    user = fetch_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=500, detail="Unable to create account.")
+    return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
+
+
+@app.post("/auth/login")
+def login(data: AuthRequest) -> dict[str, Any]:
+    email = normalize_email(data.email)
+    password = safe_text(data.password)
+    user = fetch_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    expected = hash_password(password, str(user["password_salt"]))
+    if not hmac.compare_digest(expected, str(user["password_hash"])):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
+
+
+@app.get("/auth/me")
+def auth_me(request: Request, auth_token: str | None = None) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    return auth_response_payload(user)
+
+
+@app.post("/auth/topup")
+def auth_topup(data: TopupRequest, request: Request, auth_token: str | None = None) -> dict[str, Any]:
+    if not ALLOW_UNVERIFIED_TOPUP:
+        raise HTTPException(status_code=403, detail="Top-up endpoint disabled.")
+
+    credits = int(clamp_float(float(data.credits), 1.0, 5000.0))
+    user = require_authenticated_user(request, auth_token)
+    topup = credit_credits(int(user["id"]), "manual_topup", credits, meta={"source": "api_topup"})
+    refreshed = fetch_user_by_id(int(user["id"]))
+    if not refreshed:
+        raise HTTPException(status_code=500, detail="Unable to refresh wallet.")
+    payload = auth_response_payload(refreshed)
+    payload["wallet"] = topup["wallet"]
+    payload["credit_transaction_id"] = topup["transaction_id"]
+    return payload
 
 
 @app.post("/analyze")
-def analyze_resume(data: ResumeRequest) -> dict[str, Any]:
-    normalized_plan = normalize_plan(data.plan)
-    normalized_session = normalize_session_id(data.session_id)
-    plan_meta = consume_quota(normalized_plan, normalized_session, "analyze")
-    skills_text = safe_text(data.skills or data.description)
-    analysis = analyze_profile(
-        data.industry,
-        data.role,
-        skills_text,
-        experience_years=data.experience_years,
-        applications_count=data.applications_count,
-        salary_boost_toggles=data.salary_boost_toggles,
+def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    debit = debit_credits(
+        int(user["id"]),
+        "analyze",
+        CREDIT_COSTS["analyze"],
+        meta={"route": "/analyze", "role": safe_text(data.role), "industry": safe_text(data.industry)},
     )
-    analysis["plan_enforcement"] = plan_meta
-    return analysis
+
+    try:
+        skills_text = safe_text(data.skills or data.description)
+        analysis = analyze_profile(
+            data.industry,
+            data.role,
+            skills_text,
+            experience_years=data.experience_years,
+            applications_count=data.applications_count,
+            salary_boost_toggles=data.salary_boost_toggles,
+        )
+        analysis["wallet"] = debit["wallet"]
+        analysis["credit_transaction_id"] = debit["transaction_id"]
+        return analysis
+    except HTTPException:
+        credit_credits(
+            int(user["id"]),
+            "refund_analyze",
+            CREDIT_COSTS["analyze"],
+            meta={"reason": "analyze_failed"},
+        )
+        raise
+    except Exception as exc:
+        credit_credits(
+            int(user["id"]),
+            "refund_analyze",
+            CREDIT_COSTS["analyze"],
+            meta={"reason": "analyze_failed_unhandled"},
+        )
+        raise HTTPException(status_code=500, detail="Unable to analyze profile right now.") from exc
 
 
 @app.post("/analyze-resume-file")
 async def analyze_resume_file(
+    request: Request,
     file: UploadFile = File(...),
     industry: str = Form("General"),
     role: str = Form("General Role"),
     experience_years: float | None = Form(None),
     applications_count: int | None = Form(None),
     salary_boost_toggles: str = Form(""),
-    plan: str = Form("free"),
-    session_id: str = Form("anonymous"),
+    auth_token: str | None = Form(None),
 ) -> dict[str, Any]:
-    normalized_plan = normalize_plan(plan)
-    normalized_session = normalize_session_id(session_id)
-    plan_meta = consume_quota(normalized_plan, normalized_session, "analyze")
+    user = require_authenticated_user(request, auth_token)
+    debit = debit_credits(
+        int(user["id"]),
+        "analyze",
+        CREDIT_COSTS["analyze"],
+        meta={"route": "/analyze-resume-file", "role": safe_text(role), "industry": safe_text(industry)},
+    )
 
     try:
         contents = await file.read()
         extracted_text = extract_resume_text_for_analysis(file.filename or "", file.content_type, contents)
         if not extracted_text:
-            rollback_quota(normalized_plan, normalized_session, "analyze")
             raise HTTPException(status_code=400, detail="No readable text found in the uploaded file.")
 
         toggle_ids = [token.strip() for token in salary_boost_toggles.split(",") if token.strip()]
@@ -2393,23 +3220,39 @@ async def analyze_resume_file(
             applications_count=applications_count,
             salary_boost_toggles=toggle_ids,
         )
-        analysis["plan_enforcement"] = plan_meta
+        analysis["wallet"] = debit["wallet"]
+        analysis["credit_transaction_id"] = debit["transaction_id"]
         analysis["source"] = "resume_upload"
         analysis["extracted_chars"] = len(extracted_text)
         return analysis
     except HTTPException:
-        rollback_quota(normalized_plan, normalized_session, "analyze")
+        credit_credits(
+            int(user["id"]),
+            "refund_analyze",
+            CREDIT_COSTS["analyze"],
+            meta={"reason": "analyze_resume_file_failed"},
+        )
         raise
-    except Exception:
-        rollback_quota(normalized_plan, normalized_session, "analyze")
-        raise HTTPException(status_code=400, detail="Unable to parse this file. Try a text-based PDF or TXT resume.")
+    except Exception as exc:
+        credit_credits(
+            int(user["id"]),
+            "refund_analyze",
+            CREDIT_COSTS["analyze"],
+            meta={"reason": "analyze_resume_file_failed_unhandled"},
+        )
+        raise HTTPException(status_code=400, detail="Unable to parse this file. Try a text-based PDF or TXT resume.") from exc
 
 
 @app.post("/suggest")
-def suggest_actions(data: ResumeRequest) -> dict[str, Any]:
-    normalized_plan = normalize_plan(data.plan)
-    normalized_session = normalize_session_id(data.session_id)
-    plan_meta = consume_quota(normalized_plan, normalized_session, "suggest")
+def suggest_actions(data: ResumeRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    debit = debit_credits(
+        int(user["id"]),
+        "analyze",
+        CREDIT_COSTS["analyze"],
+        meta={"route": "/suggest", "role": safe_text(data.role), "industry": safe_text(data.industry)},
+    )
+
     skills_text = safe_text(data.skills or data.description)
     analysis = analyze_profile(data.industry, data.role, skills_text)
 
@@ -2423,15 +3266,20 @@ def suggest_actions(data: ResumeRequest) -> dict[str, Any]:
         analysis["missing_core_skills"],
         analysis["missing_adjacent_skills"],
     )
-    payload["plan_enforcement"] = plan_meta
+    payload["wallet"] = debit["wallet"]
+    payload["credit_transaction_id"] = debit["transaction_id"]
     return payload
 
 
 @app.post("/build-resume")
-def build_resume(data: ResumeBuildRequest) -> dict[str, Any]:
-    normalized_plan = normalize_plan(data.plan)
-    normalized_session = normalize_session_id(data.session_id)
-    plan_meta = consume_quota(normalized_plan, normalized_session, "generation")
+def build_resume(data: ResumeBuildRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    debit = debit_credits(
+        int(user["id"]),
+        "ai_resume_generation",
+        CREDIT_COSTS["ai_resume_generation"],
+        meta={"route": "/build-resume", "role": safe_text(data.role), "industry": safe_text(data.industry)},
+    )
 
     seeded_skills = extract_skills_from_text(safe_text(data.skills))
     role_track, blueprint, critical_skills, _ = resolve_role_profile(data.role, data.industry, seeded_skills)
@@ -2504,9 +3352,20 @@ Return only the final resume text.
         fallback_text=fallback_build_resume(data),
     )
 
+    effective_wallet = debit["wallet"]
+    if not ai_generated and ai_error:
+        refund = credit_credits(
+            int(user["id"]),
+            "refund_ai_resume_generation",
+            CREDIT_COSTS["ai_resume_generation"],
+            meta={"reason": ai_error, "route": "/build-resume"},
+        )
+        effective_wallet = refund["wallet"]
+
     return {
         "optimized_resume": content,
-        "plan_enforcement": plan_meta,
+        "wallet": effective_wallet,
+        "credit_transaction_id": debit["transaction_id"],
         "ai_generated": ai_generated,
         "ai_warning": "AI service was unavailable for this run. Returned a structured fallback draft."
         if (not ai_generated and ai_error)
@@ -2515,53 +3374,134 @@ Return only the final resume text.
 
 
 @app.post("/improvise-resume")
-def improvise_resume(data: ResumeImproviseRequest) -> dict[str, Any]:
-    normalized_plan = normalize_plan(data.plan)
-    normalized_session = normalize_session_id(data.session_id)
-    plan_meta = consume_quota(normalized_plan, normalized_session, "generation")
+def improvise_resume(data: ResumeImproviseRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    debit = debit_credits(
+        int(user["id"]),
+        "ai_resume_generation",
+        CREDIT_COSTS["ai_resume_generation"],
+        meta={"route": "/improvise-resume", "role": safe_text(data.role), "industry": safe_text(data.industry)},
+    )
     payload = improvise_resume_text(data)
     ai_error = payload.pop("ai_error", None)
+    effective_wallet = debit["wallet"]
     if not payload.get("ai_generated") and ai_error:
+        refund = credit_credits(
+            int(user["id"]),
+            "refund_ai_resume_generation",
+            CREDIT_COSTS["ai_resume_generation"],
+            meta={"reason": ai_error, "route": "/improvise-resume"},
+        )
+        effective_wallet = refund["wallet"]
         payload["ai_warning"] = "AI service was unavailable for this run. Returned a structured fallback draft."
-    payload["plan_enforcement"] = plan_meta
+    payload["wallet"] = effective_wallet
+    payload["credit_transaction_id"] = debit["transaction_id"]
     return payload
 
 
 @app.post("/polish-resume-pdf")
 async def polish_resume_pdf(
+    request: Request,
     file: UploadFile = File(...),
-    plan: str = Form("free"),
-    session_id: str = Form("anonymous"),
     industry: str = Form("General"),
     role: str = Form("General Role"),
+    auth_token: str | None = Form(None),
 ) -> dict[str, Any]:
-    normalized_plan = normalize_plan(plan)
-    normalized_session = normalize_session_id(session_id)
-    plan_meta = consume_quota(normalized_plan, normalized_session, "pdf_polish")
-
-    contents = await file.read()
-    pdf_reader = PyPDF2.PdfReader(io.BytesIO(contents))
-
-    extracted_pages: list[str] = []
-    for page in pdf_reader.pages:
-        extracted_pages.append(page.extract_text() or "")
-
-    extracted_text = "\n".join(extracted_pages).strip()
-
-    improvise_payload = ResumeImproviseRequest(
-        industry=industry,
-        role=role,
-        resume_text=extracted_text,
-        current_skills=extracted_text,
+    user = require_authenticated_user(request, auth_token)
+    debit = debit_credits(
+        int(user["id"]),
+        "ai_resume_generation",
+        CREDIT_COSTS["ai_resume_generation"],
+        meta={"route": "/polish-resume-pdf", "role": safe_text(role), "industry": safe_text(industry)},
     )
 
-    improved = improvise_resume_text(improvise_payload)
-    ai_error = improved.get("ai_error")
-    return {
-        "optimized_resume": safe_text(improved["optimized_resume"]),
-        "plan_enforcement": plan_meta,
-        "ai_generated": improved.get("ai_generated", False),
-        "ai_warning": "AI service was unavailable for this run. Returned a structured fallback draft."
-        if (not improved.get("ai_generated") and ai_error)
-        else None,
+    try:
+        contents = await file.read()
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(contents))
+
+        extracted_pages: list[str] = []
+        for page in pdf_reader.pages:
+            extracted_pages.append(page.extract_text() or "")
+
+        extracted_text = "\n".join(extracted_pages).strip()
+        if not extracted_text:
+            raise HTTPException(status_code=400, detail="No readable text found in uploaded PDF.")
+
+        improvise_payload = ResumeImproviseRequest(
+            industry=industry,
+            role=role,
+            resume_text=extracted_text,
+            current_skills=extracted_text,
+        )
+
+        improved = improvise_resume_text(improvise_payload)
+        ai_error = improved.get("ai_error")
+        effective_wallet = debit["wallet"]
+        if not improved.get("ai_generated") and ai_error:
+            refund = credit_credits(
+                int(user["id"]),
+                "refund_ai_resume_generation",
+                CREDIT_COSTS["ai_resume_generation"],
+                meta={"reason": str(ai_error), "route": "/polish-resume-pdf"},
+            )
+            effective_wallet = refund["wallet"]
+
+        return {
+            "optimized_resume": safe_text(improved["optimized_resume"]),
+            "wallet": effective_wallet,
+            "credit_transaction_id": debit["transaction_id"],
+            "ai_generated": improved.get("ai_generated", False),
+            "ai_warning": "AI service was unavailable for this run. Returned a structured fallback draft."
+            if (not improved.get("ai_generated") and ai_error)
+            else None,
+        }
+    except HTTPException:
+        credit_credits(
+            int(user["id"]),
+            "refund_ai_resume_generation",
+            CREDIT_COSTS["ai_resume_generation"],
+            meta={"reason": "polish_failed"},
+        )
+        raise
+    except Exception as exc:
+        credit_credits(
+            int(user["id"]),
+            "refund_ai_resume_generation",
+            CREDIT_COSTS["ai_resume_generation"],
+            meta={"reason": "polish_failed_unhandled"},
+        )
+        raise HTTPException(status_code=400, detail="Unable to process this PDF file.") from exc
+
+
+@app.post("/export-resume-pdf")
+def export_resume_pdf(data: ResumeExportRequest, request: Request) -> StreamingResponse:
+    user = require_authenticated_user(request, data.auth_token)
+    resume_text = safe_text(data.resume_text)
+    if not resume_text:
+        raise HTTPException(status_code=400, detail="Resume text is required for PDF export.")
+
+    template_name = safe_text(data.template).lower() or "minimal"
+    debit = debit_credits(
+        int(user["id"]),
+        "template_pdf_download",
+        CREDIT_COSTS["template_pdf_download"],
+        meta={"route": "/export-resume-pdf", "template": template_name},
+    )
+
+    try:
+        pdf_bytes = render_resume_pdf_bytes(data.name or "Candidate", template_name, resume_text)
+    except Exception as exc:
+        credit_credits(
+            int(user["id"]),
+            "refund_template_pdf_download",
+            CREDIT_COSTS["template_pdf_download"],
+            meta={"reason": "pdf_render_failed"},
+        )
+        raise HTTPException(status_code=500, detail="Unable to generate PDF right now.") from exc
+
+    safe_name = sanitize_download_name(data.name)
+    headers = {
+        "Content-Disposition": f'attachment; filename="{safe_name}-{template_name}.pdf"',
+        "X-HireScore-Credits-Remaining": str(debit["wallet"]["credits"]),
     }
+    return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
