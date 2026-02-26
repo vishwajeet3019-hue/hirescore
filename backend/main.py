@@ -85,7 +85,7 @@ if client is None:
     logger.warning("OPENAI_API_KEY is missing. AI generation requests will not reach OpenAI.")
 
 
-AUTH_DB_PATH = (os.getenv("AUTH_DB_PATH") or os.path.join(os.path.dirname(__file__), "hirescore_auth.db")).strip()
+AUTH_DB_PATH = (os.getenv("AUTH_DB_PATH") or "/tmp/hirescore_auth.db").strip()
 AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
 AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
 ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", True)
