@@ -27,6 +27,9 @@ type AuthPayload = {
   user?: AuthUser;
   wallet?: CreditWallet;
   feedback_required?: boolean;
+  otp_required?: boolean;
+  message?: string;
+  otp_expires_minutes?: number;
 };
 
 type ResumeTemplate = {
@@ -99,6 +102,13 @@ export default function StudioPage() {
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [authInfo, setAuthInfo] = useState("");
+  const [signupOtp, setSignupOtp] = useState("");
+  const [signupOtpRequired, setSignupOtpRequired] = useState(false);
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+  const [forgotOtpRequested, setForgotOtpRequested] = useState(false);
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
 
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
@@ -116,6 +126,8 @@ export default function StudioPage() {
       setAuthToken(payload.auth_token);
       window.localStorage.setItem("hirescore_auth_token", payload.auth_token);
     }
+    if (payload?.message) setAuthInfo(payload.message);
+    if (payload?.otp_required) setSignupOtpRequired(true);
   };
 
   useEffect(() => {
@@ -183,7 +195,7 @@ export default function StudioPage() {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch(apiUrl(mode === "signup" ? "/auth/signup" : "/auth/login"), {
+      const response = await fetch(apiUrl(mode === "signup" ? "/auth/signup/request-otp" : "/auth/login"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -208,24 +220,95 @@ export default function StudioPage() {
     }
   };
 
+  const verifySignupOtp = async (email: string, otp: string) => {
+    const response = await fetch(apiUrl("/auth/signup/verify-otp"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, otp }),
+    });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    return (await response.json()) as AuthPayload;
+  };
+
+  const requestForgotPasswordOtp = async (email: string) => {
+    const response = await fetch(apiUrl("/auth/forgot-password/request-otp"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    return (await response.json()) as AuthPayload;
+  };
+
+  const resetForgottenPassword = async (email: string, otp: string, newPassword: string) => {
+    const response = await fetch(apiUrl("/auth/forgot-password/reset"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        otp,
+        new_password: newPassword,
+      }),
+    });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    return (await response.json()) as AuthPayload;
+  };
+
   const handleAuthSubmit = async () => {
     const email = authEmail.trim();
     const password = authPassword.trim();
-    if (!email || !password) {
-      setAuthError("Enter email and password.");
-      return;
-    }
-
-    setAuthLoading(true);
     setAuthError("");
+    setAuthInfo("");
+    setAuthLoading(true);
     const loadingGuard = window.setTimeout(() => {
       setAuthLoading(false);
       setAuthError((prev) => prev || "Login request timed out. Please try again.");
     }, AUTH_REQUEST_TIMEOUT_MS + 2500);
     try {
-      const payload = await submitAuthRequest(authMode, email, password);
-      applyAuthPayload(payload);
-      setAuthPassword("");
+      if (forgotPasswordMode) {
+        if (!forgotOtpRequested) {
+          if (!email) throw new Error("Enter your email first.");
+          const payload = await requestForgotPasswordOtp(email);
+          setForgotOtpRequested(true);
+          setAuthInfo(payload.message || "Reset OTP sent. Enter OTP and new password.");
+        } else {
+          if (!email || !forgotOtp.trim() || !forgotNewPassword.trim()) {
+            throw new Error("Enter email, OTP, and new password.");
+          }
+          const payload = await resetForgottenPassword(email, forgotOtp.trim(), forgotNewPassword.trim());
+          applyAuthPayload(payload);
+          setForgotPasswordMode(false);
+          setForgotOtpRequested(false);
+          setForgotOtp("");
+          setForgotNewPassword("");
+          setAuthPassword("");
+          setAuthInfo("Password reset successful. You are now logged in.");
+        }
+      } else if (authMode === "signup" && signupOtpRequired) {
+        if (!email || !signupOtp.trim()) throw new Error("Enter email and OTP.");
+        const payload = await verifySignupOtp(email, signupOtp.trim());
+        applyAuthPayload(payload);
+        setSignupOtpRequired(false);
+        setSignupOtp("");
+        setAuthPassword("");
+        setAuthInfo("Signup complete. Welcome to HireScore.");
+      } else {
+        if (!email || !password) throw new Error("Enter email and password.");
+        const payload = await submitAuthRequest(authMode, email, password);
+        if (authMode === "signup") {
+          setSignupOtpRequired(Boolean(payload.otp_required));
+          setAuthInfo(payload.message || "OTP sent to your email.");
+        } else {
+          applyAuthPayload(payload);
+          setAuthPassword("");
+        }
+      }
       setAuthError("");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to authenticate.");
@@ -241,6 +324,13 @@ export default function StudioPage() {
     setWallet(null);
     setGenerationError("");
     setTemplateError("");
+    setAuthInfo("");
+    setSignupOtpRequired(false);
+    setSignupOtp("");
+    setForgotPasswordMode(false);
+    setForgotOtpRequested(false);
+    setForgotOtp("");
+    setForgotNewPassword("");
     window.localStorage.removeItem("hirescore_auth_token");
   };
 
@@ -645,7 +735,13 @@ export default function StudioPage() {
               ) : (
                 <>
                   <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Login Required</p>
-                  <p className="mt-2 text-sm text-cyan-50/76">AI studio actions are credit-based. Sign up to start.</p>
+                  <p className="mt-2 text-sm text-cyan-50/76">
+                    {forgotPasswordMode
+                      ? "Reset password via email OTP."
+                      : signupOtpRequired
+                        ? "Enter the OTP sent to your email to complete signup."
+                        : "AI studio actions are credit-based. Sign up to start."}
+                  </p>
                   <div className="mt-3 grid gap-3">
                     <input
                       type="email"
@@ -654,14 +750,52 @@ export default function StudioPage() {
                       placeholder="Email"
                       className="w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
                     />
-                    <input
-                      type="password"
-                      value={authPassword}
-                      onChange={(event) => setAuthPassword(event.target.value)}
-                      placeholder="Password"
-                      className="w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
-                    />
+                    {forgotPasswordMode ? (
+                      forgotOtpRequested ? (
+                        <input
+                          type="text"
+                          value={forgotOtp}
+                          onChange={(event) => setForgotOtp(event.target.value)}
+                          placeholder="Reset OTP"
+                          className="w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                        />
+                      ) : (
+                        <input
+                          disabled
+                          value=""
+                          placeholder="OTP will be sent to this email"
+                          className="w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 opacity-70"
+                        />
+                      )
+                    ) : signupOtpRequired ? (
+                      <input
+                        type="text"
+                        value={signupOtp}
+                        onChange={(event) => setSignupOtp(event.target.value)}
+                        placeholder="Signup OTP"
+                        className="w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                      />
+                    ) : (
+                      <input
+                        type="password"
+                        value={authPassword}
+                        onChange={(event) => setAuthPassword(event.target.value)}
+                        placeholder="Password"
+                        className="w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                      />
+                    )}
                   </div>
+                  {forgotPasswordMode && forgotOtpRequested && (
+                    <div className="mt-3">
+                      <input
+                        type="password"
+                        value={forgotNewPassword}
+                        onChange={(event) => setForgotNewPassword(event.target.value)}
+                        placeholder="New password"
+                        className="w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                      />
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -669,16 +803,51 @@ export default function StudioPage() {
                       disabled={authLoading}
                       className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
                     >
-                      {authLoading ? "Please wait..." : authMode === "signup" ? "Create Account" : "Login"}
+                      {authLoading
+                        ? "Please wait..."
+                        : forgotPasswordMode
+                          ? forgotOtpRequested
+                            ? "Reset Password"
+                            : "Send Reset OTP"
+                          : authMode === "signup"
+                            ? signupOtpRequired
+                              ? "Verify OTP"
+                              : "Send Signup OTP"
+                            : "Login"}
                     </button>
+                    {!forgotPasswordMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode((prev) => (prev === "signup" ? "login" : "signup"));
+                          setSignupOtpRequired(false);
+                          setSignupOtp("");
+                          setAuthError("");
+                          setAuthInfo("");
+                        }}
+                        className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                      >
+                        {authMode === "signup" ? "Use Login" : "Use Signup"}
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => setAuthMode((prev) => (prev === "signup" ? "login" : "signup"))}
+                      onClick={() => {
+                        setForgotPasswordMode((prev) => !prev);
+                        setForgotOtpRequested(false);
+                        setForgotOtp("");
+                        setForgotNewPassword("");
+                        setSignupOtpRequired(false);
+                        setSignupOtp("");
+                        setAuthError("");
+                        setAuthInfo("");
+                      }}
                       className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
                     >
-                      {authMode === "signup" ? "Use Login" : "Use Signup"}
+                      {forgotPasswordMode ? "Back To Login" : "Forgot Password"}
                     </button>
                   </div>
+                  {authInfo && <p className="mt-2 text-xs text-emerald-100">{authInfo}</p>}
                   {authError && <p className="mt-2 text-xs text-amber-100">{authError}</p>}
                 </>
               )}

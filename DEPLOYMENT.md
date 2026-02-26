@@ -33,6 +33,16 @@ This repo includes `render.yaml` for the backend service.
 - `STRIPE_WEBHOOK_SECRET=...`
 - `PAYMENT_SUCCESS_URL=https://hirescore.in/pricing?payment=success`
 - `PAYMENT_CANCEL_URL=https://hirescore.in/pricing?payment=cancelled`
+7. Email OTP + welcome emails:
+- `EMAIL_OTP_REQUIRED=true`
+- `OTP_SIGNING_SECRET=<random-secret>`
+- `EMAIL_SMTP_HOST=<smtp-host>`
+- `EMAIL_SMTP_PORT=587`
+- `EMAIL_SMTP_USE_TLS=true`
+- `EMAIL_SMTP_USERNAME=<smtp-username>`
+- `EMAIL_SMTP_PASSWORD=<smtp-password>`
+- `EMAIL_SMTP_FROM=no-reply@hirescore.in`
+- `EMAIL_SMTP_FROM_NAME=HireScore`
 5. After deploy, add custom domain in Render:
 - `api.hirescore.in`
 
@@ -145,3 +155,7 @@ Add these records at your DNS provider:
 - Passwords are stored hashed; plain-text passwords are not retrievable.
 - Mandatory feedback flow:
   - after first analysis, user must submit 1-5 star feedback + comment before next analysis.
+- Signup/login security:
+  - signup now uses email OTP verification before account creation.
+  - welcome email is sent after OTP verification succeeds.
+  - forgot-password flow uses email OTP reset.

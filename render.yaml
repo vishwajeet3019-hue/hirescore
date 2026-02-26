@@ -21,6 +21,24 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      - key: EMAIL_OTP_REQUIRED
+        value: "true"
+      - key: OTP_SIGNING_SECRET
+        sync: false
+      - key: EMAIL_SMTP_HOST
+        sync: false
+      - key: EMAIL_SMTP_PORT
+        sync: false
+      - key: EMAIL_SMTP_USE_TLS
+        sync: false
+      - key: EMAIL_SMTP_USERNAME
+        sync: false
+      - key: EMAIL_SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_SMTP_FROM
+        sync: false
+      - key: EMAIL_SMTP_FROM_NAME
+        sync: false
       - key: AUTH_DB_PATH
         value: /var/data/hirescore_auth.db
       - key: CORS_ALLOW_ORIGINS
@@ -52,6 +70,24 @@ services:
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: EMAIL_OTP_REQUIRED
+        value: "true"
+      - key: OTP_SIGNING_SECRET
+        sync: false
+      - key: EMAIL_SMTP_HOST
+        sync: false
+      - key: EMAIL_SMTP_PORT
+        sync: false
+      - key: EMAIL_SMTP_USE_TLS
+        sync: false
+      - key: EMAIL_SMTP_USERNAME
+        sync: false
+      - key: EMAIL_SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_SMTP_FROM
+        sync: false
+      - key: EMAIL_SMTP_FROM_NAME
         sync: false
       - key: AUTH_DB_PATH
         value: /var/data/hirescore_auth.db

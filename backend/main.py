@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import html
+import smtplib
 import sqlite3
 import threading
 import time
@@ -13,7 +14,8 @@ import hashlib
 import hmac
 import base64
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from typing import Any
 
 import PyPDF2
@@ -95,6 +97,7 @@ AUTH_DB_PATH = (os.getenv("AUTH_DB_PATH") or "/tmp/hirescore_auth.db").strip()
 AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
 AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
 ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", True)
+EMAIL_OTP_REQUIRED = env_flag("EMAIL_OTP_REQUIRED", True)
 ADMIN_API_KEYS = {
     key.strip()
     for key in (os.getenv("ADMIN_API_KEYS") or os.getenv("ADMIN_API_KEY") or "").split(",")
@@ -125,12 +128,45 @@ STRIPE_ENABLED = bool(stripe and STRIPE_SECRET_KEY)
 if STRIPE_ENABLED and stripe is not None:
     stripe.api_key = STRIPE_SECRET_KEY
 
+EMAIL_SMTP_HOST = (os.getenv("EMAIL_SMTP_HOST") or "").strip()
+EMAIL_SMTP_PORT = int((os.getenv("EMAIL_SMTP_PORT") or "587").strip())
+EMAIL_SMTP_USERNAME = (os.getenv("EMAIL_SMTP_USERNAME") or "").strip()
+EMAIL_SMTP_PASSWORD = (os.getenv("EMAIL_SMTP_PASSWORD") or "").strip()
+EMAIL_SMTP_FROM = (os.getenv("EMAIL_SMTP_FROM") or EMAIL_SMTP_USERNAME).strip()
+EMAIL_SMTP_FROM_NAME = (os.getenv("EMAIL_SMTP_FROM_NAME") or "HireScore").strip()
+EMAIL_SMTP_USE_TLS = env_flag("EMAIL_SMTP_USE_TLS", True)
+EMAIL_SENDING_ENABLED = bool(EMAIL_SMTP_HOST and EMAIL_SMTP_PORT and EMAIL_SMTP_USERNAME and EMAIL_SMTP_PASSWORD and EMAIL_SMTP_FROM)
+OTP_SIGNING_SECRET = (os.getenv("OTP_SIGNING_SECRET") or AUTH_TOKEN_SECRET).strip()
+OTP_EXPIRY_MINUTES = max(2, min(30, int((os.getenv("OTP_EXPIRY_MINUTES") or "10").strip())))
+OTP_RESEND_COOLDOWN_SECONDS = max(10, min(180, int((os.getenv("OTP_RESEND_COOLDOWN_SECONDS") or "45").strip())))
+OTP_MAX_ATTEMPTS = max(3, min(12, int((os.getenv("OTP_MAX_ATTEMPTS") or "6").strip())))
+
 AUTH_DB_LOCK = threading.Lock()
 
 
 class AuthRequest(BaseModel):
     email: str
     password: str
+
+
+class SignupOtpRequest(BaseModel):
+    email: str
+    password: str
+
+
+class SignupOtpVerifyRequest(BaseModel):
+    email: str
+    otp: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ForgotPasswordResetRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
 
 
 class TopupRequest(BaseModel):
@@ -1206,10 +1242,45 @@ def init_auth_db() -> None:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS signup_otps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    password_salt TEXT NOT NULL,
+                    otp_hash TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    consumed_at TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS password_reset_otps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    email TEXT NOT NULL,
+                    otp_hash TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    consumed_at TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+                """
+            )
+            user_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(users)").fetchall()]
+            if "email_verified" not in user_columns:
+                cursor.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_user_time ON credit_transactions (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedback_user_time ON user_feedback (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_user_time ON analytics_events (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_time ON analytics_events (created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_signup_otps_email_time ON signup_otps (email, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reset_otps_email_time ON password_reset_otps (email, created_at)")
             connection.commit()
         finally:
             connection.close()
@@ -1221,6 +1292,89 @@ def normalize_email(value: str) -> str:
 
 def hash_password(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 190_000).hex()
+
+
+def parse_iso_datetime(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except Exception:
+        return datetime.now(timezone.utc) - timedelta(days=3650)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def generate_numeric_otp(length: int = 6) -> str:
+    return "".join(str(secrets.randbelow(10)) for _ in range(max(4, min(8, length))))
+
+
+def otp_hash(email: str, purpose: str, otp: str) -> str:
+    message = f"{OTP_SIGNING_SECRET}:{normalize_email(email)}:{safe_text(purpose)}:{safe_text(otp)}"
+    return hashlib.sha256(message.encode("utf-8")).hexdigest()
+
+
+def send_email_message(to_email: str, subject: str, text_body: str) -> bool:
+    if not EMAIL_SENDING_ENABLED:
+        logger.warning("Email sending is not configured. Unable to send email to %s", to_email)
+        return False
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = f"{EMAIL_SMTP_FROM_NAME} <{EMAIL_SMTP_FROM}>"
+    msg["To"] = normalize_email(to_email)
+    msg.set_content(text_body)
+
+    try:
+        if EMAIL_SMTP_PORT == 465 and not EMAIL_SMTP_USE_TLS:
+            with smtplib.SMTP_SSL(EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, timeout=20) as server:
+                server.login(EMAIL_SMTP_USERNAME, EMAIL_SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, timeout=20) as server:
+                if EMAIL_SMTP_USE_TLS:
+                    server.starttls()
+                server.login(EMAIL_SMTP_USERNAME, EMAIL_SMTP_PASSWORD)
+                server.send_message(msg)
+        return True
+    except Exception:
+        logger.exception("Failed to send email to %s", to_email)
+        return False
+
+
+def send_signup_otp_email(email: str, otp: str) -> bool:
+    return send_email_message(
+        email,
+        "Your HireScore verification code",
+        (
+            f"Your HireScore OTP is: {otp}\n\n"
+            f"This code expires in {OTP_EXPIRY_MINUTES} minutes.\n"
+            "If you did not request this signup, you can ignore this email."
+        ),
+    )
+
+
+def send_password_reset_otp_email(email: str, otp: str) -> bool:
+    return send_email_message(
+        email,
+        "Reset your HireScore password",
+        (
+            f"Your HireScore password reset OTP is: {otp}\n\n"
+            f"This code expires in {OTP_EXPIRY_MINUTES} minutes.\n"
+            "If you did not request this reset, please ignore this email."
+        ),
+    )
+
+
+def send_welcome_email(email: str) -> bool:
+    return send_email_message(
+        email,
+        "Welcome to HireScore",
+        (
+            "Welcome to HireScore.\n\n"
+            "Your account is now active with 5 welcome credits.\n"
+            "Start by running your first shortlist analysis on /upload."
+        ),
+    )
 
 
 def create_user_with_welcome_credits(email: str, password: str, source: str = "signup") -> sqlite3.Row:
@@ -1305,7 +1459,7 @@ def fetch_user_by_email(email: str) -> sqlite3.Row | None:
     connection = auth_db_connection()
     try:
         cursor = connection.execute(
-            "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE email = ?",
+            "SELECT id, email, password_hash, password_salt, credits, created_at, email_verified FROM users WHERE email = ?",
             (normalized,),
         )
         return cursor.fetchone()
@@ -1317,12 +1471,250 @@ def fetch_user_by_id(user_id: int) -> sqlite3.Row | None:
     connection = auth_db_connection()
     try:
         cursor = connection.execute(
-            "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
+            "SELECT id, email, password_hash, password_salt, credits, created_at, email_verified FROM users WHERE id = ?",
             (user_id,),
         )
         return cursor.fetchone()
     finally:
         connection.close()
+
+
+def is_email_verified(user_row: sqlite3.Row | None) -> bool:
+    if not user_row:
+        return False
+    try:
+        return bool(int(user_row["email_verified"]))
+    except Exception:
+        return True
+
+
+def set_user_password(user_id: int, new_password: str) -> None:
+    new_salt = secrets.token_hex(16)
+    new_hash = hash_password(new_password, new_salt)
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            connection.execute(
+                "UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?",
+                (new_hash, new_salt, user_id),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+
+def enforce_otp_resend_cooldown(email: str, table_name: str) -> None:
+    connection = auth_db_connection()
+    try:
+        row = connection.execute(
+            f"SELECT created_at FROM {table_name} WHERE email = ? ORDER BY id DESC LIMIT 1",
+            (normalize_email(email),),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        return
+    created_at = parse_iso_datetime(str(row["created_at"]))
+    if (datetime.now(timezone.utc) - created_at).total_seconds() < OTP_RESEND_COOLDOWN_SECONDS:
+        raise HTTPException(status_code=429, detail=f"Please wait {OTP_RESEND_COOLDOWN_SECONDS} seconds before requesting a new OTP.")
+
+
+def create_signup_otp(email: str, password: str) -> None:
+    normalized_email = normalize_email(email)
+    enforce_otp_resend_cooldown(normalized_email, "signup_otps")
+    otp = generate_numeric_otp()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
+    salt = secrets.token_hex(16)
+    password_hash = hash_password(password, salt)
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            connection.execute(
+                """
+                INSERT INTO signup_otps (email, password_hash, password_salt, otp_hash, expires_at, attempts, consumed_at, created_at)
+                VALUES (?, ?, ?, ?, ?, 0, NULL, ?)
+                """,
+                (
+                    normalized_email,
+                    password_hash,
+                    salt,
+                    otp_hash(normalized_email, "signup", otp),
+                    expires_at,
+                    now_utc_iso(),
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    if not send_signup_otp_email(normalized_email, otp):
+        raise HTTPException(status_code=503, detail="Unable to send verification email right now. Please try again.")
+
+
+def verify_signup_otp_and_create_user(email: str, otp: str) -> sqlite3.Row:
+    normalized_email = normalize_email(email)
+    now = datetime.now(timezone.utc)
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            row = cursor.execute(
+                """
+                SELECT id, email, password_hash, password_salt, otp_hash, expires_at, attempts, consumed_at
+                FROM signup_otps
+                WHERE email = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (normalized_email,),
+            ).fetchone()
+            if not row:
+                connection.rollback()
+                raise HTTPException(status_code=400, detail="OTP not found. Please request signup OTP again.")
+            if safe_text(row["consumed_at"]):
+                connection.rollback()
+                raise HTTPException(status_code=400, detail="OTP already used. Request a new OTP.")
+            if parse_iso_datetime(str(row["expires_at"])) < now:
+                connection.rollback()
+                raise HTTPException(status_code=400, detail="OTP expired. Request a new OTP.")
+            attempts = int(row["attempts"] or 0)
+            if attempts >= OTP_MAX_ATTEMPTS:
+                connection.rollback()
+                raise HTTPException(status_code=429, detail="Too many invalid OTP attempts. Request a new OTP.")
+            if otp_hash(normalized_email, "signup", otp) != safe_text(row["otp_hash"]):
+                cursor.execute("UPDATE signup_otps SET attempts = ? WHERE id = ?", (attempts + 1, int(row["id"])))
+                connection.commit()
+                raise HTTPException(status_code=400, detail="Invalid OTP.")
+            existing = cursor.execute(
+                "SELECT id FROM users WHERE email = ? LIMIT 1",
+                (normalized_email,),
+            ).fetchone()
+            if existing:
+                connection.rollback()
+                raise HTTPException(status_code=409, detail="Account already exists. Please log in.")
+            cursor.execute(
+                """
+                INSERT INTO users (email, password_hash, password_salt, credits, created_at, email_verified)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    normalized_email,
+                    safe_text(row["password_hash"]),
+                    safe_text(row["password_salt"]),
+                    WELCOME_FREE_CREDITS,
+                    now_utc_iso(),
+                ),
+            )
+            user_id = int(cursor.lastrowid)
+            cursor.execute(
+                """
+                INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    "welcome_credits",
+                    WELCOME_FREE_CREDITS,
+                    WELCOME_FREE_CREDITS,
+                    json.dumps({"source": "signup_otp"}, separators=(",", ":"), sort_keys=True),
+                    now_utc_iso(),
+                ),
+            )
+            cursor.execute("UPDATE signup_otps SET consumed_at = ? WHERE id = ?", (now_utc_iso(), int(row["id"])))
+            connection.commit()
+        finally:
+            connection.close()
+
+    user = fetch_user_by_email(normalized_email)
+    if not user:
+        raise HTTPException(status_code=500, detail="Unable to create account.")
+    send_welcome_email(normalized_email)
+    return user
+
+
+def create_password_reset_otp(email: str) -> None:
+    normalized_email = normalize_email(email)
+    user = fetch_user_by_email(normalized_email)
+    if not user:
+        return
+    enforce_otp_resend_cooldown(normalized_email, "password_reset_otps")
+    otp = generate_numeric_otp()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)).isoformat()
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            connection.execute(
+                """
+                INSERT INTO password_reset_otps (user_id, email, otp_hash, expires_at, attempts, consumed_at, created_at)
+                VALUES (?, ?, ?, ?, 0, NULL, ?)
+                """,
+                (
+                    int(user["id"]),
+                    normalized_email,
+                    otp_hash(normalized_email, "password_reset", otp),
+                    expires_at,
+                    now_utc_iso(),
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    if not send_password_reset_otp_email(normalized_email, otp):
+        raise HTTPException(status_code=503, detail="Unable to send reset email right now. Please try again.")
+
+
+def verify_password_reset_otp(email: str, otp: str, new_password: str) -> sqlite3.Row:
+    normalized_email = normalize_email(email)
+    now = datetime.now(timezone.utc)
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+            row = cursor.execute(
+                """
+                SELECT id, user_id, otp_hash, expires_at, attempts, consumed_at
+                FROM password_reset_otps
+                WHERE email = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (normalized_email,),
+            ).fetchone()
+            if not row:
+                connection.rollback()
+                raise HTTPException(status_code=400, detail="Reset OTP not found. Request a new OTP.")
+            if safe_text(row["consumed_at"]):
+                connection.rollback()
+                raise HTTPException(status_code=400, detail="Reset OTP already used. Request a new OTP.")
+            if parse_iso_datetime(str(row["expires_at"])) < now:
+                connection.rollback()
+                raise HTTPException(status_code=400, detail="Reset OTP expired. Request a new OTP.")
+            attempts = int(row["attempts"] or 0)
+            if attempts >= OTP_MAX_ATTEMPTS:
+                connection.rollback()
+                raise HTTPException(status_code=429, detail="Too many invalid OTP attempts. Request a new OTP.")
+            if otp_hash(normalized_email, "password_reset", otp) != safe_text(row["otp_hash"]):
+                cursor.execute("UPDATE password_reset_otps SET attempts = ? WHERE id = ?", (attempts + 1, int(row["id"])))
+                connection.commit()
+                raise HTTPException(status_code=400, detail="Invalid reset OTP.")
+            user_id = int(row["user_id"])
+            new_salt = secrets.token_hex(16)
+            new_hash = hash_password(new_password, new_salt)
+            cursor.execute("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?", (new_hash, new_salt, user_id))
+            cursor.execute("UPDATE password_reset_otps SET consumed_at = ? WHERE id = ?", (now_utc_iso(), int(row["id"])))
+            connection.commit()
+        finally:
+            connection.close()
+
+    user = fetch_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Account not found.")
+    return user
 
 
 def log_analytics_event(
@@ -1419,6 +1811,7 @@ def wallet_payload(credits: int) -> dict[str, Any]:
 
 def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> dict[str, Any]:
     user_id = int(user_row["id"])
+    email_verified = is_email_verified(user_row)
     payload: dict[str, Any] = {
         "user": {
             "id": user_id,
@@ -1427,6 +1820,7 @@ def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> di
         },
         "wallet": wallet_payload(int(user_row["credits"])),
         "feedback_required": feedback_required_for_user(user_id),
+        "email_verified": email_verified,
     }
     if token:
         payload["auth_token"] = token
@@ -1449,6 +1843,8 @@ def require_authenticated_user(request: Request, explicit_auth_token: str | None
     user = fetch_user_by_id(int(payload.get("uid", 0)))
     if not user:
         raise HTTPException(status_code=401, detail="Account not found. Please log in again.")
+    if not is_email_verified(user):
+        raise HTTPException(status_code=401, detail="Email is not verified. Complete OTP verification to continue.")
 
     if normalize_email(str(user["email"])) != normalize_email(str(payload.get("email", ""))):
         raise HTTPException(status_code=401, detail="Invalid authentication token.")
@@ -3256,6 +3652,14 @@ def plan_status(request: Request, auth_token: str | None = None) -> dict[str, An
 
 @app.post("/auth/signup")
 def signup(data: AuthRequest) -> dict[str, Any]:
+    if EMAIL_OTP_REQUIRED:
+        request_signup_otp(SignupOtpRequest(email=data.email, password=data.password))
+        return {
+            "otp_required": True,
+            "message": f"OTP sent to {normalize_email(data.email)}. Verify to complete signup.",
+            "otp_expires_minutes": OTP_EXPIRY_MINUTES,
+        }
+
     email = normalize_email(data.email)
     password = safe_text(data.password)
 
@@ -3270,6 +3674,42 @@ def signup(data: AuthRequest) -> dict[str, Any]:
 
     user = create_user_with_welcome_credits(email, password, source="signup")
     log_analytics_event("auth", "signup_success", user_id=int(user["id"]), meta={"email": email})
+    send_welcome_email(email)
+    return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
+
+
+@app.post("/auth/signup/request-otp")
+def request_signup_otp(data: SignupOtpRequest) -> dict[str, Any]:
+    email = normalize_email(data.email)
+    password = safe_text(data.password)
+
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    if len(password) < 6:
+        log_analytics_event("auth", "signup_failed_short_password", meta={"email": email})
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    if fetch_user_by_email(email):
+        log_analytics_event("auth", "signup_failed_existing_account", meta={"email": email})
+        raise HTTPException(status_code=409, detail="Account already exists. Please log in.")
+
+    create_signup_otp(email, password)
+    log_analytics_event("auth", "signup_otp_sent", meta={"email": email})
+    return {
+        "otp_required": True,
+        "message": f"OTP sent to {email}. Verify to complete signup.",
+        "otp_expires_minutes": OTP_EXPIRY_MINUTES,
+    }
+
+
+@app.post("/auth/signup/verify-otp")
+def verify_signup_otp(data: SignupOtpVerifyRequest) -> dict[str, Any]:
+    email = normalize_email(data.email)
+    otp = re.sub(r"[^0-9]", "", safe_text(data.otp))
+    if len(otp) < 4:
+        raise HTTPException(status_code=400, detail="Enter a valid OTP.")
+
+    user = verify_signup_otp_and_create_user(email, otp)
+    log_analytics_event("auth", "signup_success", user_id=int(user["id"]), meta={"email": email, "via": "otp"})
     return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
 
 
@@ -3281,6 +3721,9 @@ def login(data: AuthRequest) -> dict[str, Any]:
     if not user:
         log_analytics_event("auth", "login_failed_account_not_found", meta={"email": email})
         raise HTTPException(status_code=401, detail="Account not found. Please sign up.")
+    if not is_email_verified(user):
+        log_analytics_event("auth", "login_failed_unverified_email", user_id=int(user["id"]), meta={"email": email})
+        raise HTTPException(status_code=401, detail="Email not verified. Complete signup OTP verification.")
 
     expected = hash_password(password, str(user["password_salt"]))
     if not hmac.compare_digest(expected, str(user["password_hash"])):
@@ -3288,6 +3731,34 @@ def login(data: AuthRequest) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     log_analytics_event("auth", "login_success", user_id=int(user["id"]), meta={"email": email})
+    return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
+
+
+@app.post("/auth/forgot-password/request-otp")
+def request_password_reset_otp(data: ForgotPasswordRequest) -> dict[str, Any]:
+    email = normalize_email(data.email)
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    create_password_reset_otp(email)
+    log_analytics_event("auth", "password_reset_otp_requested", meta={"email": email})
+    return {
+        "message": "If this email exists, a reset OTP has been sent.",
+        "otp_expires_minutes": OTP_EXPIRY_MINUTES,
+    }
+
+
+@app.post("/auth/forgot-password/reset")
+def reset_password_with_otp(data: ForgotPasswordResetRequest) -> dict[str, Any]:
+    email = normalize_email(data.email)
+    otp = re.sub(r"[^0-9]", "", safe_text(data.otp))
+    new_password = safe_text(data.new_password)
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    if len(otp) < 4:
+        raise HTTPException(status_code=400, detail="Enter a valid reset OTP.")
+
+    user = verify_password_reset_otp(email, otp, new_password)
+    log_analytics_event("auth", "password_reset_success", user_id=int(user["id"]), meta={"email": email})
     return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
 
 
