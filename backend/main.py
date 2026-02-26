@@ -3117,7 +3117,7 @@ def login(data: AuthRequest) -> dict[str, Any]:
     password = safe_text(data.password)
     user = fetch_user_by_email(email)
     if not user:
-        user = create_user_with_welcome_credits(email, password, source="login_auto_recovery")
+        raise HTTPException(status_code=401, detail="Account not found. Please sign up.")
 
     expected = hash_password(password, str(user["password_salt"]))
     if not hmac.compare_digest(expected, str(user["password_hash"])):
