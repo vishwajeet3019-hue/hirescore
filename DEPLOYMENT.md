@@ -39,6 +39,7 @@ This repo includes `render.yaml` for the backend service.
 - `EMAIL_SMTP_HOST=<smtp-host>`
 - `EMAIL_SMTP_PORT=587`
 - `EMAIL_SMTP_USE_TLS=true`
+- `EMAIL_SMTP_TIMEOUT_SECONDS=12`
 - `EMAIL_SMTP_USERNAME=<smtp-username>`
 - `EMAIL_SMTP_PASSWORD=<smtp-password>`
 - `EMAIL_SMTP_FROM=no-reply@hirescore.in`

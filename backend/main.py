@@ -135,6 +135,7 @@ EMAIL_SMTP_PASSWORD = (os.getenv("EMAIL_SMTP_PASSWORD") or "").strip()
 EMAIL_SMTP_FROM = (os.getenv("EMAIL_SMTP_FROM") or EMAIL_SMTP_USERNAME).strip()
 EMAIL_SMTP_FROM_NAME = (os.getenv("EMAIL_SMTP_FROM_NAME") or "HireScore").strip()
 EMAIL_SMTP_USE_TLS = env_flag("EMAIL_SMTP_USE_TLS", True)
+EMAIL_SMTP_TIMEOUT_SECONDS = max(5, min(30, int((os.getenv("EMAIL_SMTP_TIMEOUT_SECONDS") or "12").strip())))
 EMAIL_SENDING_ENABLED = bool(EMAIL_SMTP_HOST and EMAIL_SMTP_PORT and EMAIL_SMTP_USERNAME and EMAIL_SMTP_PASSWORD and EMAIL_SMTP_FROM)
 OTP_SIGNING_SECRET = (os.getenv("OTP_SIGNING_SECRET") or AUTH_TOKEN_SECRET).strip()
 OTP_EXPIRY_MINUTES = max(2, min(30, int((os.getenv("OTP_EXPIRY_MINUTES") or "10").strip())))
@@ -1313,10 +1314,10 @@ def otp_hash(email: str, purpose: str, otp: str) -> str:
     return hashlib.sha256(message.encode("utf-8")).hexdigest()
 
 
-def send_email_message(to_email: str, subject: str, text_body: str) -> bool:
+def send_email_message(to_email: str, subject: str, text_body: str) -> str | None:
     if not EMAIL_SENDING_ENABLED:
         logger.warning("Email sending is not configured. Unable to send email to %s", to_email)
-        return False
+        return "Email settings are missing in backend environment."
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -1326,22 +1327,34 @@ def send_email_message(to_email: str, subject: str, text_body: str) -> bool:
 
     try:
         if EMAIL_SMTP_PORT == 465 and not EMAIL_SMTP_USE_TLS:
-            with smtplib.SMTP_SSL(EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, timeout=20) as server:
+            with smtplib.SMTP_SSL(EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, timeout=EMAIL_SMTP_TIMEOUT_SECONDS) as server:
                 server.login(EMAIL_SMTP_USERNAME, EMAIL_SMTP_PASSWORD)
                 server.send_message(msg)
         else:
-            with smtplib.SMTP(EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, timeout=20) as server:
+            with smtplib.SMTP(EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, timeout=EMAIL_SMTP_TIMEOUT_SECONDS) as server:
                 if EMAIL_SMTP_USE_TLS:
                     server.starttls()
                 server.login(EMAIL_SMTP_USERNAME, EMAIL_SMTP_PASSWORD)
                 server.send_message(msg)
-        return True
+        return None
+    except smtplib.SMTPAuthenticationError:
+        logger.exception("SMTP auth failed for %s", EMAIL_SMTP_USERNAME)
+        return "SMTP authentication failed. Check EMAIL_SMTP_USERNAME and EMAIL_SMTP_PASSWORD."
+    except TimeoutError:
+        logger.exception("SMTP timeout for host %s", EMAIL_SMTP_HOST)
+        return "SMTP connection timed out. Check EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, and EMAIL_SMTP_USE_TLS."
+    except smtplib.SMTPException:
+        logger.exception("SMTP error while sending email to %s", to_email)
+        return "SMTP rejected the request. Verify SMTP host/port/TLS and sender mailbox."
+    except OSError:
+        logger.exception("SMTP network error while sending email to %s", to_email)
+        return "SMTP network error. Verify host/port and provider connectivity."
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
-        return False
+        return "Unexpected email delivery error. Check backend logs for details."
 
 
-def send_signup_otp_email(email: str, otp: str) -> bool:
+def send_signup_otp_email(email: str, otp: str) -> str | None:
     return send_email_message(
         email,
         "Your HireScore verification code",
@@ -1353,7 +1366,7 @@ def send_signup_otp_email(email: str, otp: str) -> bool:
     )
 
 
-def send_password_reset_otp_email(email: str, otp: str) -> bool:
+def send_password_reset_otp_email(email: str, otp: str) -> str | None:
     return send_email_message(
         email,
         "Reset your HireScore password",
@@ -1365,7 +1378,7 @@ def send_password_reset_otp_email(email: str, otp: str) -> bool:
     )
 
 
-def send_welcome_email(email: str) -> bool:
+def send_welcome_email(email: str) -> str | None:
     return send_email_message(
         email,
         "Welcome to HireScore",
@@ -1548,8 +1561,9 @@ def create_signup_otp(email: str, password: str) -> None:
         finally:
             connection.close()
 
-    if not send_signup_otp_email(normalized_email, otp):
-        raise HTTPException(status_code=503, detail="Unable to send verification email right now. Please try again.")
+    otp_send_error = send_signup_otp_email(normalized_email, otp)
+    if otp_send_error:
+        raise HTTPException(status_code=503, detail=f"Unable to send verification email right now. {otp_send_error}")
 
 
 def verify_signup_otp_and_create_user(email: str, otp: str) -> sqlite3.Row:
@@ -1663,8 +1677,9 @@ def create_password_reset_otp(email: str) -> None:
         finally:
             connection.close()
 
-    if not send_password_reset_otp_email(normalized_email, otp):
-        raise HTTPException(status_code=503, detail="Unable to send reset email right now. Please try again.")
+    reset_send_error = send_password_reset_otp_email(normalized_email, otp)
+    if reset_send_error:
+        raise HTTPException(status_code=503, detail=f"Unable to send reset email right now. {reset_send_error}")
 
 
 def verify_password_reset_otp(email: str, otp: str, new_password: str) -> sqlite3.Row:
