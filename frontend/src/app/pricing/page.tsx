@@ -80,7 +80,7 @@ const creditRules = [
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
-const AUTH_REQUEST_TIMEOUT_MS = 15000;
+const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
 export default function PricingPage() {
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -149,7 +149,7 @@ export default function PricingPage() {
       return (await response.json()) as AuthPayload;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        throw new Error("Login timed out while server was waking up. Please click Login once more.");
+        throw new Error("Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.");
       }
       throw error;
     } finally {

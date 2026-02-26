@@ -214,7 +214,7 @@ const ANALYSIS_LOADING_STEPS = [
   "Generating strategy and roadmap insights",
 ] as const;
 const MIN_ANALYSIS_LOADING_MS = 6000;
-const AUTH_REQUEST_TIMEOUT_MS = 15000;
+const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
 type ResultTabId = "summary" | "strategy" | "salary" | "market" | "improvements";
 
@@ -420,7 +420,7 @@ export default function UploadPage() {
       return (await response.json()) as AuthPayload;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        throw new Error("Login timed out while server was waking up. Please click Login once more.");
+        throw new Error("Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.");
       }
       throw error;
     } finally {
