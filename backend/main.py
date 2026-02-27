@@ -4195,7 +4195,27 @@ def fallback_build_resume(data: ResumeBuildRequest) -> str:
     if safe_text(data.education):
         sections.append(f"EDUCATION\n{safe_text(data.education)}")
 
-    return "\n\n".join(sections)
+    return sanitize_resume_output("\n\n".join(sections))
+
+
+def sanitize_resume_output(text: str) -> str:
+    normalized_text = safe_text(text)
+    if not normalized_text:
+        return ""
+
+    lines = normalized_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    filtered_lines: list[str] = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        normalized_line = re.sub(r"[\[\]\(\)\{\}\.\,\:\;\-\_\s]+", " ", line).strip().lower()
+        if normalized_line == "references available upon request":
+            continue
+        filtered_lines.append(raw_line)
+
+    # Keep paragraph spacing readable while removing excessive empty lines.
+    cleaned = "\n".join(filtered_lines)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 def extract_llm_text(message_content: Any) -> str:
@@ -4310,13 +4330,14 @@ Instructions:
 - Return plain text resume only.
 """
 
-    fallback_text = safe_text(data.resume_text)
+    fallback_text = sanitize_resume_output(safe_text(data.resume_text))
     improved_resume, ai_generated, ai_error = generate_with_llm(
         system_prompt="You improve resumes with factual discipline and ATS-aware clarity.",
         user_prompt=improvise_prompt,
         temperature=0.25,
         fallback_text=fallback_text,
     )
+    improved_resume = sanitize_resume_output(improved_resume)
 
     post_analysis = analyze_profile(data.industry, data.role, improved_resume)
 
@@ -6149,7 +6170,7 @@ Return only the final resume text.
         effective_wallet = refund["wallet"]
 
     return {
-        "optimized_resume": content,
+        "optimized_resume": sanitize_resume_output(content),
         "wallet": effective_wallet,
         "credit_transaction_id": debit["transaction_id"],
         "ai_generated": ai_generated,
