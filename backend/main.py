@@ -17,6 +17,7 @@ import base64
 import secrets
 import urllib.request
 import urllib.error
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import Any
@@ -208,6 +209,12 @@ OTP_SIGNING_SECRET = (os.getenv("OTP_SIGNING_SECRET") or AUTH_TOKEN_SECRET).stri
 OTP_EXPIRY_MINUTES = max(2, min(30, int((os.getenv("OTP_EXPIRY_MINUTES") or "10").strip())))
 OTP_RESEND_COOLDOWN_SECONDS = max(10, min(180, int((os.getenv("OTP_RESEND_COOLDOWN_SECONDS") or "45").strip())))
 OTP_MAX_ATTEMPTS = max(3, min(12, int((os.getenv("OTP_MAX_ATTEMPTS") or "6").strip())))
+GOOGLE_CLIENT_IDS = {
+    client_id.strip()
+    for client_id in (os.getenv("GOOGLE_CLIENT_IDS") or os.getenv("GOOGLE_CLIENT_ID") or "").split(",")
+    if client_id.strip()
+}
+GOOGLE_TOKENINFO_TIMEOUT_SECONDS = max(4, min(20, int((os.getenv("GOOGLE_TOKENINFO_TIMEOUT_SECONDS") or "8").strip())))
 
 AUTH_DB_LOCK = threading.Lock()
 
@@ -235,6 +242,10 @@ class ForgotPasswordResetRequest(BaseModel):
     email: str
     otp: str
     new_password: str
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
 
 
 class TopupRequest(BaseModel):
@@ -291,6 +302,7 @@ class ResumeRequest(BaseModel):
     skills: str | None = None
     description: str | None = None
     experience_years: float | None = None
+    age_years: float | None = None
     applications_count: int | None = None
     salary_boost_toggles: list[str] | None = None
     plan: str | None = None
@@ -2078,6 +2090,119 @@ def send_welcome_email(email: str) -> str | None:
     )
 
 
+def send_payment_success_email(email: str, gateway: str, package_id: str, credits_added: int, credits_after: int) -> str | None:
+    package = PAYMENT_CREDIT_PACKS.get(safe_text(package_id))
+    package_label = safe_text(str(package.get("label") if package else package_id)) or "Credit Pack"
+    amount_inr = int(package.get("amount_inr", 0)) if package else 0
+    gateway_label = safe_text(gateway).capitalize() or "Payment"
+    amount_line = f"Amount paid: INR {amount_inr}\n" if amount_inr > 0 else ""
+    return send_email_message(
+        email,
+        "HireScore payment successful",
+        (
+            "Your payment was successful and credits have been added.\n\n"
+            f"Package: {package_label}\n"
+            f"Gateway: {gateway_label}\n"
+            f"{amount_line}"
+            f"Credits added: {int(credits_added)}\n"
+            f"Updated wallet balance: {int(credits_after)} credits\n\n"
+            "You can now continue your analysis and resume workflows."
+        ),
+    )
+
+
+def verify_google_id_token(credential: str) -> dict[str, str]:
+    token = safe_text(credential)
+    if not token:
+        raise HTTPException(status_code=400, detail="Google credential is missing.")
+    if not GOOGLE_CLIENT_IDS:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured on server.")
+
+    request = urllib.request.Request(
+        "https://oauth2.googleapis.com/tokeninfo?" + urllib.parse.urlencode({"id_token": token}),
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "HireScoreBackend/1.0 (+https://hirescore.in)",
+        },
+    )
+    raw_payload = ""
+    try:
+        with urllib.request.urlopen(request, timeout=GOOGLE_TOKENINFO_TIMEOUT_SECONDS) as response:
+            raw_payload = response.read().decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as exc:
+        logger.warning("Google tokeninfo rejected credential (%s)", exc.code)
+        raise HTTPException(status_code=401, detail="Invalid Google sign-in. Please try again.") from exc
+    except TimeoutError as exc:
+        logger.exception("Google tokeninfo timed out")
+        raise HTTPException(status_code=503, detail="Google sign-in timed out. Please try again.") from exc
+    except urllib.error.URLError as exc:
+        logger.exception("Google tokeninfo network error")
+        raise HTTPException(status_code=503, detail="Google sign-in is unavailable right now. Please try again.") from exc
+    except Exception as exc:
+        logger.exception("Unexpected Google token verification error")
+        raise HTTPException(status_code=500, detail="Google sign-in failed due to server error.") from exc
+
+    try:
+        payload = json.loads(raw_payload or "{}")
+    except Exception as exc:
+        logger.exception("Google tokeninfo response parse failure")
+        raise HTTPException(status_code=401, detail="Invalid Google sign-in payload.") from exc
+
+    aud = safe_text(str(payload.get("aud") or ""))
+    if aud not in GOOGLE_CLIENT_IDS:
+        raise HTTPException(status_code=401, detail="Google sign-in audience mismatch.")
+
+    issuer = safe_text(str(payload.get("iss") or ""))
+    if issuer and issuer not in {"accounts.google.com", "https://accounts.google.com"}:
+        raise HTTPException(status_code=401, detail="Google sign-in issuer is invalid.")
+
+    try:
+        expires_at = int(str(payload.get("exp") or "0"))
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Google sign-in token expiry is invalid.") from exc
+    if expires_at <= int(time.time()):
+        raise HTTPException(status_code=401, detail="Google sign-in token expired.")
+
+    email = normalize_email(str(payload.get("email") or ""))
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Google account email is missing.")
+
+    email_verified = safe_text(str(payload.get("email_verified") or "")).lower()
+    if email_verified not in {"true", "1"}:
+        raise HTTPException(status_code=403, detail="Google account email is not verified.")
+
+    return {
+        "email": email,
+        "name": safe_text(str(payload.get("name") or "")),
+        "sub": safe_text(str(payload.get("sub") or "")),
+    }
+
+
+def sync_user_after_google_login(user_id: int, full_name: str | None = None) -> None:
+    cleaned_name = safe_text(full_name)
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            if cleaned_name:
+                connection.execute(
+                    """
+                    UPDATE users
+                    SET email_verified = 1,
+                        full_name = CASE WHEN TRIM(full_name) = '' THEN ? ELSE full_name END
+                    WHERE id = ?
+                    """,
+                    (cleaned_name[:120], user_id),
+                )
+            else:
+                connection.execute(
+                    "UPDATE users SET email_verified = 1 WHERE id = ?",
+                    (user_id,),
+                )
+            connection.commit()
+        finally:
+            connection.close()
+
+
 def create_user_with_welcome_credits(email: str, password: str, source: str = "signup") -> sqlite3.Row:
     salt = secrets.token_hex(16)
     password_hash = hash_password(password, salt)
@@ -2704,6 +2829,12 @@ def normalize_experience_years(value: float | None) -> float | None:
     if value is None:
         return None
     return clamp_float(float(value), 0.0, 35.0)
+
+
+def normalize_age_years(value: float | None) -> int | None:
+    if value is None:
+        return None
+    return int(round(clamp_float(float(value), 16.0, 70.0)))
 
 
 def normalize_applications_count(value: int | None) -> int:
@@ -3573,6 +3704,102 @@ def infer_experience_band(experience_years: float | None, seniority: str) -> str
     return "senior"
 
 
+def infer_career_stage(age_years: int | None) -> str:
+    if age_years is None:
+        return "unspecified"
+    if age_years <= 21:
+        return "early_explorer"
+    if age_years <= 27:
+        return "launch_phase"
+    if age_years <= 35:
+        return "growth_phase"
+    if age_years <= 45:
+        return "leadership_phase"
+    return "senior_transition"
+
+
+def expected_experience_range_for_age(age_years: int) -> tuple[float, float]:
+    if age_years <= 21:
+        return (0.0, 2.0)
+    if age_years <= 24:
+        return (0.5, 4.0)
+    if age_years <= 29:
+        return (2.0, 7.0)
+    if age_years <= 35:
+        return (4.0, 12.0)
+    if age_years <= 45:
+        return (7.0, 20.0)
+    return (10.0, 28.0)
+
+
+def build_age_factor(
+    age_years: int | None,
+    experience_years: float | None,
+    seniority: str,
+    role: str,
+) -> dict[str, Any]:
+    if age_years is None:
+        return {
+            "score_delta": 0,
+            "confidence_delta": 0,
+            "opinions": [],
+            "career_stage": "unspecified",
+            "expected_experience_years": None,
+        }
+
+    stage = infer_career_stage(age_years)
+    stage_label = {
+        "early_explorer": "early-career exploration stage",
+        "launch_phase": "career launch stage",
+        "growth_phase": "career growth stage",
+        "leadership_phase": "leadership-growth stage",
+        "senior_transition": "senior transition stage",
+    }.get(stage, "career stage")
+
+    expected_low, expected_high = expected_experience_range_for_age(age_years)
+    normalized_exp = normalize_experience_years(experience_years)
+    score_delta = 0
+    confidence_delta = 0
+    opinions: list[str] = [
+        f"Age context ({age_years}) suggests a {stage_label}; tailor proof stories to this stage for stronger recruiter trust."
+    ]
+
+    if normalized_exp is not None:
+        if normalized_exp < max(0.0, expected_low - 1.5):
+            score_delta -= 2
+            confidence_delta -= 4
+            opinions.append("Experience appears early for this age/role target mix. Add stronger project depth and measurable outcomes.")
+        elif normalized_exp > expected_high + 3.0:
+            confidence_delta -= 2
+            opinions.append("Profile may look overqualified for some openings. Target roles with higher ownership scope.")
+        else:
+            score_delta += 1
+            confidence_delta += 1
+            opinions.append("Age and experience look broadly aligned, which improves fit confidence.")
+
+    role_text = safe_text(role).lower()
+    leadership_role = any(token in role_text for token in ["head", "director", "vp", "vice president", "principal", "lead"])
+    if leadership_role and normalized_exp is not None and normalized_exp < 6:
+        score_delta -= 2
+        confidence_delta -= 3
+        opinions.append("Leadership titles usually need stronger team-level ownership proof. Highlight planning and decision impact.")
+
+    if seniority == "senior" and normalized_exp is not None and normalized_exp < 5:
+        score_delta -= 1
+        confidence_delta -= 2
+    if seniority == "junior" and normalized_exp is not None and normalized_exp > 9:
+        confidence_delta -= 1
+        opinions.append("For junior role targets, make your transition narrative explicit to avoid level-mismatch screening.")
+
+    return {
+        "score_delta": int(clamp_float(float(score_delta), -4.0, 3.0)),
+        "confidence_delta": int(clamp_float(float(confidence_delta), -6.0, 3.0)),
+        "opinions": dedupe_preserve_order(opinions)[:3],
+        "career_stage": stage,
+        "expected_experience_years": {"low": round(expected_low, 1), "high": round(expected_high, 1)},
+    }
+
+
 def market_segment_for_track(role_track: str, industry: str) -> str:
     inferred = TRACK_TO_MARKET_SEGMENT.get(role_track, "general")
     industry_text = normalize_search_text(industry)
@@ -4137,6 +4364,7 @@ def analyze_profile(
     role: str,
     skills_text: str,
     experience_years: float | None = None,
+    age_years: float | None = None,
     applications_count: int | None = None,
     salary_boost_toggles: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -4171,7 +4399,9 @@ def analyze_profile(
 
     penalty_cap = 12 if adaptive_profile else 16
     strictness_penalty = min(penalty_cap, len(critical_missing) * 4.4 + max(0, 40 - consistency_score) * 0.16)
-    overall_score = clamp(raw_overall - strictness_penalty)
+    normalized_age_years = normalize_age_years(age_years)
+    age_factor = build_age_factor(normalized_age_years, experience_years, seniority, role)
+    overall_score = clamp(raw_overall - strictness_penalty + age_factor["score_delta"])
 
     # Prevent extreme floor effects for valid role/skill signals on short early-career profiles.
     if skills_list and role_track != "custom":
@@ -4183,7 +4413,12 @@ def analyze_profile(
             overall_score = max(overall_score, 24)
 
     confidence = confidence_by_seniority(seniority, profile_details["listed_count"], critical_coverage)
-    confidence = clamp(confidence + min(8, consistency_score * 0.08) - min(10, len(critical_missing) * 2.3))
+    confidence = clamp(
+        confidence
+        + min(8, consistency_score * 0.08)
+        - min(10, len(critical_missing) * 2.3)
+        + int(age_factor["confidence_delta"])
+    )
     confidence = min(96, confidence)
     prediction_band = build_prediction_band(overall_score, confidence)
 
@@ -4192,6 +4427,8 @@ def analyze_profile(
         f"Role blueprint coverage is {coverage_score}% and keyword alignment is {skill_match_score}%.",
         f"Consistency score is {consistency_score}%; profile quality signal is {profile_score}%.",
     ]
+    if age_factor["opinions"]:
+        prediction_reasoning.append(age_factor["opinions"][0])
     if adaptive_profile:
         prediction_reasoning.append("Adaptive open-role profiling is active for this title.")
 
@@ -4214,6 +4451,8 @@ def analyze_profile(
         adjacent_missing,
         experience_band,
     )
+    if age_factor["opinions"]:
+        quick_wins = dedupe_preserve_order([*quick_wins, *age_factor["opinions"]])[:5]
 
     areas_to_improve = build_improvement_areas(
         role_track,
@@ -4296,6 +4535,10 @@ def analyze_profile(
         },
         "prediction_reasoning": prediction_reasoning,
         "quick_wins": quick_wins,
+        "age_years_used": normalized_age_years,
+        "age_opinions": age_factor["opinions"],
+        "career_stage": age_factor["career_stage"],
+        "experience_expectation_years": age_factor["expected_experience_years"],
         "areas_to_improve": areas_to_improve,
         "role_universe_mode": "unlimited_open_role",
         "likely_interview_call": interview_call_likelihood,
@@ -5034,6 +5277,28 @@ def login(data: AuthRequest) -> dict[str, Any]:
     return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
 
 
+@app.post("/auth/google")
+def google_auth(data: GoogleAuthRequest) -> dict[str, Any]:
+    claims = verify_google_id_token(data.credential)
+    email = claims["email"]
+    user = fetch_user_by_email(email)
+    is_new_user = user is None
+
+    if not user:
+        synthetic_password = f"google::{safe_text(claims.get('sub') or '') or 'user'}::{secrets.token_hex(18)}"
+        user = create_user_with_welcome_credits(email, synthetic_password, source="google_sso")
+        send_welcome_email(email)
+
+    sync_user_after_google_login(int(user["id"]), claims.get("name"))
+    refreshed_user = fetch_user_by_id(int(user["id"])) or user
+    event_name = "signup_success" if is_new_user else "login_success"
+    log_analytics_event("auth", event_name, user_id=int(refreshed_user["id"]), meta={"email": email, "via": "google"})
+    return auth_response_payload(
+        refreshed_user,
+        create_auth_token(int(refreshed_user["id"]), str(refreshed_user["email"])),
+    )
+
+
 @app.post("/auth/forgot-password/request-otp")
 def request_password_reset_otp(data: ForgotPasswordRequest) -> dict[str, Any]:
     email = normalize_email(data.email)
@@ -5466,6 +5731,15 @@ def verify_razorpay_payment(data: RazorpayVerifyRequest, request: Request) -> di
             user_id=int(user["id"]),
             meta=checkout_logged_meta,
         )
+        email_error = send_payment_success_email(
+            safe_text(str(user["email"])),
+            "razorpay",
+            safe_text(str(checkout_logged_meta.get("package_id", ""))),
+            int(checkout_logged_meta.get("credits") or 0),
+            int(checkout_logged_meta.get("credits_after") or 0),
+        )
+        if email_error:
+            logger.warning("Payment success email failed for user %s: %s", int(user["id"]), email_error)
     if not refreshed_user:
         refreshed_user = fetch_user_by_id(int(user["id"]))
     if not refreshed_user:
@@ -5499,6 +5773,7 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
         package_id = safe_text(metadata.get("package_id"))
         stripe_session_id = safe_text(session.get("id"))
         checkout_logged_meta: dict[str, Any] | None = None
+        user_email = ""
         if user_id > 0 and credits > 0 and stripe_session_id:
             with AUTH_DB_LOCK:
                 connection = auth_db_connection()
@@ -5515,12 +5790,13 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
                     ).fetchone()
                     if not existing:
                         user_row = cursor.execute(
-                            "SELECT id, credits FROM users WHERE id = ?",
+                            "SELECT id, email, credits FROM users WHERE id = ?",
                             (user_id,),
                         ).fetchone()
                         if not user_row:
                             connection.rollback()
                             return {"received": True}
+                        user_email = safe_text(str(user_row["email"]))
                         updated_credits = int(user_row["credits"]) + credits
                         plan_tier = user_plan_from_package_id(package_id)
                         cursor.execute(
@@ -5568,6 +5844,15 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
                     user_id=user_id,
                     meta=checkout_logged_meta,
                 )
+                email_error = send_payment_success_email(
+                    user_email,
+                    "stripe",
+                    safe_text(str(checkout_logged_meta.get("package_id", package_id))),
+                    int(checkout_logged_meta.get("credits") or credits),
+                    int(checkout_logged_meta.get("credits_after") or 0),
+                )
+                if email_error:
+                    logger.warning("Payment success email failed for user %s: %s", user_id, email_error)
 
     return {"received": True}
 
@@ -6198,6 +6483,7 @@ def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:
             data.role,
             skills_text,
             experience_years=data.experience_years,
+            age_years=data.age_years,
             applications_count=data.applications_count,
             salary_boost_toggles=data.salary_boost_toggles,
         )
@@ -6236,6 +6522,7 @@ async def analyze_resume_file(
     industry: str = Form("General"),
     role: str = Form("General Role"),
     experience_years: float | None = Form(None),
+    age_years: float | None = Form(None),
     applications_count: int | None = Form(None),
     salary_boost_toggles: str = Form(""),
     auth_token: str | None = Form(None),
@@ -6261,6 +6548,7 @@ async def analyze_resume_file(
             role,
             extracted_text,
             experience_years=experience_years,
+            age_years=age_years,
             applications_count=applications_count,
             salary_boost_toggles=toggle_ids,
         )
@@ -6306,7 +6594,15 @@ def suggest_actions(data: ResumeRequest, request: Request) -> dict[str, Any]:
     )
 
     skills_text = safe_text(data.skills or data.description)
-    analysis = analyze_profile(data.industry, data.role, skills_text)
+    analysis = analyze_profile(
+        data.industry,
+        data.role,
+        skills_text,
+        experience_years=data.experience_years,
+        age_years=data.age_years,
+        applications_count=data.applications_count,
+        salary_boost_toggles=data.salary_boost_toggles,
+    )
 
     payload = build_suggestion_payload(
         analysis["role_track"],

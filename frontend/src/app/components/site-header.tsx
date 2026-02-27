@@ -22,7 +22,7 @@ type NavLink = {
 const navLinks: NavLink[] = [
   { href: "/", label: "Home" },
   { href: "/upload", label: "Analyze" },
-  { href: "/studio", label: "Improve Resume Next" },
+  { href: "/studio", label: "Build Resume" },
   { href: "/#workflow", label: "How It Works", isSection: true },
   { href: "/pricing", label: "Pricing" },
 ];
@@ -95,7 +95,7 @@ export default function SiteHeader() {
           </span>
           <div>
             <p className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/70 sm:text-xs sm:tracking-[0.34em]">HireScore</p>
-            <p className="font-mono text-sm tracking-wide text-cyan-50 sm:text-xl">Career Control Hub</p>
+            <p className="font-mono text-sm tracking-wide text-cyan-50 sm:text-xl">Interview Accelerator</p>
           </div>
         </Link>
 

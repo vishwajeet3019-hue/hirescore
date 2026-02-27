@@ -40,6 +40,7 @@ This repo includes `render.yaml` for the backend service.
 7. Email OTP + welcome emails:
 - `EMAIL_OTP_REQUIRED=true`
 - `OTP_SIGNING_SECRET=<random-secret>`
+- `GOOGLE_CLIENT_ID=<your-google-oauth-client-id.apps.googleusercontent.com>` (for Google SSO)
 - `EMAIL_PROVIDER=auto` (recommended) or `resend` or `smtp`
 - Resend option (recommended for Render reliability):
   - `RESEND_API_KEY=<re_...>`
@@ -64,6 +65,7 @@ This repo includes `render.yaml` for the backend service.
 2. Set **Root Directory** to `frontend`.
 3. Set environment variable:
 - `NEXT_PUBLIC_API_BASE_URL=https://api.hirescore.in`
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID=<your-google-oauth-client-id.apps.googleusercontent.com>`
 4. Deploy.
 5. In Vercel project domains, add:
 - `hirescore.in`

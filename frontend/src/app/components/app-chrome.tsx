@@ -52,6 +52,12 @@ export default function AppChrome({ children }: AppChromeProps) {
         <p className="mx-auto mt-10 max-w-7xl text-center text-[11px] uppercase tracking-[0.12em] text-cyan-50/46 sm:text-xs sm:tracking-[0.2em]">
           Built for candidates who want measurable shortlist outcomes
         </p>
+        <p className="mx-auto mt-3 max-w-7xl text-center text-sm text-cyan-50/68">
+          Support:{" "}
+          <a href="mailto:contact@hirescore.in" className="font-semibold text-cyan-100 hover:text-cyan-50">
+            contact@hirescore.in
+          </a>
+        </p>
       </footer>
     </>
   );

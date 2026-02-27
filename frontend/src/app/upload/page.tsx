@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
+import { renderGoogleSignInButton } from "@/lib/google-sso";
 
 type ImprovementArea = {
   category: string;
@@ -168,6 +169,13 @@ type AnalysisResult = {
   source?: string;
   extracted_chars?: number;
   role_universe_mode?: string;
+  age_years_used?: number | null;
+  age_opinions?: string[];
+  career_stage?: string;
+  experience_expectation_years?: {
+    low: number;
+    high: number;
+  } | null;
   wallet?: CreditWallet;
   credit_transaction_id?: number;
   feedback_required?: boolean;
@@ -205,6 +213,7 @@ const ROLE_EXAMPLE_TITLES = [
 ] as const;
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() || "";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
 const parseSkillTokens = (value: string) => {
@@ -223,7 +232,14 @@ const ANALYSIS_LOADING_STEPS = [
   "Building salary and callback forecasts",
   "Generating strategy and roadmap insights",
 ] as const;
+const AUTH_LIVE_LOADING_STEPS = [
+  "Verifying identity handshake",
+  "Securing session tunnel",
+  "Provisioning your dashboard state",
+  "Finalizing account access",
+] as const;
 const MIN_ANALYSIS_LOADING_MS = 6000;
+const MIN_AUTH_LIVE_LOADING_MS = 5600;
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
 type ResultTabId = "summary" | "strategy" | "salary" | "market" | "improvements";
@@ -234,6 +250,7 @@ export default function UploadPage() {
   const [industry, setIndustry] = useState("");
   const [role, setRole] = useState("");
   const [experienceYears, setExperienceYears] = useState("");
+  const [ageYears, setAgeYears] = useState("");
   const [applicationsCount, setApplicationsCount] = useState("60");
   const [analysisSkills, setAnalysisSkills] = useState("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -257,6 +274,10 @@ export default function UploadPage() {
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
+  const [authLiveLoading, setAuthLiveLoading] = useState(false);
+  const [authLiveStepIndex, setAuthLiveStepIndex] = useState(0);
+  const [authLiveProgress, setAuthLiveProgress] = useState(10);
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
   const [signupOtp, setSignupOtp] = useState("");
@@ -274,6 +295,7 @@ export default function UploadPage() {
   const [feedbackError, setFeedbackError] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [queuedAnalyzeMode, setQueuedAnalyzeMode] = useState<"manual" | "upload" | null>(null);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
@@ -340,12 +362,24 @@ export default function UploadPage() {
       return;
     }
 
-    const interval = window.setInterval(() => {
-      setLoadingStepIndex((prev) => (prev + 1) % ANALYSIS_LOADING_STEPS.length);
-      setLoadingProgress((prev) => Math.min(94, prev + 9));
-    }, 700);
+    const startedAt = performance.now();
+    const totalSteps = ANALYSIS_LOADING_STEPS.length;
+    const stepDuration = MIN_ANALYSIS_LOADING_MS / totalSteps;
+    let frameId = 0;
 
-    return () => window.clearInterval(interval);
+    const tick = () => {
+      const elapsed = performance.now() - startedAt;
+      const cappedElapsed = Math.min(elapsed, MIN_ANALYSIS_LOADING_MS);
+      const progress = 12 + (cappedElapsed / MIN_ANALYSIS_LOADING_MS) * 82;
+      const stepIndex = Math.min(totalSteps - 1, Math.floor(cappedElapsed / stepDuration));
+      setLoadingProgress(Math.round(progress));
+      setLoadingStepIndex(stepIndex);
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [loading]);
 
   useEffect(() => {
@@ -508,6 +542,119 @@ export default function UploadPage() {
     }
   };
 
+  const runWithMinimumAuthLiveLoading = async <T,>(task: () => Promise<T>) => {
+    const startedAt = performance.now();
+    setAuthLiveLoading(true);
+    setAuthLiveStepIndex(0);
+    setAuthLiveProgress(10);
+
+    const totalSteps = AUTH_LIVE_LOADING_STEPS.length;
+    const stepDuration = MIN_AUTH_LIVE_LOADING_MS / totalSteps;
+    let frameId = 0;
+    const tick = () => {
+      const elapsed = performance.now() - startedAt;
+      const cappedElapsed = Math.min(elapsed, MIN_AUTH_LIVE_LOADING_MS);
+      const progress = 10 + (cappedElapsed / MIN_AUTH_LIVE_LOADING_MS) * 85;
+      const stepIndex = Math.min(totalSteps - 1, Math.floor(cappedElapsed / stepDuration));
+      setAuthLiveProgress(Math.round(progress));
+      setAuthLiveStepIndex(stepIndex);
+      frameId = window.requestAnimationFrame(tick);
+    };
+    frameId = window.requestAnimationFrame(tick);
+
+    try {
+      return await task();
+    } finally {
+      const elapsed = performance.now() - startedAt;
+      const waitMs = Math.max(0, MIN_AUTH_LIVE_LOADING_MS - elapsed);
+      if (waitMs > 0) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(() => resolve(), waitMs);
+        });
+      }
+      window.cancelAnimationFrame(frameId);
+      setAuthLiveProgress(100);
+      await new Promise<void>((resolve) => {
+        window.setTimeout(() => resolve(), 220);
+      });
+      setAuthLiveLoading(false);
+      setAuthLiveStepIndex(0);
+      setAuthLiveProgress(10);
+    }
+  };
+
+  useEffect(() => {
+    const container = googleButtonRef.current;
+    if (!container) return;
+    if (authToken || signupOtpRequired || forgotPasswordMode || authLiveLoading) {
+      container.innerHTML = "";
+      return;
+    }
+
+    let cancelled = false;
+    const submitGoogleAuthRequest = async (credential: string) => {
+      return fetchJsonWithWakeAndRetry<AuthPayload>({
+        apiUrl,
+        path: "/auth/google",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ credential }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Google sign-in is taking longer than expected. Please try again.",
+      });
+    };
+
+    const handleGoogleAuthCredential = async (credential: string) => {
+      setAuthError("");
+      setAuthInfo("");
+      setGoogleAuthLoading(true);
+      try {
+        const payload = await runWithMinimumAuthLiveLoading(() => submitGoogleAuthRequest(credential));
+        applyAuthPayload(payload);
+        setAuthMode("login");
+        setAuthPassword("");
+        setSignupOtpRequired(false);
+        setSignupOtp("");
+        setForgotPasswordMode(false);
+        setForgotOtpRequested(false);
+        setForgotOtp("");
+        setForgotNewPassword("");
+        setAuthInfo("Signed in with Google.");
+        const consumed = await runQueuedAnalyzeAfterAuth(payload.auth_token);
+        if (!consumed) router.push("/dashboard");
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : "Unable to sign in with Google.");
+      } finally {
+        setGoogleAuthLoading(false);
+      }
+    };
+
+    void renderGoogleSignInButton({
+      container,
+      clientId: GOOGLE_CLIENT_ID,
+      width: 320,
+      text: authMode === "signup" ? "signup_with" : "continue_with",
+      onCredential: (credential) => {
+        if (cancelled) return;
+        void handleGoogleAuthCredential(credential);
+      },
+      onError: (message) => {
+        if (cancelled) return;
+        setAuthError((prev) => prev || message);
+      },
+    });
+
+    return () => {
+      cancelled = true;
+      container.innerHTML = "";
+    };
+  }, [authToken, signupOtpRequired, forgotPasswordMode, authMode, authLiveLoading, router]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleAnalyzeSuccess = (data: AnalysisResult) => {
     if (data.wallet) {
       setWallet(data.wallet);
@@ -608,7 +755,7 @@ export default function UploadPage() {
       if (forgotPasswordMode) {
         if (!forgotOtpRequested) {
           if (!email) throw new Error("Enter your email first.");
-          const payload = await requestForgotPasswordOtp(email);
+          const payload = await runWithMinimumAuthLiveLoading(() => requestForgotPasswordOtp(email));
           setForgotOtpRequested(true);
           setAuthInfo(payload.message || "Reset OTP sent. Enter OTP and new password.");
           setAuthError("");
@@ -616,7 +763,9 @@ export default function UploadPage() {
           if (!email || !forgotOtp.trim() || !forgotNewPassword.trim()) {
             throw new Error("Enter email, OTP, and new password.");
           }
-          const payload = await resetForgottenPassword(email, forgotOtp.trim(), forgotNewPassword.trim());
+          const payload = await runWithMinimumAuthLiveLoading(() =>
+            resetForgottenPassword(email, forgotOtp.trim(), forgotNewPassword.trim())
+          );
           applyAuthPayload(payload);
           setForgotPasswordMode(false);
           setForgotOtpRequested(false);
@@ -631,7 +780,7 @@ export default function UploadPage() {
         if (!email || !signupOtp.trim()) {
           throw new Error("Enter email and OTP.");
         }
-        const payload = await verifySignupOtp(email, signupOtp.trim());
+        const payload = await runWithMinimumAuthLiveLoading(() => verifySignupOtp(email, signupOtp.trim()));
         applyAuthPayload(payload);
         setSignupOtpRequired(false);
         setSignupOtp("");
@@ -643,7 +792,7 @@ export default function UploadPage() {
         if (!email || !password) {
           throw new Error("Enter email and password.");
         }
-        const payload = await submitAuthRequest(authMode, email, password);
+        const payload = await runWithMinimumAuthLiveLoading(() => submitAuthRequest(authMode, email, password));
         if (authMode === "signup") {
           setSignupOtpRequired(Boolean(payload.otp_required));
           setAuthInfo(payload.message || "OTP sent to your email.");
@@ -701,6 +850,7 @@ export default function UploadPage() {
     const normalizedSkills = analysisSkills.trim();
     const skillTokens = parseSkillTokens(normalizedSkills);
     const experienceYearsValue = toMaybeNumber(experienceYears);
+    const ageYearsValue = toMaybeNumber(ageYears);
     const isFresherFlow = experienceYearsValue === undefined || experienceYearsValue <= 1;
     const fallbackFresherSkills = `${normalizedRole} fundamentals, learning agility, communication, role readiness`;
     const effectiveSkills = normalizedSkills || fallbackFresherSkills;
@@ -736,6 +886,7 @@ export default function UploadPage() {
             skills: effectiveSkills,
             description: effectiveSkills,
             experience_years: experienceYearsValue,
+            age_years: ageYearsValue,
             applications_count: toMaybeNumber(applicationsCount),
             salary_boost_toggles: selectedSalaryBoosters,
           }),
@@ -790,6 +941,7 @@ export default function UploadPage() {
         formData.append("industry", normalizedIndustry);
         formData.append("role", normalizedRole);
         if (experienceYears.trim()) formData.append("experience_years", experienceYears.trim());
+        if (ageYears.trim()) formData.append("age_years", ageYears.trim());
         if (applicationsCount.trim()) formData.append("applications_count", applicationsCount.trim());
         if (selectedSalaryBoosters.length > 0) formData.append("salary_boost_toggles", selectedSalaryBoosters.join(","));
 
@@ -882,6 +1034,10 @@ export default function UploadPage() {
     };
   }, [result, callbackSimulationApps]);
 
+  const analysisFieldClass =
+    "w-full rounded-2xl border border-amber-100/28 bg-[#1a1020]/78 px-4 py-3.5 text-amber-50 placeholder:text-amber-100/40 outline-none transition focus:border-rose-100/70 focus:shadow-[0_0_0_3px_rgba(255,186,138,0.2)]";
+  const analysisTextAreaClass = `${analysisFieldClass} min-h-28 leading-relaxed`;
+
   const fieldClass =
     "w-full rounded-2xl border border-cyan-200/35 bg-[#021327]/92 px-4 py-3.5 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100 focus:shadow-[0_0_0_3px_rgba(128,240,255,0.18)]";
 
@@ -919,15 +1075,19 @@ export default function UploadPage() {
 
               <form
                 onSubmit={analysisMode === "manual" ? handleManualAnalyze : handleUploadAnalyze}
-                className="mt-6 rounded-3xl border border-sky-200/38 bg-[linear-gradient(145deg,rgba(9,43,70,0.97),rgba(10,27,48,0.98))] p-5 shadow-[0_24px_55px_rgba(2,10,24,0.55)] ring-1 ring-sky-200/14 sm:p-6"
+                className="analysis-orbit-card mt-6 rounded-3xl p-5 sm:p-6"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-sky-100/72">Step 1</p>
-                    <h2 className="mt-1 text-xl font-semibold text-sky-50 sm:text-2xl">Fill Your Profile For Analysis</h2>
-                    <p className="mt-1 text-xs text-sky-100/75">Use this form first. You can login/signup after clicking Analyze.</p>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-amber-100/78">Step 1</p>
+                    <h2 className="mt-1 text-xl font-semibold sm:text-2xl">
+                      <span className="analyze-heading-prism" data-text="Fill Your Profile For Analysis">
+                        Fill Your Profile For Analysis
+                      </span>
+                    </h2>
+                    <p className="mt-1 text-xs text-amber-100/82">Use this form first. You can login/signup after clicking Analyze.</p>
                   </div>
-                  <div className="inline-flex rounded-xl border border-sky-100/30 bg-sky-100/8 p-1 text-xs">
+                  <div className="inline-flex rounded-xl border border-amber-100/30 bg-rose-50/10 p-1 text-xs">
                     <button
                       type="button"
                       onClick={() => {
@@ -935,7 +1095,7 @@ export default function UploadPage() {
                         setAnalysisError("");
                       }}
                       className={`rounded-lg px-3 py-1.5 font-semibold transition ${
-                        analysisMode === "manual" ? "bg-sky-300/24 text-sky-50" : "text-sky-50/70 hover:text-sky-50"
+                        analysisMode === "manual" ? "bg-amber-200/26 text-amber-50" : "text-amber-50/70 hover:text-amber-50"
                       }`}
                     >
                       Manual Input
@@ -947,7 +1107,7 @@ export default function UploadPage() {
                         setAnalysisError("");
                       }}
                       className={`rounded-lg px-3 py-1.5 font-semibold transition ${
-                        analysisMode === "upload" ? "bg-sky-300/24 text-sky-50" : "text-sky-50/70 hover:text-sky-50"
+                        analysisMode === "upload" ? "bg-amber-200/26 text-amber-50" : "text-amber-50/70 hover:text-amber-50"
                       }`}
                     >
                       Upload Resume
@@ -955,20 +1115,20 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 rounded-2xl border border-sky-100/24 bg-[#0a2a46]/75 p-4 md:grid-cols-[1.5fr_0.5fr]">
+                <div className="mt-4 grid gap-3 rounded-2xl border border-amber-100/24 bg-[#2a1628]/68 p-4 md:grid-cols-[1.5fr_0.5fr]">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.12em] text-sky-100/75">How This Works</p>
-                    <ul className="mt-2 space-y-1 text-sm text-sky-50/85">
+                    <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">How This Works</p>
+                    <ul className="mt-2 space-y-1 text-sm text-amber-50/88">
                       <li>1. Fill role details and click analyze.</li>
                       <li>2. If not logged in, sign in via popup.</li>
                       <li>3. Analysis runs and report opens instantly.</li>
                     </ul>
-                    {!authToken && <p className="mt-2 text-xs text-sky-100/78">New users get 5 free credits (one full analysis).</p>}
+                    {!authToken && <p className="mt-2 text-xs text-amber-100/80">New users get 5 free credits (one full analysis).</p>}
                     {authToken && wallet && (
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-sky-50/78">
-                        <span className="rounded-lg border border-sky-100/20 bg-sky-100/8 px-2.5 py-1.5">Credits: {wallet.credits}</span>
-                        <span className="rounded-lg border border-sky-100/20 bg-sky-100/8 px-2.5 py-1.5">Reports left: {remainingAnalyze}</span>
-                        <span className="rounded-lg border border-sky-100/20 bg-sky-100/8 px-2.5 py-1.5">Signed in: {authUserEmail || "User"}</span>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-amber-50/82">
+                        <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">Credits: {wallet.credits}</span>
+                        <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">Reports left: {remainingAnalyze}</span>
+                        <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">Signed in: {authUserEmail || "User"}</span>
                       </div>
                     )}
                   </div>
@@ -977,7 +1137,7 @@ export default function UploadPage() {
                       <button
                         type="button"
                         onClick={() => setShowAuthModal(true)}
-                        className="rounded-xl border border-sky-100/34 bg-sky-200/16 px-3 py-2 text-xs font-semibold text-sky-50 transition hover:bg-sky-200/24"
+                        className="rounded-xl border border-amber-100/38 bg-amber-100/14 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
                       >
                         Login / Signup
                       </button>
@@ -985,14 +1145,14 @@ export default function UploadPage() {
                       <button
                         type="button"
                         onClick={handleSignOut}
-                        className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                        className="rounded-xl border border-rose-100/32 bg-transparent px-3 py-2 text-xs font-semibold text-rose-50/88 transition hover:bg-rose-100/12"
                       >
                         Sign Out
                       </button>
                     )}
                     <Link
                       href="/pricing"
-                      className="rounded-xl border border-cyan-100/35 bg-cyan-100/10 px-3 py-2 text-center text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16"
+                      className="rounded-xl border border-rose-100/34 bg-rose-100/12 px-3 py-2 text-center text-xs font-semibold text-rose-50 transition hover:bg-rose-100/18"
                     >
                       Buy Credits
                     </Link>
@@ -1010,7 +1170,7 @@ export default function UploadPage() {
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Target Industry</label>
+                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Target Industry</label>
                     <input
                       type="text"
                       value={industry}
@@ -1019,13 +1179,13 @@ export default function UploadPage() {
                         setAnalysisError("");
                       }}
                       placeholder="AI, FinTech, Product, Marketing"
-                      className={fieldClass}
+                      className={analysisFieldClass}
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Target Role</label>
+                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Target Role</label>
                     <input
                       type="text"
                       value={role}
@@ -1035,7 +1195,7 @@ export default function UploadPage() {
                         setAnalysisError("");
                       }}
                       placeholder="Product Manager, Account Executive, Backend Engineer"
-                      className={fieldClass}
+                      className={analysisFieldClass}
                       required
                     />
                     <datalist id="hirescore-role-suggestions">
@@ -1046,9 +1206,9 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Years of Experience (optional)</label>
+                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Years of Experience (optional)</label>
                     <input
                       type="number"
                       min="0"
@@ -1057,12 +1217,26 @@ export default function UploadPage() {
                       value={experienceYears}
                       onChange={(event) => setExperienceYears(event.target.value)}
                       placeholder="2"
-                      className={fieldClass}
+                      className={analysisFieldClass}
                     />
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Job Applications Planned Per Week</label>
+                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Age (optional)</label>
+                    <input
+                      type="number"
+                      min="16"
+                      max="70"
+                      step="1"
+                      value={ageYears}
+                      onChange={(event) => setAgeYears(event.target.value)}
+                      placeholder="24"
+                      className={analysisFieldClass}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Job Applications Planned Per Week</label>
                     <input
                       type="number"
                       min="1"
@@ -1070,14 +1244,14 @@ export default function UploadPage() {
                       value={applicationsCount}
                       onChange={(event) => setApplicationsCount(event.target.value)}
                       placeholder="30"
-                      className={fieldClass}
+                      className={analysisFieldClass}
                     />
                   </div>
                 </div>
 
                 {analysisMode === "manual" ? (
                   <div className="mt-5">
-                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Current Skills (optional for freshers)</label>
+                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Current Skills (optional for freshers)</label>
                     <textarea
                       value={analysisSkills}
                       onChange={(event) => {
@@ -1085,13 +1259,13 @@ export default function UploadPage() {
                         setAnalysisError("");
                       }}
                       placeholder="SQL, Python, Tableau OR CRM, lead generation, negotiation... (freshers can leave this blank)"
-                      className={`${textAreaClass} min-h-36`}
+                      className={`${analysisTextAreaClass} min-h-36`}
                     />
-                    <p className="mt-2 text-xs text-cyan-50/62">Experienced users: add at least 3 specific skills. Freshers (0-1 years): you can leave this blank.</p>
+                    <p className="mt-2 text-xs text-amber-50/70">Experienced users: add at least 3 specific skills. Freshers (0-1 years): you can leave this blank.</p>
                   </div>
                 ) : (
                   <div className="mt-5">
-                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Resume File (PDF or TXT)</label>
+                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Resume File (PDF or TXT)</label>
                     <div
                       onDragOver={(event) => {
                         event.preventDefault();
@@ -1108,14 +1282,14 @@ export default function UploadPage() {
                         }
                       }}
                       className={`rounded-2xl border-2 border-dashed p-7 text-center transition ${
-                        isDragging ? "border-cyan-200/65 bg-cyan-100/12" : "border-cyan-100/28 bg-cyan-100/4"
+                        isDragging ? "border-amber-200/70 bg-amber-100/14" : "border-amber-100/34 bg-amber-100/7"
                       }`}
                     >
                       {!uploadedFile ? (
                         <>
-                          <p className="text-base font-semibold text-cyan-50">Drag and drop your resume here</p>
-                          <p className="mt-1 text-sm text-cyan-50/62">or select file manually</p>
-                          <label className="mt-4 inline-block cursor-pointer rounded-xl border border-cyan-100/35 bg-cyan-200/20 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28">
+                          <p className="text-base font-semibold text-amber-50">Drag and drop your resume here</p>
+                          <p className="mt-1 text-sm text-amber-50/70">or select file manually</p>
+                          <label className="mt-4 inline-block cursor-pointer rounded-xl border border-amber-100/36 bg-amber-100/16 px-4 py-2 text-sm font-semibold text-amber-50 transition hover:bg-amber-100/24">
                             Browse File
                             <input
                               type="file"
@@ -1127,7 +1301,7 @@ export default function UploadPage() {
                         </>
                       ) : (
                         <div className="space-y-2">
-                          <p className="text-sm font-semibold text-cyan-50">Selected: {uploadedFile.name}</p>
+                          <p className="text-sm font-semibold text-amber-50">Selected: {uploadedFile.name}</p>
                           <button
                             type="button"
                             onClick={() => setUploadedFile(null)}
@@ -1149,14 +1323,14 @@ export default function UploadPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="rounded-2xl border border-sky-200/40 bg-sky-500/28 px-5 py-3.5 text-sm font-semibold tracking-wide text-sky-50 transition hover:bg-sky-500/38 disabled:cursor-not-allowed disabled:opacity-75"
+                    className="rounded-2xl border border-amber-100/45 bg-gradient-to-r from-rose-500/34 via-amber-300/28 to-orange-300/28 px-5 py-3.5 text-sm font-semibold tracking-wide text-amber-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-75"
                   >
                     {loading ? "Analyzing..." : analysisMode === "manual" ? "Analyze My Profile" : "Analyze Uploaded Resume"}
                   </button>
 
                   <Link
                     href="/studio"
-                    className="rounded-2xl border border-cyan-100/34 bg-cyan-100/10 px-5 py-3.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/16"
+                    className="rounded-2xl border border-rose-100/36 bg-rose-100/12 px-5 py-3.5 text-center text-sm font-semibold text-rose-50 transition hover:bg-rose-100/20"
                   >
                     Improve Resume Next
                   </Link>
@@ -1166,7 +1340,7 @@ export default function UploadPage() {
                   <button
                     type="button"
                     onClick={() => setShowResultModal(true)}
-                    className="mt-3 w-full rounded-2xl border border-cyan-100/30 bg-cyan-200/14 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
+                    className="mt-3 w-full rounded-2xl border border-amber-100/32 bg-amber-100/14 px-5 py-3 text-sm font-semibold text-amber-50 transition hover:bg-amber-100/24"
                   >
                     View Last Analysis Report
                   </button>
@@ -1215,7 +1389,7 @@ export default function UploadPage() {
             animate={{ opacity: 1 }}
             className="fixed inset-0 z-[190] flex items-center justify-center bg-[#020915]/90 px-4 backdrop-blur-xl"
             onClick={() => {
-              if (authLoading) return;
+              if (authLoading || googleAuthLoading) return;
               setShowAuthModal(false);
               setQueuedAnalyzeMode(null);
             }}
@@ -1285,13 +1459,23 @@ export default function UploadPage() {
                   />
                 )}
 
+                {!forgotPasswordMode && !signupOtpRequired && (
+                  <div className="pt-1">
+                    <p className="text-center text-[11px] uppercase tracking-[0.16em] text-cyan-100/62">or continue with</p>
+                    <div className="mt-2 flex justify-center">
+                      <div ref={googleButtonRef} className="min-h-[42px] rounded-full" />
+                    </div>
+                    {googleAuthLoading && <p className="mt-2 text-center text-xs text-cyan-100/78">Completing Google sign-in...</p>}
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2 pt-1">
                   <button
                     type="submit"
-                    disabled={authLoading}
+                    disabled={authLoading || googleAuthLoading}
                     className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
                   >
-                    {authLoading
+                    {authLoading || googleAuthLoading
                       ? "Please wait..."
                       : forgotPasswordMode
                         ? forgotOtpRequested
@@ -1343,28 +1527,75 @@ export default function UploadPage() {
           </motion.div>
         )}
 
+        {authLiveLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[320] flex items-center justify-center bg-[#030412]/58 px-4 backdrop-blur-lg"
+          >
+            <div className="auth-live-shell w-full max-w-md rounded-[1.8rem] p-6 sm:p-7">
+              <div className="auth-live-stage relative flex items-center justify-center">
+                <div className="auth-live-halo" />
+                <div className="auth-live-wave" />
+                <div className="auth-live-orb auth-live-orb-outer" />
+                <div className="auth-live-orb auth-live-orb-mid" />
+                <div className="auth-live-orb auth-live-orb-inner" />
+                <div className="auth-live-arc auth-live-arc-a" />
+                <div className="auth-live-arc auth-live-arc-b" />
+                <div className="auth-live-spark auth-live-spark-a" />
+                <div className="auth-live-spark auth-live-spark-b" />
+                <div className="auth-live-spark auth-live-spark-c" />
+                <div className="auth-live-core-dot" />
+              </div>
+
+              <p className="mt-6 text-center text-[11px] uppercase tracking-[0.18em] text-cyan-100/78">Authenticating</p>
+              <p className="mt-2 text-center text-sm font-semibold text-cyan-50">{AUTH_LIVE_LOADING_STEPS[authLiveStepIndex]}</p>
+
+              <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/40 bg-cyan-100/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-fuchsia-200 to-amber-200 transition-[width] duration-150 ease-linear"
+                  style={{ width: `${authLiveProgress}%` }}
+                />
+              </div>
+              <p className="mt-2 text-center text-xs text-cyan-100/76">{authLiveProgress}%</p>
+            </div>
+          </motion.div>
+        )}
+
         {loading && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-[#020915]/92 px-4 backdrop-blur-xl"
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-[#010716]/86 px-4 backdrop-blur-xl"
           >
-            <div className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/28 bg-gradient-to-br from-[#06213d]/96 via-[#04172e]/95 to-[#031124]/96 p-6 shadow-[0_35px_80px_rgba(0,0,0,0.55)] sm:p-8">
-              <div className="absolute -left-14 top-10 h-40 w-40 rounded-full bg-cyan-300/24 blur-[75px]" />
-              <div className="absolute -right-10 bottom-2 h-44 w-44 rounded-full bg-amber-100/16 blur-[85px]" />
-              <div className="relative">
-                <p className="text-xs uppercase tracking-[0.18em] text-cyan-100/72">Analysis In Progress</p>
-                <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">Building Your Shortlist Intelligence Report</h3>
-                <p className="mt-3 text-sm text-cyan-50/72">
-                  Role fit scoring, salary calibration, and callback forecasting are running now.
-                </p>
+            <div className="analysis-live-shell w-full max-w-3xl rounded-[2rem] p-6 sm:p-8">
+              <div className="analysis-live-stage relative flex items-center justify-center">
+                <div className="analysis-live-grid" />
+                <div className="analysis-live-wave analysis-live-wave-a" />
+                <div className="analysis-live-wave analysis-live-wave-b" />
+                <div className="analysis-live-ring analysis-live-ring-outer" />
+                <div className="analysis-live-ring analysis-live-ring-mid" />
+                <div className="analysis-live-ring analysis-live-ring-inner" />
+                <div className="analysis-live-beam" />
+                <div className="analysis-live-orbit analysis-live-orbit-a" />
+                <div className="analysis-live-orbit analysis-live-orbit-b" />
+                <div className="analysis-live-orbit analysis-live-orbit-c" />
+                <div className="analysis-live-core">
+                  <span className="analysis-live-core-value">{loadingProgress}%</span>
+                </div>
+              </div>
 
-                <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/8">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${loadingProgress}%` }}
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-cyan-200 to-emerald-200"
+              <div className="relative mt-3">
+                <p className="text-center text-xs uppercase tracking-[0.2em] text-cyan-100/72">Analysis In Progress</p>
+                <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Building Your Shortlist Intelligence Report</h3>
+                <p className="mt-3 text-center text-sm text-cyan-50/74">{ANALYSIS_LOADING_STEPS[loadingStepIndex]}</p>
+
+                <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/24 bg-cyan-100/8">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200 transition-[width] duration-150 ease-linear"
+                    style={{ width: `${loadingProgress}%` }}
                   />
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs text-cyan-100/66">
@@ -1379,8 +1610,8 @@ export default function UploadPage() {
                       <motion.div
                         key={step}
                         animate={{ opacity: active ? 1 : 0.56, scale: active ? 1.01 : 1 }}
-                        className={`rounded-xl border px-3 py-2.5 text-sm ${
-                          active ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50" : "border-cyan-100/16 bg-cyan-100/5 text-cyan-50/72"
+                        className={`analysis-live-step rounded-xl border px-3 py-2.5 text-sm ${
+                          active ? "analysis-live-step-active border-cyan-100/52 bg-cyan-200/18 text-cyan-50" : "border-cyan-100/16 bg-cyan-100/5 text-cyan-50/72"
                         }`}
                       >
                         {step}

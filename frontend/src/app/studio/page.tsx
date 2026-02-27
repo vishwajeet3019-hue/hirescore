@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
+import { renderGoogleSignInButton } from "@/lib/google-sso";
 
 type ResumeTemplateId = "quantum" | "executive" | "minimal";
 
@@ -66,8 +67,16 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
 ];
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() || "";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
+const STUDIO_AI_LOADING_STEPS = [
+  "Extracting role intent and resume signals",
+  "Synthesizing high-impact bullet upgrades",
+  "Optimizing ATS keyword alignment",
+  "Finalizing polished recruiter-ready draft",
+] as const;
+const MIN_STUDIO_AI_LOADING_MS = 6000;
 
 export default function StudioPage() {
   const [mode, setMode] = useState<"build" | "polish" | "compose">("build");
@@ -94,6 +103,9 @@ export default function StudioPage() {
   const [generationError, setGenerationError] = useState("");
   const [templateError, setTemplateError] = useState("");
   const [building, setBuilding] = useState(false);
+  const [studioAiLoading, setStudioAiLoading] = useState(false);
+  const [studioAiStepIndex, setStudioAiStepIndex] = useState(0);
+  const [studioAiProgress, setStudioAiProgress] = useState(10);
 
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -102,6 +114,7 @@ export default function StudioPage() {
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
   const [signupOtp, setSignupOtp] = useState("");
@@ -110,6 +123,7 @@ export default function StudioPage() {
   const [forgotOtpRequested, setForgotOtpRequested] = useState(false);
   const [forgotOtp, setForgotOtp] = useState("");
   const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
@@ -159,6 +173,15 @@ export default function StudioPage() {
   useEffect(() => {
     void warmBackend(apiUrl);
   }, []);
+
+  useEffect(() => {
+    if (!studioAiLoading) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [studioAiLoading]);
 
   const remainingGeneration = wallet ? Math.floor(wallet.credits / Math.max(1, wallet.pricing.ai_resume_generation)) : 0;
   const canUseAiGeneration = (wallet?.credits || 0) >= (wallet?.pricing.ai_resume_generation || 15);
@@ -265,6 +288,76 @@ export default function StudioPage() {
     });
   };
 
+  useEffect(() => {
+    const container = googleButtonRef.current;
+    if (!container) return;
+    if (authToken || signupOtpRequired || forgotPasswordMode) {
+      container.innerHTML = "";
+      return;
+    }
+
+    let cancelled = false;
+    const submitGoogleAuthRequest = async (credential: string) => {
+      return fetchJsonWithWakeAndRetry<AuthPayload>({
+        apiUrl,
+        path: "/auth/google",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ credential }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Google sign-in is taking longer than expected. Please try again.",
+      });
+    };
+
+    const handleGoogleAuthCredential = async (credential: string) => {
+      setAuthError("");
+      setAuthInfo("");
+      setGoogleAuthLoading(true);
+      try {
+        const payload = await submitGoogleAuthRequest(credential);
+        applyAuthPayload(payload);
+        setAuthMode("login");
+        setAuthPassword("");
+        setSignupOtpRequired(false);
+        setSignupOtp("");
+        setForgotPasswordMode(false);
+        setForgotOtpRequested(false);
+        setForgotOtp("");
+        setForgotNewPassword("");
+        setAuthInfo("Signed in with Google.");
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : "Unable to sign in with Google.");
+      } finally {
+        setGoogleAuthLoading(false);
+      }
+    };
+
+    void renderGoogleSignInButton({
+      container,
+      clientId: GOOGLE_CLIENT_ID,
+      width: 300,
+      text: authMode === "signup" ? "signup_with" : "continue_with",
+      onCredential: (credential) => {
+        if (cancelled) return;
+        void handleGoogleAuthCredential(credential);
+      },
+      onError: (message) => {
+        if (cancelled) return;
+        setAuthError((prev) => prev || message);
+      },
+    });
+
+    return () => {
+      cancelled = true;
+      container.innerHTML = "";
+    };
+  }, [authToken, signupOtpRequired, forgotPasswordMode, authMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleAuthSubmit = async () => {
     const email = authEmail.trim();
     const password = authPassword.trim();
@@ -369,6 +462,48 @@ export default function StudioPage() {
     }
   };
 
+  const runWithMinimumStudioAiLoading = async <T,>(task: () => Promise<T>) => {
+    const startedAt = performance.now();
+    setStudioAiLoading(true);
+    setStudioAiStepIndex(0);
+    setStudioAiProgress(10);
+
+    const totalSteps = STUDIO_AI_LOADING_STEPS.length;
+    const stepDuration = MIN_STUDIO_AI_LOADING_MS / totalSteps;
+    let frameId = 0;
+
+    const tick = () => {
+      const elapsed = performance.now() - startedAt;
+      const cappedElapsed = Math.min(elapsed, MIN_STUDIO_AI_LOADING_MS);
+      const progress = 10 + (cappedElapsed / MIN_STUDIO_AI_LOADING_MS) * 85;
+      const stepIndex = Math.min(totalSteps - 1, Math.floor(cappedElapsed / stepDuration));
+      setStudioAiProgress(Math.round(progress));
+      setStudioAiStepIndex(stepIndex);
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    try {
+      return await task();
+    } finally {
+      const elapsed = performance.now() - startedAt;
+      const waitMs = Math.max(0, MIN_STUDIO_AI_LOADING_MS - elapsed);
+      if (waitMs > 0) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(() => resolve(), waitMs);
+        });
+      }
+      window.cancelAnimationFrame(frameId);
+      setStudioAiProgress(100);
+      await new Promise<void>((resolve) => {
+        window.setTimeout(() => resolve(), 180);
+      });
+      setStudioAiLoading(false);
+      setStudioAiStepIndex(0);
+      setStudioAiProgress(10);
+    }
+  };
+
   const handleBuildResume = async () => {
     if (!authToken || !authHeader) {
       setGenerationError("Login required to use Resume Studio paid features.");
@@ -383,109 +518,111 @@ export default function StudioPage() {
     setGenerationError("");
 
     try {
-      if (mode === "build") {
-        const response = await fetch(apiUrl("/build-resume"), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-          body: JSON.stringify({
-            name: name || "Candidate",
-            industry,
-            role,
-            experience_years: inferExperienceYears(),
-            skills,
-            work_experience: `${summary ? `Summary:\n${summary}\n\n` : ""}${workExperience}`,
-            projects,
-            education,
-          }),
-        });
+      await runWithMinimumStudioAiLoading(async () => {
+        if (mode === "build") {
+          const response = await fetch(apiUrl("/build-resume"), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+            body: JSON.stringify({
+              name: name || "Candidate",
+              industry,
+              role,
+              experience_years: inferExperienceYears(),
+              skills,
+              work_experience: `${summary ? `Summary:\n${summary}\n\n` : ""}${workExperience}`,
+              projects,
+              education,
+            }),
+          });
 
-        if (!response.ok) {
-          throw new Error(await parseApiError(response));
+          if (!response.ok) {
+            throw new Error(await parseApiError(response));
+          }
+
+          const data = (await response.json()) as {
+            optimized_resume: string;
+            ai_generated?: boolean;
+            ai_warning?: string | null;
+            wallet?: CreditWallet;
+          };
+          if (data.wallet) setWallet(data.wallet);
+          assignOptimizedResume(data.optimized_resume || "");
+          if (data.ai_generated === false && data.ai_warning) {
+            setGenerationError(data.ai_warning);
+          }
+        } else if (mode === "polish" && polishMode === "upload" && uploadedFile) {
+          const formData = new FormData();
+          formData.append("file", uploadedFile);
+          formData.append("industry", industry || "General");
+          formData.append("role", role || "General Role");
+
+          const response = await fetch(apiUrl("/polish-resume-pdf"), {
+            method: "POST",
+            headers: {
+              ...authHeader,
+            },
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error(await parseApiError(response));
+          }
+
+          const data = (await response.json()) as {
+            optimized_resume: string;
+            ai_generated?: boolean;
+            ai_warning?: string | null;
+            wallet?: CreditWallet;
+          };
+          if (data.wallet) setWallet(data.wallet);
+          assignOptimizedResume(data.optimized_resume || "");
+          if (data.ai_generated === false && data.ai_warning) {
+            setGenerationError(data.ai_warning);
+          }
+        } else if (mode === "polish" && polishMode === "paste") {
+          const response = await fetch(apiUrl("/build-resume"), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+            body: JSON.stringify({
+              name: name || "Candidate",
+              industry: industry || "General",
+              role: role || "General Role",
+              experience_years: inferExperienceYears(),
+              skills: polishText,
+              work_experience: polishText,
+              projects: "",
+              education: "",
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(await parseApiError(response));
+          }
+
+          const data = (await response.json()) as {
+            optimized_resume: string;
+            ai_generated?: boolean;
+            ai_warning?: string | null;
+            wallet?: CreditWallet;
+          };
+          if (data.wallet) setWallet(data.wallet);
+          assignOptimizedResume(data.optimized_resume || "");
+          if (data.ai_generated === false && data.ai_warning) {
+            setGenerationError(data.ai_warning);
+          }
         }
-
-        const data = (await response.json()) as {
-          optimized_resume: string;
-          ai_generated?: boolean;
-          ai_warning?: string | null;
-          wallet?: CreditWallet;
-        };
-        if (data.wallet) setWallet(data.wallet);
-        assignOptimizedResume(data.optimized_resume || "");
-        if (data.ai_generated === false && data.ai_warning) {
-          setGenerationError(data.ai_warning);
-        }
-      } else if (mode === "polish" && polishMode === "upload" && uploadedFile) {
-        const formData = new FormData();
-        formData.append("file", uploadedFile);
-        formData.append("industry", industry || "General");
-        formData.append("role", role || "General Role");
-
-        const response = await fetch(apiUrl("/polish-resume-pdf"), {
-          method: "POST",
-          headers: {
-            ...authHeader,
-          },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error(await parseApiError(response));
-        }
-
-        const data = (await response.json()) as {
-          optimized_resume: string;
-          ai_generated?: boolean;
-          ai_warning?: string | null;
-          wallet?: CreditWallet;
-        };
-        if (data.wallet) setWallet(data.wallet);
-        assignOptimizedResume(data.optimized_resume || "");
-        if (data.ai_generated === false && data.ai_warning) {
-          setGenerationError(data.ai_warning);
-        }
-      } else if (mode === "polish" && polishMode === "paste") {
-        const response = await fetch(apiUrl("/build-resume"), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-          body: JSON.stringify({
-            name: name || "Candidate",
-            industry: industry || "General",
-            role: role || "General Role",
-            experience_years: inferExperienceYears(),
-            skills: polishText,
-            work_experience: polishText,
-            projects: "",
-            education: "",
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(await parseApiError(response));
-        }
-
-        const data = (await response.json()) as {
-          optimized_resume: string;
-          ai_generated?: boolean;
-          ai_warning?: string | null;
-          wallet?: CreditWallet;
-        };
-        if (data.wallet) setWallet(data.wallet);
-        assignOptimizedResume(data.optimized_resume || "");
-        if (data.ai_generated === false && data.ai_warning) {
-          setGenerationError(data.ai_warning);
-        }
-      }
+      });
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "Unable to generate resume right now.");
+    } finally {
+      setBuilding(false);
     }
-
-    setBuilding(false);
   };
 
   const buildDraftLocally = () => {
@@ -540,44 +677,46 @@ export default function StudioPage() {
     setGenerationError("");
 
     try {
-      const response = await fetch(apiUrl("/build-resume"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeader,
-        },
-        body: JSON.stringify({
-          name: name || "Candidate",
-          industry,
-          role,
-          experience_years: inferExperienceYears(),
-          skills,
-          work_experience: `${summary ? `Summary:\n${summary}\n\n` : ""}${workExperience}`,
-          projects,
-          education,
-        }),
+      await runWithMinimumStudioAiLoading(async () => {
+        const response = await fetch(apiUrl("/build-resume"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            name: name || "Candidate",
+            industry,
+            role,
+            experience_years: inferExperienceYears(),
+            skills,
+            work_experience: `${summary ? `Summary:\n${summary}\n\n` : ""}${workExperience}`,
+            projects,
+            education,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await parseApiError(response));
+        }
+
+        const data = (await response.json()) as {
+          optimized_resume: string;
+          ai_generated?: boolean;
+          ai_warning?: string | null;
+          wallet?: CreditWallet;
+        };
+        if (data.wallet) setWallet(data.wallet);
+        assignOptimizedResume(data.optimized_resume || "");
+        if (data.ai_generated === false && data.ai_warning) {
+          setGenerationError(data.ai_warning);
+        }
       });
-
-      if (!response.ok) {
-        throw new Error(await parseApiError(response));
-      }
-
-      const data = (await response.json()) as {
-        optimized_resume: string;
-        ai_generated?: boolean;
-        ai_warning?: string | null;
-        wallet?: CreditWallet;
-      };
-      if (data.wallet) setWallet(data.wallet);
-      assignOptimizedResume(data.optimized_resume || "");
-      if (data.ai_generated === false && data.ai_warning) {
-        setGenerationError(data.ai_warning);
-      }
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "Unable to enhance draft right now.");
+    } finally {
+      setBuilding(false);
     }
-
-    setBuilding(false);
   };
 
   const handleDownloadResume = () => {
@@ -801,14 +940,23 @@ export default function StudioPage() {
                       />
                     </div>
                   )}
+                  {!forgotPasswordMode && !signupOtpRequired && (
+                    <div className="mt-3">
+                      <p className="text-center text-[11px] uppercase tracking-[0.16em] text-cyan-100/62">or continue with</p>
+                      <div className="mt-2 flex justify-center">
+                        <div ref={googleButtonRef} className="min-h-[42px] rounded-full" />
+                      </div>
+                      {googleAuthLoading && <p className="mt-2 text-center text-xs text-cyan-100/78">Completing Google sign-in...</p>}
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => void handleAuthSubmit()}
-                      disabled={authLoading}
+                      disabled={authLoading || googleAuthLoading}
                       className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
                     >
-                      {authLoading
+                      {authLoading || googleAuthLoading
                         ? "Please wait..."
                         : forgotPasswordMode
                           ? forgotOtpRequested
@@ -1063,6 +1211,67 @@ export default function StudioPage() {
             </div>
           )}
         </section>
+
+        {studioAiLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[180] flex items-center justify-center bg-[#010715]/64 px-4 backdrop-blur-2xl"
+          >
+            <div className="analysis-live-shell w-full max-w-3xl rounded-[2rem] p-6 sm:p-8">
+              <div className="analysis-live-stage relative flex items-center justify-center">
+                <div className="analysis-live-grid" />
+                <div className="analysis-live-wave analysis-live-wave-a" />
+                <div className="analysis-live-wave analysis-live-wave-b" />
+                <div className="analysis-live-ring analysis-live-ring-outer" />
+                <div className="analysis-live-ring analysis-live-ring-mid" />
+                <div className="analysis-live-ring analysis-live-ring-inner" />
+                <div className="analysis-live-beam" />
+                <div className="analysis-live-orbit analysis-live-orbit-a" />
+                <div className="analysis-live-orbit analysis-live-orbit-b" />
+                <div className="analysis-live-orbit analysis-live-orbit-c" />
+                <div className="analysis-live-core">
+                  <span className="analysis-live-core-value">{studioAiProgress}%</span>
+                </div>
+              </div>
+
+              <div className="relative mt-3">
+                <p className="text-center text-xs uppercase tracking-[0.2em] text-cyan-100/72">AI Resume Processing</p>
+                <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Crafting Your Best-Fit Resume Draft</h3>
+                <p className="mt-3 text-center text-sm text-cyan-50/74">{STUDIO_AI_LOADING_STEPS[studioAiStepIndex]}</p>
+
+                <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/24 bg-cyan-100/8">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200 transition-[width] duration-150 ease-linear"
+                    style={{ width: `${studioAiProgress}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-cyan-100/66">
+                  <span>{STUDIO_AI_LOADING_STEPS[studioAiStepIndex]}</span>
+                  <span>{studioAiProgress}%</span>
+                </div>
+
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  {STUDIO_AI_LOADING_STEPS.map((step, index) => {
+                    const active = index === studioAiStepIndex;
+                    return (
+                      <motion.div
+                        key={step}
+                        animate={{ opacity: active ? 1 : 0.56, scale: active ? 1.01 : 1 }}
+                        className={`analysis-live-step rounded-xl border px-3 py-2.5 text-sm ${
+                          active ? "analysis-live-step-active border-cyan-100/52 bg-cyan-200/18 text-cyan-50" : "border-cyan-100/16 bg-cyan-100/5 text-cyan-50/72"
+                        }`}
+                      >
+                        {step}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {optimizedResume && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="studio-soft-card rounded-[2rem] p-6 sm:p-8">

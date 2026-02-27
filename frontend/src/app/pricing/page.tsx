@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
+import { renderGoogleSignInButton } from "@/lib/google-sso";
 
 declare global {
   interface Window {
@@ -110,6 +111,7 @@ const creditRules = [
 ];
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() || "";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
@@ -121,6 +123,7 @@ export default function PricingPage() {
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
   const [signupOtp, setSignupOtp] = useState("");
@@ -138,6 +141,7 @@ export default function PricingPage() {
   const [razorpayEnabled, setRazorpayEnabled] = useState(false);
   const [razorpayKeyId, setRazorpayKeyId] = useState("");
   const [checkoutLoadingId, setCheckoutLoadingId] = useState<string | null>(null);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
@@ -299,6 +303,76 @@ export default function PricingPage() {
         window.localStorage.removeItem("hirescore_auth_token");
       });
   }, []);
+
+  useEffect(() => {
+    const container = googleButtonRef.current;
+    if (!container) return;
+    if (authToken || signupOtpRequired || forgotPasswordMode) {
+      container.innerHTML = "";
+      return;
+    }
+
+    let cancelled = false;
+    const submitGoogleAuthRequest = async (credential: string) => {
+      return fetchJsonWithWakeAndRetry<AuthPayload>({
+        apiUrl,
+        path: "/auth/google",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ credential }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Google sign-in is taking longer than expected. Please try again.",
+      });
+    };
+
+    const handleGoogleAuthCredential = async (credential: string) => {
+      setAuthError("");
+      setAuthInfo("");
+      setGoogleAuthLoading(true);
+      try {
+        const payload = await submitGoogleAuthRequest(credential);
+        applyAuthPayload(payload);
+        setAuthMode("login");
+        setAuthPassword("");
+        setSignupOtpRequired(false);
+        setSignupOtp("");
+        setForgotPasswordMode(false);
+        setForgotOtpRequested(false);
+        setForgotOtp("");
+        setForgotNewPassword("");
+        setAuthInfo("Signed in with Google.");
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : "Unable to sign in with Google.");
+      } finally {
+        setGoogleAuthLoading(false);
+      }
+    };
+
+    void renderGoogleSignInButton({
+      container,
+      clientId: GOOGLE_CLIENT_ID,
+      width: 300,
+      text: authMode === "signup" ? "signup_with" : "continue_with",
+      onCredential: (credential) => {
+        if (cancelled) return;
+        void handleGoogleAuthCredential(credential);
+      },
+      onError: (message) => {
+        if (cancelled) return;
+        setAuthError((prev) => prev || message);
+      },
+    });
+
+    return () => {
+      cancelled = true;
+      container.innerHTML = "";
+    };
+  }, [authToken, signupOtpRequired, forgotPasswordMode, authMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAuthSubmit = async () => {
     const email = authEmail.trim();
@@ -693,14 +767,23 @@ export default function PricingPage() {
                   />
                 </div>
               )}
+              {!forgotPasswordMode && !signupOtpRequired && (
+                <div className="mt-3">
+                  <p className="text-center text-[11px] uppercase tracking-[0.16em] text-cyan-100/62">or continue with</p>
+                  <div className="mt-2 flex justify-center">
+                    <div ref={googleButtonRef} className="min-h-[42px] rounded-full" />
+                  </div>
+                  {googleAuthLoading && <p className="mt-2 text-center text-xs text-cyan-100/78">Completing Google sign-in...</p>}
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => void handleAuthSubmit()}
-                  disabled={authLoading}
+                  disabled={authLoading || googleAuthLoading}
                   className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
                 >
-                  {authLoading
+                  {authLoading || googleAuthLoading
                     ? "Please wait..."
                     : forgotPasswordMode
                       ? forgotOtpRequested
