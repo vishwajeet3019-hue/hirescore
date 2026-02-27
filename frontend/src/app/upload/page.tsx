@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
@@ -228,6 +229,7 @@ const AUTH_REQUEST_TIMEOUT_MS = 70000;
 type ResultTabId = "summary" | "strategy" | "salary" | "market" | "improvements";
 
 export default function UploadPage() {
+  const router = useRouter();
   const [analysisMode, setAnalysisMode] = useState<"manual" | "upload">("manual");
   const [industry, setIndustry] = useState("");
   const [role, setRole] = useState("");
@@ -572,26 +574,23 @@ export default function UploadPage() {
   const promptAuthBeforeAnalyze = (mode: "manual" | "upload") => {
     setQueuedAnalyzeMode(mode);
     setAuthInfo("Login or signup to view your report.");
-    setLoading(true);
-    window.setTimeout(() => {
-      setLoading(false);
-      setShowAuthModal(true);
-    }, 900);
+    setShowAuthModal(true);
   };
 
   const runQueuedAnalyzeAfterAuth = async (tokenOverride?: string) => {
     if (!queuedAnalyzeMode) {
       setShowAuthModal(false);
-      return;
+      return false;
     }
     const modeToRun = queuedAnalyzeMode;
     setQueuedAnalyzeMode(null);
     setShowAuthModal(false);
     if (modeToRun === "manual") {
       await executeManualAnalyze(tokenOverride);
-      return;
+      return true;
     }
     await executeUploadAnalyze(tokenOverride);
+    return true;
   };
 
   const handleAuthSubmit = async (event?: FormEvent<HTMLFormElement>) => {
@@ -625,7 +624,8 @@ export default function UploadPage() {
           setForgotNewPassword("");
           setAuthPassword("");
           setAuthInfo("Password reset successful. You are now logged in.");
-          await runQueuedAnalyzeAfterAuth(payload.auth_token);
+          const consumed = await runQueuedAnalyzeAfterAuth(payload.auth_token);
+          if (!consumed) router.push("/dashboard");
         }
       } else if (authMode === "signup" && signupOtpRequired) {
         if (!email || !signupOtp.trim()) {
@@ -637,7 +637,8 @@ export default function UploadPage() {
         setSignupOtp("");
         setAuthPassword("");
         setAuthInfo("Signup complete. Welcome to HireScore.");
-        await runQueuedAnalyzeAfterAuth(payload.auth_token);
+        const consumed = await runQueuedAnalyzeAfterAuth(payload.auth_token);
+        if (!consumed) router.push("/dashboard");
       } else {
         if (!email || !password) {
           throw new Error("Enter email and password.");
@@ -651,7 +652,8 @@ export default function UploadPage() {
           applyAuthPayload(payload);
           setAuthPassword("");
           setAuthError("");
-          await runQueuedAnalyzeAfterAuth(payload.auth_token);
+          const consumed = await runQueuedAnalyzeAfterAuth(payload.auth_token);
+          if (!consumed) router.push("/dashboard");
         }
       }
     } catch (error) {
@@ -917,15 +919,15 @@ export default function UploadPage() {
 
               <form
                 onSubmit={analysisMode === "manual" ? handleManualAnalyze : handleUploadAnalyze}
-                className="mt-6 rounded-3xl border border-cyan-100/34 bg-[linear-gradient(145deg,rgba(8,35,58,0.94),rgba(4,18,38,0.96))] p-5 shadow-[0_24px_55px_rgba(2,10,24,0.55)] ring-1 ring-cyan-100/10 sm:p-6"
+                className="mt-6 rounded-3xl border border-sky-200/38 bg-[linear-gradient(145deg,rgba(9,43,70,0.97),rgba(10,27,48,0.98))] p-5 shadow-[0_24px_55px_rgba(2,10,24,0.55)] ring-1 ring-sky-200/14 sm:p-6"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/72">Step 1</p>
-                    <h2 className="mt-1 text-xl font-semibold text-cyan-50 sm:text-2xl">Start Your Score Check</h2>
-                    <p className="mt-1 text-xs text-cyan-100/72">Enter details below to get your personalized shortlist report.</p>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-sky-100/72">Step 1</p>
+                    <h2 className="mt-1 text-xl font-semibold text-sky-50 sm:text-2xl">Fill Your Profile For Analysis</h2>
+                    <p className="mt-1 text-xs text-sky-100/75">Use this form first. You can login/signup after clicking Analyze.</p>
                   </div>
-                  <div className="inline-flex rounded-xl border border-cyan-100/30 bg-cyan-100/8 p-1 text-xs">
+                  <div className="inline-flex rounded-xl border border-sky-100/30 bg-sky-100/8 p-1 text-xs">
                     <button
                       type="button"
                       onClick={() => {
@@ -933,7 +935,7 @@ export default function UploadPage() {
                         setAnalysisError("");
                       }}
                       className={`rounded-lg px-3 py-1.5 font-semibold transition ${
-                        analysisMode === "manual" ? "bg-cyan-200/24 text-cyan-50" : "text-cyan-50/70 hover:text-cyan-50"
+                        analysisMode === "manual" ? "bg-sky-300/24 text-sky-50" : "text-sky-50/70 hover:text-sky-50"
                       }`}
                     >
                       Manual Input
@@ -945,7 +947,7 @@ export default function UploadPage() {
                         setAnalysisError("");
                       }}
                       className={`rounded-lg px-3 py-1.5 font-semibold transition ${
-                        analysisMode === "upload" ? "bg-cyan-200/24 text-cyan-50" : "text-cyan-50/70 hover:text-cyan-50"
+                        analysisMode === "upload" ? "bg-sky-300/24 text-sky-50" : "text-sky-50/70 hover:text-sky-50"
                       }`}
                     >
                       Upload Resume
@@ -953,20 +955,20 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 rounded-2xl border border-cyan-100/24 bg-[#06233e]/75 p-4 md:grid-cols-[1.5fr_0.5fr]">
+                <div className="mt-4 grid gap-3 rounded-2xl border border-sky-100/24 bg-[#0a2a46]/75 p-4 md:grid-cols-[1.5fr_0.5fr]">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">How It Works</p>
-                    <ul className="mt-2 space-y-1 text-sm text-cyan-50/80">
+                    <p className="text-xs uppercase tracking-[0.12em] text-sky-100/75">How This Works</p>
+                    <ul className="mt-2 space-y-1 text-sm text-sky-50/85">
                       <li>1. Fill role details and click analyze.</li>
                       <li>2. If not logged in, sign in via popup.</li>
                       <li>3. Analysis runs and report opens instantly.</li>
                     </ul>
-                    {!authToken && <p className="mt-2 text-xs text-cyan-100/72">New users get 5 free credits (one full analysis).</p>}
+                    {!authToken && <p className="mt-2 text-xs text-sky-100/78">New users get 5 free credits (one full analysis).</p>}
                     {authToken && wallet && (
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-cyan-50/74">
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Credits: {wallet.credits}</span>
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Reports left: {remainingAnalyze}</span>
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Signed in: {authUserEmail || "User"}</span>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-sky-50/78">
+                        <span className="rounded-lg border border-sky-100/20 bg-sky-100/8 px-2.5 py-1.5">Credits: {wallet.credits}</span>
+                        <span className="rounded-lg border border-sky-100/20 bg-sky-100/8 px-2.5 py-1.5">Reports left: {remainingAnalyze}</span>
+                        <span className="rounded-lg border border-sky-100/20 bg-sky-100/8 px-2.5 py-1.5">Signed in: {authUserEmail || "User"}</span>
                       </div>
                     )}
                   </div>
@@ -975,7 +977,7 @@ export default function UploadPage() {
                       <button
                         type="button"
                         onClick={() => setShowAuthModal(true)}
-                        className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
+                        className="rounded-xl border border-sky-100/34 bg-sky-200/16 px-3 py-2 text-xs font-semibold text-sky-50 transition hover:bg-sky-200/24"
                       >
                         Login / Signup
                       </button>
@@ -1008,7 +1010,7 @@ export default function UploadPage() {
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-cyan-50/86">Target Industry</label>
+                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Target Industry</label>
                     <input
                       type="text"
                       value={industry}
@@ -1023,7 +1025,7 @@ export default function UploadPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-cyan-50/86">Target Role</label>
+                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Target Role</label>
                     <input
                       type="text"
                       value={role}
@@ -1046,7 +1048,7 @@ export default function UploadPage() {
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-cyan-50/86">Years of Experience (optional)</label>
+                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Years of Experience (optional)</label>
                     <input
                       type="number"
                       min="0"
@@ -1060,7 +1062,7 @@ export default function UploadPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-cyan-50/86">Job Applications Planned Per Week</label>
+                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Job Applications Planned Per Week</label>
                     <input
                       type="number"
                       min="1"
@@ -1075,7 +1077,7 @@ export default function UploadPage() {
 
                 {analysisMode === "manual" ? (
                   <div className="mt-5">
-                    <label className="mb-2 block text-sm font-medium text-cyan-50/86">Current Skills (optional for freshers)</label>
+                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Current Skills (optional for freshers)</label>
                     <textarea
                       value={analysisSkills}
                       onChange={(event) => {
@@ -1089,7 +1091,7 @@ export default function UploadPage() {
                   </div>
                 ) : (
                   <div className="mt-5">
-                    <label className="mb-2 block text-sm font-medium text-cyan-50/86">Resume File (PDF or TXT)</label>
+                    <label className="mb-2 block text-sm font-medium text-sky-50/90">Resume File (PDF or TXT)</label>
                     <div
                       onDragOver={(event) => {
                         event.preventDefault();
@@ -1147,9 +1149,9 @@ export default function UploadPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="rounded-2xl border border-cyan-100/42 bg-gradient-to-r from-cyan-300/36 via-cyan-200/34 to-amber-100/30 px-5 py-3.5 text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-75"
+                    className="rounded-2xl border border-sky-200/40 bg-sky-500/28 px-5 py-3.5 text-sm font-semibold tracking-wide text-sky-50 transition hover:bg-sky-500/38 disabled:cursor-not-allowed disabled:opacity-75"
                   >
-                    {loading ? "Analyzing..." : !authToken ? "Continue & Unlock Report" : analysisMode === "manual" ? "Analyze My Profile" : "Analyze Uploaded Resume"}
+                    {loading ? "Analyzing..." : analysisMode === "manual" ? "Analyze My Profile" : "Analyze Uploaded Resume"}
                   </button>
 
                   <Link
@@ -1231,7 +1233,9 @@ export default function UploadPage() {
                   ? "Reset password via OTP."
                   : signupOtpRequired
                     ? "Enter OTP sent to your email to complete signup."
-                    : "Sign in once, then your report opens automatically."}
+                    : authMode === "signup"
+                      ? "Get 5 free credits on signup and unlock your report."
+                      : "Sign in once, then your report opens automatically."}
               </p>
 
               <form onSubmit={handleAuthSubmit} className="mt-4 space-y-3">
