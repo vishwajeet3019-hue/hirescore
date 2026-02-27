@@ -32,7 +32,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfgen import canvas
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 try:
     import stripe  # type: ignore
@@ -1285,6 +1285,101 @@ HIGH_RISK_INDUSTRIES_INDIA = [
     "high-burn direct-to-consumer startups",
     "ad-dependent content businesses with weak cash flow",
 ]
+
+SEGMENT_RISK_SEGMENTS_INDIA: dict[str, list[str]] = {
+    "technology": [
+        "high-burn SaaS startups without clear path to profitability",
+        "outsourcing teams with single-client dependency",
+        "speculative AI tooling products with low enterprise adoption",
+    ],
+    "business": [
+        "commission-heavy field sales teams with high quarterly churn",
+        "aggressive expansion teams with weak unit economics",
+        "agencies dependent on one or two anchor clients",
+    ],
+    "creative": [
+        "project-only design agencies with unstable retainers",
+        "brand studios tied to seasonal ad budgets",
+        "influencer-only content operations with volatile demand",
+    ],
+    "service": [
+        "contract-heavy support desks with limited SLA protection",
+        "short-cycle BPO projects without multi-year contracts",
+        "operations teams in low-margin outsourcing firms",
+    ],
+    "general": [
+        *HIGH_RISK_INDUSTRIES_INDIA,
+    ],
+}
+
+ROLE_TRACK_MARKET_HINTS: dict[str, dict[str, Any]] = {
+    "backend": {
+        "best_months": ["January", "February", "July", "August", "November"],
+        "peak_windows": ["Q1 platform budgeting", "Q3 reliability hiring"],
+        "risk_delta": -1,
+        "timing_tip": "Lead with reliability and scale-impact bullets in the first outreach batch.",
+    },
+    "frontend": {
+        "best_months": ["January", "March", "July", "September", "October"],
+        "peak_windows": ["Q1 product roadmap staffing", "Q3 feature-release sprint"],
+        "risk_delta": 0,
+        "timing_tip": "Submit role-tailored portfolio links with measurable UX outcomes.",
+    },
+    "data": {
+        "best_months": ["February", "March", "August", "September", "October"],
+        "peak_windows": ["Quarterly planning analytics ramp", "Pre-festive forecasting window"],
+        "risk_delta": 0,
+        "timing_tip": "Prioritize evidence of business impact, not just tooling.",
+    },
+    "product": {
+        "best_months": ["January", "April", "July", "August", "October"],
+        "peak_windows": ["Annual planning cycle", "Mid-year growth initiatives"],
+        "risk_delta": 1,
+        "timing_tip": "Apply early in planning cycles with roadmap and metric ownership examples.",
+    },
+    "sales": {
+        "best_months": ["January", "April", "July", "September", "October"],
+        "peak_windows": ["Quarter opening headcount release", "Festive-quarter revenue push"],
+        "risk_delta": 1,
+        "timing_tip": "Reach out in the first 10 business days of a quarter with pipeline outcomes.",
+    },
+    "marketing": {
+        "best_months": ["January", "March", "June", "August", "October"],
+        "peak_windows": ["Campaign planning cycle", "Festive demand acceleration"],
+        "risk_delta": 1,
+        "timing_tip": "Share campaign case studies before peak spend months.",
+    },
+    "finance": {
+        "best_months": ["January", "February", "April", "July", "September"],
+        "peak_windows": ["Annual budgeting", "Quarter close and forecast refresh"],
+        "risk_delta": -1,
+        "timing_tip": "Highlight variance reduction and decision-support impact in outreach.",
+    },
+    "operations": {
+        "best_months": ["February", "March", "July", "August", "November"],
+        "peak_windows": ["Post-quarter process reset", "Year-end fulfillment ramp"],
+        "risk_delta": -1,
+        "timing_tip": "Show SLA and cycle-time improvements with clear before/after numbers.",
+    },
+    "hr": {
+        "best_months": ["January", "February", "June", "July", "September"],
+        "peak_windows": ["Campus and lateral hiring cycles", "Mid-year expansion hiring"],
+        "risk_delta": 0,
+        "timing_tip": "Apply before bulk hiring waves with funnel-quality examples.",
+    },
+    "support": {
+        "best_months": ["February", "May", "July", "September", "November"],
+        "peak_windows": ["Customer volume ramps", "Service transition windows"],
+        "risk_delta": -1,
+        "timing_tip": "Lead with CSAT, resolution time, and escalation outcomes.",
+    },
+    "general": {
+        "best_months": ["January", "February", "July", "August", "September"],
+        "peak_windows": ["Quarter planning windows"],
+        "risk_delta": 0,
+        "timing_tip": "Apply in focused weekly batches with role-specific resume variants.",
+    },
+}
 
 TRACK_ROLE_OPTIONS: dict[str, list[str]] = {
     "backend": ["Backend Engineer", "Platform Engineer", "API Engineer", "Site Reliability Engineer"],
@@ -3960,13 +4055,47 @@ def build_learning_roadmap(
 def build_hiring_timing_insights(role_track: str, industry: str) -> dict[str, Any]:
     segment = market_segment_for_track(role_track, industry)
     market_data = INDIA_MARKET_SEGMENTS.get(segment, INDIA_MARKET_SEGMENTS["general"])
+    role_hint = ROLE_TRACK_MARKET_HINTS.get(role_track, ROLE_TRACK_MARKET_HINTS["general"])
+
+    best_months = dedupe_preserve_order([*role_hint["best_months"], *market_data["best_months"]])[:6]
+    peak_windows = dedupe_preserve_order([*role_hint["peak_windows"], *market_data["hiring_peak_windows"]])[:3]
+
+    risk_levels = ["low", "medium", "high"]
+    base_level = safe_text(market_data["layoff_risk"]).lower() or "medium"
+    try:
+        base_idx = risk_levels.index(base_level)
+    except ValueError:
+        base_idx = 1
+    risk_delta = int(role_hint.get("risk_delta", 0))
+    adjusted_level = risk_levels[max(0, min(len(risk_levels) - 1, base_idx + risk_delta))]
+
+    role_note = {
+        "low": "This role is typically tied to business continuity and tends to recover hiring faster.",
+        "medium": "Demand is healthy but budgeting discipline and team criticality matter a lot.",
+        "high": "Hiring can swing sharply with revenue cycles, so role-targeted positioning is essential.",
+    }[adjusted_level]
+
+    industry_tokens = safe_text(industry).lower()
+    segment_risk = SEGMENT_RISK_SEGMENTS_INDIA.get(segment, HIGH_RISK_INDUSTRIES_INDIA)
+    dynamic_risk_segments = list(segment_risk)
+    if "startup" in industry_tokens or "d2c" in industry_tokens:
+        dynamic_risk_segments.append("early-stage startups operating on short runway")
+    if "gaming" in industry_tokens or "media" in industry_tokens:
+        dynamic_risk_segments.append("ad and creator-economy businesses with unstable quarter-on-quarter demand")
+    if "fintech" in industry_tokens:
+        dynamic_risk_segments.append("compliance-heavy fintech teams exposed to regulatory policy swings")
+    if "edtech" in industry_tokens:
+        dynamic_risk_segments.append("enrollment-dependent edtech businesses with seasonal headcount cuts")
+
+    timing_tip = role_hint.get("timing_tip") or "Apply in focused weekly batches with role-specific evidence."
+    timing_window = f"{best_months[0]} and {best_months[1]}" if len(best_months) >= 2 else "peak months"
     return {
-        "best_months_to_apply": market_data["best_months"],
-        "hiring_peak_windows": market_data["hiring_peak_windows"],
-        "layoff_risk_level": market_data["layoff_risk"],
-        "layoff_risk_note": market_data["layoff_note"],
-        "higher_layoff_risk_industries": HIGH_RISK_INDUSTRIES_INDIA,
-        "application_timing_tip": "Apply in first 10 business days of peak months and follow up with proof-of-impact resume bullets.",
+        "best_months_to_apply": best_months,
+        "hiring_peak_windows": peak_windows,
+        "layoff_risk_level": adjusted_level,
+        "layoff_risk_note": f"{market_data['layoff_note']} {role_note}",
+        "higher_layoff_risk_industries": dedupe_preserve_order(dynamic_risk_segments)[:4],
+        "application_timing_tip": f"Prioritize first-wave applications in {timing_window}. {timing_tip}",
     }
 
 
@@ -4205,10 +4334,17 @@ def sanitize_resume_output(text: str) -> str:
 
     lines = normalized_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     filtered_lines: list[str] = []
+    blocked_headings = {
+        "references available upon request",
+        "optimized resume",
+        "optimised resume",
+        "resume",
+        "resume draft",
+    }
     for raw_line in lines:
         line = raw_line.strip()
         normalized_line = re.sub(r"[\[\]\(\)\{\}\.\,\:\;\-\_\s]+", " ", line).strip().lower()
-        if normalized_line == "references available upon request":
+        if normalized_line in blocked_headings:
             continue
         filtered_lines.append(raw_line)
 
@@ -4363,6 +4499,10 @@ def sanitize_download_name(value: str | None) -> str:
 
 
 RESUME_SECTION_ALIASES = {
+    "resume": "meta_ignore",
+    "optimized resume": "meta_ignore",
+    "optimised resume": "meta_ignore",
+    "resume draft": "meta_ignore",
     "summary": "summary",
     "professional summary": "summary",
     "profile summary": "summary",
@@ -4469,6 +4609,9 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
 
         if looks_like_resume_heading(line):
             current = normalize_resume_section_key(line.strip(":"))
+            if current == "meta_ignore":
+                current = "summary"
+                continue
             sections.setdefault(current, [])
             seen_heading = True
             continue
@@ -4509,25 +4652,28 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
 def template_palette(template_key: str) -> dict[str, colors.Color]:
     palettes = {
         "minimal": {
-            "name": colors.HexColor("#0E2438"),
-            "accent": colors.HexColor("#2F6FA5"),
+            "name": colors.HexColor("#0F243A"),
+            "accent": colors.HexColor("#2E6A9E"),
             "text": colors.HexColor("#1B2733"),
             "muted": colors.HexColor("#567086"),
-            "line": colors.HexColor("#D4DFE8"),
+            "line": colors.HexColor("#D7E2EA"),
+            "surface": colors.HexColor("#F5F9FC"),
         },
         "executive": {
-            "name": colors.HexColor("#1B1F2A"),
-            "accent": colors.HexColor("#3A4C66"),
-            "text": colors.HexColor("#222A32"),
-            "muted": colors.HexColor("#5F6B78"),
-            "line": colors.HexColor("#C7CED6"),
+            "name": colors.HexColor("#132135"),
+            "accent": colors.HexColor("#223A59"),
+            "text": colors.HexColor("#1F2A36"),
+            "muted": colors.HexColor("#546273"),
+            "line": colors.HexColor("#C2CCD8"),
+            "surface": colors.HexColor("#EFF3F7"),
         },
         "quantum": {
-            "name": colors.HexColor("#082847"),
-            "accent": colors.HexColor("#1485B0"),
-            "text": colors.HexColor("#123046"),
-            "muted": colors.HexColor("#4D6A7F"),
-            "line": colors.HexColor("#C5DCE9"),
+            "name": colors.HexColor("#0C3154"),
+            "accent": colors.HexColor("#0F87B5"),
+            "text": colors.HexColor("#13384D"),
+            "muted": colors.HexColor("#4A6C80"),
+            "line": colors.HexColor("#BED8E5"),
+            "surface": colors.HexColor("#EEF8FC"),
         },
     }
     return palettes.get(template_key, palettes["minimal"])
@@ -4536,10 +4682,8 @@ def template_palette(template_key: str) -> dict[str, colors.Color]:
 def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
     sample = getSampleStyleSheet()
     palette = template_palette(template_key)
-
-    header_size = 24 if template_key == "executive" else 25
-    section_bg = palette["accent"] if template_key == "executive" else None
-    section_text = colors.white if template_key == "executive" else palette["accent"]
+    header_size = 23 if template_key == "executive" else 25
+    body_size = 10.0 if template_key == "minimal" else 10.2
 
     styles = {
         "name": ParagraphStyle(
@@ -4549,7 +4693,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             fontSize=header_size,
             leading=header_size + 2,
             textColor=palette["name"],
-            spaceAfter=3,
+            spaceAfter=2,
         ),
         "contact": ParagraphStyle(
             "contact",
@@ -4559,6 +4703,24 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             leading=12,
             textColor=palette["muted"],
             spaceAfter=2,
+        ),
+        "header_inverse": ParagraphStyle(
+            "header_inverse",
+            parent=sample["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=12.2,
+            leading=15,
+            textColor=colors.white,
+            spaceAfter=0,
+        ),
+        "header_inverse_meta": ParagraphStyle(
+            "header_inverse_meta",
+            parent=sample["Normal"],
+            fontName="Helvetica",
+            fontSize=9.4,
+            leading=12.2,
+            textColor=colors.Color(1, 1, 1, alpha=0.92),
+            spaceAfter=0,
         ),
         "headline": ParagraphStyle(
             "headline",
@@ -4575,9 +4737,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             fontName="Helvetica-Bold",
             fontSize=11.4,
             leading=14,
-            textColor=section_text,
-            backColor=section_bg,
-            borderPadding=4 if template_key == "executive" else 0,
+            textColor=colors.white if template_key == "executive" else palette["accent"],
             spaceBefore=7,
             spaceAfter=4,
         ),
@@ -4585,8 +4745,8 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             "body",
             parent=sample["Normal"],
             fontName="Helvetica",
-            fontSize=10.2,
-            leading=13.8,
+            fontSize=body_size,
+            leading=14.2,
             textColor=palette["text"],
             spaceAfter=3,
         ),
@@ -4594,14 +4754,63 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             "bullet",
             parent=sample["Normal"],
             fontName="Helvetica",
-            fontSize=10.2,
-            leading=13.8,
+            fontSize=body_size,
+            leading=14.2,
             textColor=palette["text"],
             leftIndent=14,
-            spaceAfter=2,
+            bulletIndent=2,
+            spaceBefore=1,
+            spaceAfter=3,
         ),
     }
     return styles
+
+
+def section_header_flowable(
+    template_key: str,
+    section_title: str,
+    styles: dict[str, ParagraphStyle],
+    palette: dict[str, colors.Color],
+    width: float,
+) -> Any:
+    title_html = html.escape(section_title.upper())
+    title_para = Paragraph(title_html, styles["section"])
+
+    if template_key == "executive":
+        table = Table([[title_para]], colWidths=[width])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), palette["accent"]),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("BOX", (0, 0), (-1, -1), 0.7, palette["line"]),
+                ]
+            )
+        )
+        return table
+
+    if template_key == "quantum":
+        table = Table([["", title_para]], colWidths=[7, width - 7])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (0, -1), palette["accent"]),
+                    ("BACKGROUND", (1, 0), (1, -1), palette["surface"]),
+                    ("LEFTPADDING", (1, 0), (1, -1), 7),
+                    ("RIGHTPADDING", (1, 0), (1, -1), 7),
+                    ("TOPPADDING", (1, 0), (1, -1), 4),
+                    ("BOTTOMPADDING", (1, 0), (1, -1), 3),
+                    ("BOX", (0, 0), (-1, -1), 0.7, palette["line"]),
+                ]
+            )
+        )
+        return table
+
+    return Paragraph(html.escape(section_title), styles["section"])
 
 
 def draw_template_page_decoration(pdf: canvas.Canvas, doc: SimpleDocTemplate, template_key: str) -> None:
@@ -4611,12 +4820,15 @@ def draw_template_page_decoration(pdf: canvas.Canvas, doc: SimpleDocTemplate, te
 
     if template_key == "executive":
         pdf.setFillColor(palette["accent"])
-        pdf.rect(doc.leftMargin, height - 26, doc.width, 3.2, fill=1, stroke=0)
+        pdf.rect(0, height - 22, width, 22, fill=1, stroke=0)
+        pdf.setFillColor(colors.Color(1, 1, 1, alpha=0.18))
+        pdf.rect(0, height - 24.2, width, 2.2, fill=1, stroke=0)
     elif template_key == "quantum":
         pdf.setFillColor(palette["accent"])
-        pdf.rect(doc.leftMargin, height - 26, doc.width, 2.4, fill=1, stroke=0)
-        pdf.setFillColor(colors.Color(0.08, 0.52, 0.68, alpha=0.18))
-        pdf.circle(width - doc.rightMargin - 28, height - 18, 10, fill=1, stroke=0)
+        pdf.rect(0, 0, 8, height, fill=1, stroke=0)
+        pdf.setFillColor(colors.Color(0.08, 0.52, 0.68, alpha=0.22))
+        pdf.circle(width - doc.rightMargin - 22, height - 15, 8, fill=1, stroke=0)
+        pdf.circle(width - doc.rightMargin - 42, height - 20, 4, fill=1, stroke=0)
     else:
         pdf.setStrokeColor(palette["line"])
         pdf.setLineWidth(0.9)
@@ -4636,37 +4848,70 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
     if template_key not in {"minimal", "executive", "quantum"}:
         template_key = "minimal"
 
-    parsed = parse_resume_sections(name, resume_text)
+    parsed = parse_resume_sections(name, sanitize_resume_output(resume_text))
     styles = build_pdf_styles(template_key)
     palette = template_palette(template_key)
 
     output = io.BytesIO()
-    left_margin = 44 if template_key != "executive" else 42
+    if template_key == "quantum":
+        left_margin = 52
+    elif template_key == "executive":
+        left_margin = 40
+    else:
+        left_margin = 44
     right_margin = left_margin
     doc = SimpleDocTemplate(
         output,
         pagesize=A4,
         leftMargin=left_margin,
         rightMargin=right_margin,
-        topMargin=42,
+        topMargin=48 if template_key == "executive" else 42,
         bottomMargin=34,
         title=f"{parsed['name']} Resume",
         author="HireScore AI",
     )
 
     story: list[Any] = []
-    story.append(Paragraph(html.escape(parsed["name"]), styles["name"]))
-    if parsed["contact_line"]:
-        story.append(Paragraph(html.escape(parsed["contact_line"]), styles["contact"]))
-    if parsed["headline"]:
-        story.append(Paragraph(html.escape(parsed["headline"]), styles["headline"]))
-    story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.85, spaceBefore=2, spaceAfter=7))
+    if template_key == "executive":
+        meta_lines = []
+        if parsed["contact_line"]:
+            meta_lines.append(Paragraph(html.escape(parsed["contact_line"]), styles["header_inverse_meta"]))
+        if parsed["headline"]:
+            meta_lines.append(Paragraph(html.escape(parsed["headline"]), styles["header_inverse_meta"]))
+        header_rows: list[list[Any]] = [[Paragraph(html.escape(parsed["name"]), styles["header_inverse"])]]
+        for meta in meta_lines[:2]:
+            header_rows.append([meta])
+        header_table = Table(header_rows, colWidths=[doc.width])
+        header_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), palette["accent"]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, 0), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.7, colors.Color(1, 1, 1, alpha=0.22)),
+                    ("BOX", (0, 0), (-1, -1), 0.8, palette["line"]),
+                ]
+            )
+        )
+        story.append(header_table)
+        story.append(Spacer(1, 8))
+    else:
+        story.append(Paragraph(html.escape(parsed["name"]), styles["name"]))
+        if parsed["contact_line"]:
+            story.append(Paragraph(html.escape(parsed["contact_line"]), styles["contact"]))
+        if parsed["headline"]:
+            story.append(Paragraph(html.escape(parsed["headline"]), styles["headline"]))
+        story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.9, spaceBefore=2, spaceAfter=7))
 
     for section_key, lines in parsed["sections"]:
         section_title = RESUME_SECTION_TITLES.get(section_key, section_key.replace("_", " ").title())
-        story.append(Paragraph(html.escape(section_title), styles["section"]))
-        if template_key != "executive":
+        story.append(section_header_flowable(template_key, section_title, styles, palette, doc.width))
+        if template_key == "minimal":
             story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.5, spaceBefore=1, spaceAfter=4))
+        else:
+            story.append(Spacer(1, 4))
 
         for line in lines:
             content = safe_text(line)
@@ -4674,11 +4919,11 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
                 continue
             if re.match(r"^(?:[-*•]|(?:\d+[\).\s]))\s*", content):
                 bullet_text = html.escape(strip_bullet_prefix(content))
-                story.append(Paragraph(bullet_text, styles["bullet"], bulletText="•"))
+                story.append(Paragraph(bullet_text, styles["bullet"], bulletText="• "))
             else:
                 story.append(Paragraph(html.escape(content), styles["body"]))
 
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 5 if template_key == "minimal" else 6))
 
     doc.build(
         story,

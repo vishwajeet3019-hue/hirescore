@@ -100,12 +100,12 @@ const creditRules = [
   {
     title: "AI Resume Build + TXT",
     value: "15 Credits",
-    description: "Generate or enhance resume content in Resume Studio and download as TXT.",
+    description: "Generate or enhance resume content in Improve Resume Next and download as TXT.",
   },
   {
     title: "Template PDF Download",
     value: "20 Credits",
-    description: "Export your final resume as a styled PDF template from Resume Studio.",
+    description: "Export your final resume as a styled PDF template from Improve Resume Next.",
   },
 ];
 
@@ -514,7 +514,7 @@ export default function PricingPage() {
               One Free Analysis, Then Credit-Based Usage
             </h1>
             <p className="mx-auto mt-4 max-w-3xl text-sm text-cyan-50/72 sm:text-base">
-              Buy wallet credits to run more analyses and unlock premium Resume Studio actions.
+              Buy wallet credits to run more analyses and unlock premium resume-improvement actions.
             </p>
           </div>
         </motion.div>
@@ -789,7 +789,7 @@ export default function PricingPage() {
               href="/studio"
               className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
             >
-              Open Resume Studio
+              Improve Resume Next
             </Link>
           </div>
         </motion.div>

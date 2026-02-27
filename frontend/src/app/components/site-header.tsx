@@ -4,6 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+type CreditWallet = {
+  credits: number;
+};
+
+type AuthPayload = {
+  user?: { email?: string };
+  wallet?: CreditWallet;
+};
+
 type NavLink = {
   href: string;
   label: string;
@@ -13,10 +22,12 @@ type NavLink = {
 const navLinks: NavLink[] = [
   { href: "/", label: "Home" },
   { href: "/upload", label: "Analyze" },
-  { href: "/studio", label: "Resume Studio" },
+  { href: "/studio", label: "Improve Resume Next" },
   { href: "/#workflow", label: "How It Works", isSection: true },
   { href: "/pricing", label: "Pricing" },
 ];
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
+const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
 const isLinkActive = (pathname: string, hash: string, link: NavLink) => {
   if (link.isSection) {
@@ -31,12 +42,41 @@ const isLinkActive = (pathname: string, hash: string, link: NavLink) => {
 export default function SiteHeader() {
   const pathname = usePathname() || "/";
   const [hash, setHash] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [wallet, setWallet] = useState<CreditWallet | null>(null);
 
   useEffect(() => {
     const syncHash = () => setHash(window.location.hash || "");
     syncHash();
     window.addEventListener("hashchange", syncHash);
     return () => window.removeEventListener("hashchange", syncHash);
+  }, [pathname]);
+
+  useEffect(() => {
+    const syncAuth = async () => {
+      const token = window.localStorage.getItem("hirescore_auth_token") || "";
+      if (!token) {
+        setAuthToken("");
+        setWallet(null);
+        return;
+      }
+      setAuthToken(token);
+      try {
+        const response = await fetch(apiUrl("/auth/me"), {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!response.ok) throw new Error("Session expired");
+        const payload = (await response.json()) as AuthPayload;
+        if (payload.wallet) setWallet(payload.wallet);
+      } catch {
+        setAuthToken("");
+        setWallet(null);
+        window.localStorage.removeItem("hirescore_auth_token");
+      }
+    };
+    void syncAuth();
   }, [pathname]);
 
   return (
@@ -55,7 +95,7 @@ export default function SiteHeader() {
           </span>
           <div>
             <p className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/70 sm:text-xs sm:tracking-[0.34em]">HireScore</p>
-            <p className="font-mono text-sm tracking-wide text-cyan-50 sm:text-xl">Resume Studio</p>
+            <p className="font-mono text-sm tracking-wide text-cyan-50 sm:text-xl">Career Control Hub</p>
           </div>
         </Link>
 
@@ -78,13 +118,40 @@ export default function SiteHeader() {
           })}
         </nav>
 
-        <Link
-          href="/upload"
-          className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
-        >
-          <span className="sm:hidden">Analyze</span>
-          <span className="hidden sm:inline">Check My Score (Free)</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          {authToken && wallet ? (
+            <>
+              <Link
+                href="/dashboard"
+                className="hidden rounded-xl border border-cyan-200/35 bg-cyan-200/14 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/22 sm:inline"
+              >
+                Dashboard
+              </Link>
+              <span className="rounded-xl border border-emerald-200/36 bg-emerald-200/14 px-2.5 py-1.5 text-xs font-semibold text-emerald-100">
+                Wallet: {wallet.credits}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthToken("");
+                  setWallet(null);
+                  window.localStorage.removeItem("hirescore_auth_token");
+                }}
+                className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 sm:inline"
+              >
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/upload"
+              className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
+            >
+              <span className="sm:hidden">Analyze</span>
+              <span className="hidden sm:inline">Check My Score (Free)</span>
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="border-t border-cyan-100/8 px-3 py-2 md:hidden">
@@ -105,6 +172,14 @@ export default function SiteHeader() {
               </Link>
             );
           })}
+          {authToken && (
+            <Link
+              href="/dashboard"
+              className="rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 font-semibold text-emerald-100"
+            >
+              Wallet {wallet?.credits ?? 0}
+            </Link>
+          )}
         </nav>
       </div>
     </header>

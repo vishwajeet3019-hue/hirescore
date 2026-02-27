@@ -270,6 +270,8 @@ export default function UploadPage() {
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackError, setFeedbackError] = useState("");
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [queuedAnalyzeMode, setQueuedAnalyzeMode] = useState<"manual" | "upload" | null>(null);
 
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
@@ -345,13 +347,13 @@ export default function UploadPage() {
   }, [loading]);
 
   useEffect(() => {
-    if (!loading && !showResultModal && !showFeedbackModal) return;
+    if (!loading && !showResultModal && !showFeedbackModal && !showAuthModal) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [loading, showResultModal, showFeedbackModal]);
+  }, [loading, showResultModal, showFeedbackModal, showAuthModal]);
 
   useEffect(() => {
     if (!showResultModal) return;
@@ -567,6 +569,31 @@ export default function UploadPage() {
   const feedbackRatingLabel =
     feedbackRating >= 5 ? "Excellent" : feedbackRating >= 4 ? "Good" : feedbackRating >= 3 ? "Average" : feedbackRating >= 2 ? "Needs Work" : "Poor";
 
+  const promptAuthBeforeAnalyze = (mode: "manual" | "upload") => {
+    setQueuedAnalyzeMode(mode);
+    setAuthInfo("Login or signup to view your report.");
+    setLoading(true);
+    window.setTimeout(() => {
+      setLoading(false);
+      setShowAuthModal(true);
+    }, 900);
+  };
+
+  const runQueuedAnalyzeAfterAuth = async (tokenOverride?: string) => {
+    if (!queuedAnalyzeMode) {
+      setShowAuthModal(false);
+      return;
+    }
+    const modeToRun = queuedAnalyzeMode;
+    setQueuedAnalyzeMode(null);
+    setShowAuthModal(false);
+    if (modeToRun === "manual") {
+      await executeManualAnalyze(tokenOverride);
+      return;
+    }
+    await executeUploadAnalyze(tokenOverride);
+  };
+
   const handleAuthSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     const email = authEmail.trim();
@@ -598,6 +625,7 @@ export default function UploadPage() {
           setForgotNewPassword("");
           setAuthPassword("");
           setAuthInfo("Password reset successful. You are now logged in.");
+          await runQueuedAnalyzeAfterAuth(payload.auth_token);
         }
       } else if (authMode === "signup" && signupOtpRequired) {
         if (!email || !signupOtp.trim()) {
@@ -609,6 +637,7 @@ export default function UploadPage() {
         setSignupOtp("");
         setAuthPassword("");
         setAuthInfo("Signup complete. Welcome to HireScore.");
+        await runQueuedAnalyzeAfterAuth(payload.auth_token);
       } else {
         if (!email || !password) {
           throw new Error("Enter email and password.");
@@ -622,6 +651,7 @@ export default function UploadPage() {
           applyAuthPayload(payload);
           setAuthPassword("");
           setAuthError("");
+          await runQueuedAnalyzeAfterAuth(payload.auth_token);
         }
       }
     } catch (error) {
@@ -658,13 +688,12 @@ export default function UploadPage() {
     return Number.isFinite(parsed) ? parsed : undefined;
   };
 
-  const handleManualAnalyze = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!authToken) {
-      setAnalysisError("Sign in to use your free analysis credits.");
+  const executeManualAnalyze = async (tokenOverride?: string) => {
+    const effectiveToken = tokenOverride || authToken;
+    if (!effectiveToken) {
+      promptAuthBeforeAnalyze("manual");
       return;
     }
-
     const normalizedIndustry = industry.trim();
     const normalizedRole = role.trim();
     const normalizedSkills = analysisSkills.trim();
@@ -691,12 +720,13 @@ export default function UploadPage() {
     setShowResultModal(false);
 
     try {
+      const authHeaders = tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : (authHeader || {});
       const data = await runWithMinimumLoading(async () => {
         const response = await fetch(apiUrl("/analyze"), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(authHeader || {}),
+            ...authHeaders,
           },
           body: JSON.stringify({
             industry: normalizedIndustry,
@@ -725,13 +755,12 @@ export default function UploadPage() {
     }
   };
 
-  const handleUploadAnalyze = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!authToken) {
-      setAnalysisError("Sign in to use your free analysis credits.");
+  const executeUploadAnalyze = async (tokenOverride?: string) => {
+    const effectiveToken = tokenOverride || authToken;
+    if (!effectiveToken) {
+      promptAuthBeforeAnalyze("upload");
       return;
     }
-
     const normalizedIndustry = industry.trim();
     const normalizedRole = role.trim();
 
@@ -752,6 +781,7 @@ export default function UploadPage() {
     setShowResultModal(false);
 
     try {
+      const authHeaders = tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : (authHeader || {});
       const data = await runWithMinimumLoading(async () => {
         const formData = new FormData();
         formData.append("file", uploadedFile);
@@ -764,7 +794,7 @@ export default function UploadPage() {
         const response = await fetch(apiUrl("/analyze-resume-file"), {
           method: "POST",
           headers: {
-            ...(authHeader || {}),
+            ...authHeaders,
           },
           body: formData,
         });
@@ -783,6 +813,24 @@ export default function UploadPage() {
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "Unable to analyze uploaded resume right now.");
     }
+  };
+
+  const handleManualAnalyze = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!authToken) {
+      promptAuthBeforeAnalyze("manual");
+      return;
+    }
+    await executeManualAnalyze();
+  };
+
+  const handleUploadAnalyze = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!authToken) {
+      promptAuthBeforeAnalyze("upload");
+      return;
+    }
+    await executeUploadAnalyze();
   };
 
   const scoreInsight = result
@@ -857,20 +905,19 @@ export default function UploadPage() {
               </p>
 
               <h1 className="mt-4 text-3xl font-semibold leading-tight text-cyan-50 sm:text-5xl">
-                Open-Role Shortlist Intelligence
+                Know Your Shortlist Chances
                 <span className="block bg-gradient-to-r from-cyan-100 via-cyan-300 to-amber-100 bg-clip-text text-transparent">
-                  Score, Salary, Strategy, Conversion
+                  Before You Apply
                 </span>
               </h1>
 
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-cyan-50/80 sm:text-base">
-                Check your real shortlisting chances before applying. You will get a clear score, interview likelihood, salary estimate, and
-                a practical improvement plan written in simple terms.
+                Enter role details, run analysis, and get an easy report: score, interview chances, salary direction, and next-step actions.
               </p>
 
               <form
                 onSubmit={analysisMode === "manual" ? handleManualAnalyze : handleUploadAnalyze}
-                className="mt-6 rounded-3xl border border-amber-100/40 bg-[linear-gradient(145deg,rgba(9,35,58,0.96),rgba(4,19,41,0.96))] p-5 shadow-[0_24px_55px_rgba(2,10,24,0.55)] ring-1 ring-amber-100/14 sm:p-6"
+                className="mt-6 rounded-3xl border border-cyan-100/34 bg-[linear-gradient(145deg,rgba(8,35,58,0.94),rgba(4,18,38,0.96))] p-5 shadow-[0_24px_55px_rgba(2,10,24,0.55)] ring-1 ring-cyan-100/10 sm:p-6"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -906,166 +953,57 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-cyan-100/24 bg-[#06233e]/75 p-4">
-                  {authToken && wallet ? (
-                    <>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Wallet</p>
-                        <p className="text-sm font-semibold text-cyan-50">{authUserEmail || "Signed in"}</p>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-50/74">
+                <div className="mt-4 grid gap-3 rounded-2xl border border-cyan-100/24 bg-[#06233e]/75 p-4 md:grid-cols-[1.5fr_0.5fr]">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">How It Works</p>
+                    <ul className="mt-2 space-y-1 text-sm text-cyan-50/80">
+                      <li>1. Fill role details and click analyze.</li>
+                      <li>2. If not logged in, sign in via popup.</li>
+                      <li>3. Analysis runs and report opens instantly.</li>
+                    </ul>
+                    {!authToken && <p className="mt-2 text-xs text-cyan-100/72">New users get 5 free credits (one full analysis).</p>}
+                    {authToken && wallet && (
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-cyan-50/74">
                         <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Credits: {wallet.credits}</span>
                         <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Reports left: {remainingAnalyze}</span>
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Each report uses 5 credits</span>
+                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Signed in: {authUserEmail || "User"}</span>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-50/74">
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">AI Resume: {wallet.pricing.ai_resume_generation} credits</span>
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Template PDF: {wallet.pricing.template_pdf_download} credits</span>
-                      </div>
-                      {feedbackRequired && (
-                        <div className="mt-3 rounded-xl border border-amber-100/38 bg-amber-100/14 px-3 py-2 text-xs text-amber-50">
-                          Feedback pending: submit your first analysis feedback before running another analysis.
-                        </div>
-                      )}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Link
-                          href="/pricing"
-                          className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
-                        >
-                          Buy Credit Packs
-                        </Link>
-                        {feedbackRequired && (
-                          <button
-                            type="button"
-                            onClick={() => setShowFeedbackModal(true)}
-                            className="rounded-xl border border-amber-100/40 bg-amber-100/12 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
-                          >
-                            Submit Feedback
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleSignOut}
-                          className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
-                        >
-                          Sign Out
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Login Required</p>
-                      <p className="mt-2 text-sm text-cyan-50/76">
-                        {forgotPasswordMode
-                          ? "Reset password via email OTP."
-                          : signupOtpRequired
-                            ? "Enter the OTP sent to your email to complete signup."
-                            : "You get 5 free credits on signup (exactly one free analysis)."}
-                      </p>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <input
-                          type="email"
-                          value={authEmail}
-                          onChange={(event) => setAuthEmail(event.target.value)}
-                          placeholder="Email"
-                          className={fieldClass}
-                        />
-                        {forgotPasswordMode ? (
-                          forgotOtpRequested ? (
-                            <input
-                              type="text"
-                              value={forgotOtp}
-                              onChange={(event) => setForgotOtp(event.target.value)}
-                              placeholder="Reset OTP"
-                              className={fieldClass}
-                            />
-                          ) : (
-                            <input disabled value="" placeholder="OTP will be sent to this email" className={`${fieldClass} opacity-70`} />
-                          )
-                        ) : signupOtpRequired ? (
-                          <input
-                            type="text"
-                            value={signupOtp}
-                            onChange={(event) => setSignupOtp(event.target.value)}
-                            placeholder="Signup OTP"
-                            className={fieldClass}
-                          />
-                        ) : (
-                          <input
-                            type="password"
-                            value={authPassword}
-                            onChange={(event) => setAuthPassword(event.target.value)}
-                            placeholder="Password"
-                            className={fieldClass}
-                          />
-                        )}
-                      </div>
-                      {forgotPasswordMode && forgotOtpRequested && (
-                        <div className="mt-3">
-                          <input
-                            type="password"
-                            value={forgotNewPassword}
-                            onChange={(event) => setForgotNewPassword(event.target.value)}
-                            placeholder="New password"
-                            className={fieldClass}
-                          />
-                        </div>
-                      )}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleAuthSubmit()}
-                          disabled={authLoading}
-                          className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
-                        >
-                          {authLoading
-                            ? "Please wait..."
-                            : forgotPasswordMode
-                              ? forgotOtpRequested
-                                ? "Reset Password"
-                                : "Send Reset OTP"
-                              : authMode === "signup"
-                                ? signupOtpRequired
-                                  ? "Verify OTP"
-                                  : "Send Signup OTP"
-                                : "Login"}
-                        </button>
-                        {!forgotPasswordMode && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAuthMode((prev) => (prev === "signup" ? "login" : "signup"));
-                              setSignupOtpRequired(false);
-                              setSignupOtp("");
-                              setAuthInfo("");
-                              setAuthError("");
-                            }}
-                            className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
-                          >
-                            {authMode === "signup" ? "Use Login" : "Use Signup"}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setForgotPasswordMode((prev) => !prev);
-                            setForgotOtpRequested(false);
-                            setForgotOtp("");
-                            setForgotNewPassword("");
-                            setSignupOtpRequired(false);
-                            setSignupOtp("");
-                            setAuthInfo("");
-                            setAuthError("");
-                          }}
-                          className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
-                        >
-                          {forgotPasswordMode ? "Back To Login" : "Forgot Password"}
-                        </button>
-                      </div>
-                      {authInfo && <p className="mt-2 text-xs text-emerald-100">{authInfo}</p>}
-                      {authError && <p className="mt-2 text-xs text-amber-100">{authError}</p>}
-                    </>
-                  )}
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {!authToken ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAuthModal(true)}
+                        className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
+                      >
+                        Login / Signup
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleSignOut}
+                        className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                      >
+                        Sign Out
+                      </button>
+                    )}
+                    <Link
+                      href="/pricing"
+                      className="rounded-xl border border-cyan-100/35 bg-cyan-100/10 px-3 py-2 text-center text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16"
+                    >
+                      Buy Credits
+                    </Link>
+                    {feedbackRequired && (
+                      <button
+                        type="button"
+                        onClick={() => setShowFeedbackModal(true)}
+                        className="rounded-xl border border-amber-100/40 bg-amber-100/12 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
+                      >
+                        Submit Feedback
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -1208,17 +1146,17 @@ export default function UploadPage() {
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <button
                     type="submit"
-                    disabled={loading || !authToken}
+                    disabled={loading}
                     className="rounded-2xl border border-cyan-100/42 bg-gradient-to-r from-cyan-300/36 via-cyan-200/34 to-amber-100/30 px-5 py-3.5 text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-75"
                   >
-                    {loading ? "Analyzing..." : !authToken ? "Login To Analyze" : analysisMode === "manual" ? "Analyze Shortlist Score" : "Analyze Uploaded Resume"}
+                    {loading ? "Analyzing..." : !authToken ? "Continue & Unlock Report" : analysisMode === "manual" ? "Analyze My Profile" : "Analyze Uploaded Resume"}
                   </button>
 
                   <Link
                     href="/studio"
                     className="rounded-2xl border border-cyan-100/34 bg-cyan-100/10 px-5 py-3.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/16"
                   >
-                    Open Resume Studio
+                    Improve Resume Next
                   </Link>
                 </div>
 
@@ -1240,10 +1178,10 @@ export default function UploadPage() {
                 <h3 className="mt-2 text-lg font-semibold text-cyan-50">Analysis Flow</h3>
                 <div className="mt-4 space-y-3 text-sm text-cyan-50/78">
                   {[
-                    "Choose Manual Input or Upload Resume.",
-                    "Set target role + industry and add experience context.",
-                    "Get shortlist score, interview likelihood, and 90% plan.",
-                    "Use salary toggles + callback simulator to plan execution.",
+                    "Fill details and click Analyze.",
+                    "Login popup appears only if needed.",
+                    "Read Summary tab first in the report.",
+                    "Then check Strategy -> Salary -> Hiring Timing.",
                   ].map((item, index) => (
                     <div key={item} className="flex items-start gap-2 rounded-xl border border-cyan-100/18 bg-cyan-100/8 px-3 py-2.5">
                       <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-cyan-100/35 bg-cyan-200/18 text-[11px] font-semibold text-cyan-50">
@@ -1268,6 +1206,138 @@ export default function UploadPage() {
             </aside>
           </div>
         </motion.section>
+
+        {showAuthModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 z-[190] flex items-center justify-center bg-[#020915]/90 px-4 backdrop-blur-xl"
+            onClick={() => {
+              if (authLoading) return;
+              setShowAuthModal(false);
+              setQueuedAnalyzeMode(null);
+            }}
+          >
+            <motion.section
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              onClick={(event) => event.stopPropagation()}
+              className="w-full max-w-xl rounded-[1.7rem] border border-cyan-100/26 bg-[#04172e]/96 p-6 shadow-[0_35px_100px_rgba(0,0,0,0.6)]"
+            >
+              <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Login Required</p>
+              <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Unlock Your Analysis Report</h3>
+              <p className="mt-2 text-sm text-cyan-50/72">
+                {forgotPasswordMode
+                  ? "Reset password via OTP."
+                  : signupOtpRequired
+                    ? "Enter OTP sent to your email to complete signup."
+                    : "Sign in once, then your report opens automatically."}
+              </p>
+
+              <form onSubmit={handleAuthSubmit} className="mt-4 space-y-3">
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                  placeholder="Email"
+                  className={fieldClass}
+                />
+                {forgotPasswordMode ? (
+                  forgotOtpRequested ? (
+                    <input
+                      type="text"
+                      value={forgotOtp}
+                      onChange={(event) => setForgotOtp(event.target.value)}
+                      placeholder="Reset OTP"
+                      className={fieldClass}
+                    />
+                  ) : (
+                    <input disabled value="" placeholder="OTP will be sent to this email" className={`${fieldClass} opacity-70`} />
+                  )
+                ) : signupOtpRequired ? (
+                  <input
+                    type="text"
+                    value={signupOtp}
+                    onChange={(event) => setSignupOtp(event.target.value)}
+                    placeholder="Signup OTP"
+                    className={fieldClass}
+                  />
+                ) : (
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    placeholder="Password"
+                    className={fieldClass}
+                  />
+                )}
+                {forgotPasswordMode && forgotOtpRequested && (
+                  <input
+                    type="password"
+                    value={forgotNewPassword}
+                    onChange={(event) => setForgotNewPassword(event.target.value)}
+                    placeholder="New password"
+                    className={fieldClass}
+                  />
+                )}
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+                  >
+                    {authLoading
+                      ? "Please wait..."
+                      : forgotPasswordMode
+                        ? forgotOtpRequested
+                          ? "Reset Password"
+                          : "Send Reset OTP"
+                        : authMode === "signup"
+                          ? signupOtpRequired
+                            ? "Verify OTP"
+                            : "Send Signup OTP"
+                          : "Login"}
+                  </button>
+                  {!forgotPasswordMode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode((prev) => (prev === "signup" ? "login" : "signup"));
+                        setSignupOtpRequired(false);
+                        setSignupOtp("");
+                        setAuthInfo("");
+                        setAuthError("");
+                      }}
+                      className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                    >
+                      {authMode === "signup" ? "Use Login" : "Use Signup"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotPasswordMode((prev) => !prev);
+                      setForgotOtpRequested(false);
+                      setForgotOtp("");
+                      setForgotNewPassword("");
+                      setSignupOtpRequired(false);
+                      setSignupOtp("");
+                      setAuthInfo("");
+                      setAuthError("");
+                    }}
+                    className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                  >
+                    {forgotPasswordMode ? "Back To Login" : "Forgot Password"}
+                  </button>
+                </div>
+              </form>
+
+              {authInfo && <p className="mt-3 text-xs text-emerald-100">{authInfo}</p>}
+              {authError && <p className="mt-2 text-xs text-amber-100">{authError}</p>}
+            </motion.section>
+          </motion.div>
+        )}
 
         {loading && (
           <motion.div
@@ -1327,13 +1397,6 @@ export default function UploadPage() {
             className="fixed inset-0 z-[260] overflow-y-auto bg-[#020915]/88 px-3 pb-4 pt-20 backdrop-blur-xl sm:px-6 sm:pb-6 sm:pt-24"
             onClick={() => setShowResultModal(false)}
           >
-            <button
-              type="button"
-              onClick={() => setShowResultModal(false)}
-              className="fixed right-4 top-24 z-[270] rounded-xl border border-cyan-100/30 bg-[#082640]/92 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50 shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition hover:bg-[#0d3358] sm:hidden"
-            >
-              Close
-            </button>
             <motion.section
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1346,7 +1409,7 @@ export default function UploadPage() {
                   onClick={() => setShowResultModal(false)}
                   className="rounded-xl border border-cyan-100/28 bg-[#082640]/78 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50/90 transition hover:bg-[#0d3358]"
                 >
-                  Close Report
+                  Close
                 </button>
               </div>
               <div className="border-b border-cyan-100/14 px-4 py-4 sm:px-6">
@@ -1361,15 +1424,8 @@ export default function UploadPage() {
                       href="/studio"
                       className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
                     >
-                      Resume Studio
+                      Improve Resume Next
                     </Link>
-                    <button
-                      type="button"
-                      onClick={() => setShowResultModal(false)}
-                      className="rounded-xl border border-cyan-100/28 bg-transparent px-3 py-2 text-sm font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
-                    >
-                      Close
-                    </button>
                   </div>
                 </div>
 
@@ -1400,6 +1456,13 @@ export default function UploadPage() {
               <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                 {activeResultTab === "summary" && (
                   <div className="space-y-6">
+                    <div className="rounded-2xl border border-cyan-100/22 bg-cyan-100/8 p-4">
+                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Read This First</p>
+                      <p className="mt-2 text-sm text-cyan-50/78">
+                        Start with your shortlist score, then follow the plan in this order:
+                        <span className="font-semibold text-cyan-100"> Summary, then Strategy, then Salary, then Hiring Timing.</span>
+                      </p>
+                    </div>
                     <div className="grid gap-6 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
                       <div className="flex flex-col items-center justify-center rounded-3xl border border-cyan-100/20 bg-cyan-300/6 p-6 text-center">
                         <div
@@ -1646,6 +1709,9 @@ export default function UploadPage() {
                           Layoff risk for target direction: <span className="font-semibold text-cyan-100 uppercase">{result.hiring_market_insights.layoff_risk_level}</span>
                         </p>
                         <p className="mt-1 text-sm text-cyan-50/72">{result.hiring_market_insights.layoff_risk_note}</p>
+                        <p className="mt-2 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-2 text-sm text-cyan-100">
+                          {result.hiring_market_insights.application_timing_tip}
+                        </p>
                         <div className="mt-3 rounded-xl border border-amber-100/26 bg-amber-100/10 p-3">
                           <p className="text-xs uppercase tracking-[0.12em] text-amber-100/85">Higher Layoff Risk Segments</p>
                           <ul className="mt-2 space-y-1 text-sm text-amber-50/85">
@@ -1682,15 +1748,6 @@ export default function UploadPage() {
                     </div>
                   </div>
                 )}
-              </div>
-              <div className="border-t border-cyan-100/14 bg-[#041427]/96 p-3 sm:hidden">
-                <button
-                  type="button"
-                  onClick={() => setShowResultModal(false)}
-                  className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
-                >
-                  Close Report
-                </button>
               </div>
             </motion.section>
           </motion.div>
