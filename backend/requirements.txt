@@ -6,3 +6,4 @@ PyPDF2>=3.0,<4
 python-multipart>=0.0.9,<1
 reportlab>=4.0,<5
 stripe>=11.0,<12
+psycopg2-binary>=2.9,<3

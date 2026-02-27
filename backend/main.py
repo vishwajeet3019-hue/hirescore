@@ -39,6 +39,13 @@ try:
 except Exception:  # pragma: no cover - optional dependency at runtime
     stripe = None
 
+try:
+    import psycopg2  # type: ignore
+    from psycopg2.extras import RealDictCursor  # type: ignore
+except Exception:  # pragma: no cover - optional dependency at runtime
+    psycopg2 = None
+    RealDictCursor = None
+
 load_dotenv()
 
 TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
@@ -106,6 +113,15 @@ def resolve_auth_db_path() -> str:
     return local_default
 
 
+def normalize_database_url(value: str | None) -> str:
+    raw = (value or "").strip()
+    if raw.startswith("postgres://"):
+        return "postgresql://" + raw[len("postgres://") :]
+    return raw
+
+
+DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL") or os.getenv("RENDER_POSTGRESQL_URL"))
+AUTH_DB_BACKEND = "postgres" if DATABASE_URL.startswith("postgresql://") else "sqlite"
 AUTH_DB_PATH = resolve_auth_db_path()
 AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
 AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
@@ -122,9 +138,18 @@ ADMIN_AUTH_SECRET = ((os.getenv("ADMIN_AUTH_SECRET") or "").strip()) or AUTH_TOK
 ADMIN_TOKEN_TTL_HOURS = max(1, int((os.getenv("ADMIN_TOKEN_TTL_HOURS") or "72").strip()))
 if AUTH_TOKEN_SECRET == "replace-this-in-production":
     logger.warning("AUTH_TOKEN_SECRET is using a default value. Set AUTH_TOKEN_SECRET in production.")
-if AUTH_DB_PATH.startswith("/tmp/"):
+if AUTH_DB_BACKEND == "sqlite" and AUTH_DB_PATH.startswith("/tmp/"):
     logger.warning("AUTH_DB_PATH is using temporary storage (%s). Use persistent storage in production.", AUTH_DB_PATH)
-logger.info("Using auth database path: %s", AUTH_DB_PATH)
+if AUTH_DB_BACKEND == "postgres":
+    if psycopg2 is None or RealDictCursor is None:
+        logger.error("DATABASE_URL is set but psycopg2 is unavailable. Install psycopg2-binary.")
+    logger.info("Using external Postgres database for auth storage.")
+else:
+    logger.info("Using auth database path: %s", AUTH_DB_PATH)
+    if env_flag("RENDER", False) and not os.path.isdir("/var/data"):
+        logger.warning(
+            "Running on Render without persistent disk or DATABASE_URL. User/login data will reset after deploy/restart."
+        )
 
 WELCOME_FREE_CREDITS = 5
 CREDIT_COSTS: dict[str, int] = {
@@ -1380,13 +1405,98 @@ def b64url_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + padding)
 
 
-def auth_db_connection() -> sqlite3.Connection:
+DB_INTEGRITY_ERRORS: tuple[type[Exception], ...] = (sqlite3.IntegrityError,)
+if psycopg2 is not None:
+    DB_INTEGRITY_ERRORS = DB_INTEGRITY_ERRORS + (psycopg2.IntegrityError,)
+
+
+def adapt_query_for_backend(query: str, params: Any = None) -> tuple[str, Any]:
+    if AUTH_DB_BACKEND != "postgres" or params is None:
+        return query, params
+    converted_query = query.replace("?", "%s")
+    if isinstance(params, list):
+        return converted_query, tuple(params)
+    return converted_query, params
+
+
+class AuthDBCursor:
+    def __init__(self, raw_cursor: Any):
+        self._raw_cursor = raw_cursor
+
+    def execute(self, query: str, params: Any = None) -> "AuthDBCursor":
+        converted_query, converted_params = adapt_query_for_backend(query, params)
+        if converted_params is None:
+            self._raw_cursor.execute(converted_query)
+        else:
+            self._raw_cursor.execute(converted_query, converted_params)
+        return self
+
+    def executemany(self, query: str, seq_of_params: list[Any]) -> "AuthDBCursor":
+        converted_query = query if AUTH_DB_BACKEND != "postgres" else query.replace("?", "%s")
+        converted_params = seq_of_params
+        if AUTH_DB_BACKEND == "postgres":
+            converted_params = [tuple(item) if isinstance(item, list) else item for item in seq_of_params]
+        self._raw_cursor.executemany(converted_query, converted_params)
+        return self
+
+    def fetchone(self) -> Any:
+        return self._raw_cursor.fetchone()
+
+    def fetchall(self) -> list[Any]:
+        return self._raw_cursor.fetchall()
+
+    def close(self) -> None:
+        self._raw_cursor.close()
+
+    @property
+    def rowcount(self) -> int:
+        return int(getattr(self._raw_cursor, "rowcount", 0))
+
+
+class AuthDBConnection:
+    def __init__(self, raw_connection: Any):
+        self._raw_connection = raw_connection
+
+    def cursor(self) -> AuthDBCursor:
+        if AUTH_DB_BACKEND == "postgres":
+            if RealDictCursor is None:
+                raise RuntimeError("RealDictCursor unavailable while DATABASE_URL is configured.")
+            return AuthDBCursor(self._raw_connection.cursor(cursor_factory=RealDictCursor))
+        return AuthDBCursor(self._raw_connection.cursor())
+
+    def execute(self, query: str, params: Any = None) -> AuthDBCursor:
+        cursor = self.cursor()
+        cursor.execute(query, params)
+        return cursor
+
+    def commit(self) -> None:
+        self._raw_connection.commit()
+
+    def rollback(self) -> None:
+        self._raw_connection.rollback()
+
+    def close(self) -> None:
+        self._raw_connection.close()
+
+    def __enter__(self) -> "AuthDBConnection":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        self.close()
+
+
+def auth_db_connection() -> AuthDBConnection:
+    if AUTH_DB_BACKEND == "postgres":
+        if psycopg2 is None:
+            raise RuntimeError("DATABASE_URL is configured but psycopg2 is not installed.")
+        raw_connection = psycopg2.connect(DATABASE_URL, connect_timeout=10)
+        return AuthDBConnection(raw_connection)
     db_dir = os.path.dirname(AUTH_DB_PATH)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
-    connection = sqlite3.connect(AUTH_DB_PATH, timeout=15, check_same_thread=False)
-    connection.row_factory = sqlite3.Row
-    return connection
+    raw_connection = sqlite3.connect(AUTH_DB_PATH, timeout=15, check_same_thread=False)
+    raw_connection.row_factory = sqlite3.Row
+    return AuthDBConnection(raw_connection)
 
 
 def init_auth_db() -> None:
@@ -1394,118 +1504,224 @@ def init_auth_db() -> None:
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    full_name TEXT NOT NULL DEFAULT '',
-                    email TEXT NOT NULL UNIQUE,
-                    password_hash TEXT NOT NULL,
-                    password_salt TEXT NOT NULL,
-                    plan_tier TEXT NOT NULL DEFAULT 'free',
-                    credits INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
+            if AUTH_DB_BACKEND == "postgres":
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS users (
+                        id BIGSERIAL PRIMARY KEY,
+                        full_name TEXT NOT NULL DEFAULT '',
+                        email TEXT NOT NULL UNIQUE,
+                        password_hash TEXT NOT NULL,
+                        password_salt TEXT NOT NULL,
+                        plan_tier TEXT NOT NULL DEFAULT 'free',
+                        credits INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        email_verified INTEGER NOT NULL DEFAULT 1
+                    )
+                    """
                 )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS credit_transactions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    action TEXT NOT NULL,
-                    delta INTEGER NOT NULL,
-                    balance_after INTEGER NOT NULL,
-                    meta_json TEXT,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS credit_transactions (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL REFERENCES users (id),
+                        action TEXT NOT NULL,
+                        delta INTEGER NOT NULL,
+                        balance_after INTEGER NOT NULL,
+                        meta_json TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS user_feedback (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    rating INTEGER NOT NULL,
-                    comment TEXT NOT NULL,
-                    source TEXT,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_feedback (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL REFERENCES users (id),
+                        rating INTEGER NOT NULL,
+                        comment TEXT NOT NULL,
+                        source TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS analytics_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    event_type TEXT NOT NULL,
-                    event_name TEXT NOT NULL,
-                    meta_json TEXT,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS analytics_events (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT REFERENCES users (id),
+                        event_type TEXT NOT NULL,
+                        event_name TEXT NOT NULL,
+                        meta_json TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS payment_orders (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    gateway TEXT NOT NULL,
-                    order_id TEXT NOT NULL UNIQUE,
-                    user_id INTEGER NOT NULL,
-                    package_id TEXT NOT NULL,
-                    credits INTEGER NOT NULL,
-                    amount_inr INTEGER NOT NULL,
-                    currency TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    payment_id TEXT,
-                    signature TEXT,
-                    created_at TEXT NOT NULL,
-                    verified_at TEXT,
-                    meta_json TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS payment_orders (
+                        id BIGSERIAL PRIMARY KEY,
+                        gateway TEXT NOT NULL,
+                        order_id TEXT NOT NULL UNIQUE,
+                        user_id BIGINT NOT NULL REFERENCES users (id),
+                        package_id TEXT NOT NULL,
+                        credits INTEGER NOT NULL,
+                        amount_inr INTEGER NOT NULL,
+                        currency TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        payment_id TEXT,
+                        signature TEXT,
+                        created_at TEXT NOT NULL,
+                        verified_at TEXT,
+                        meta_json TEXT
+                    )
+                    """
                 )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS signup_otps (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    password_salt TEXT NOT NULL,
-                    otp_hash TEXT NOT NULL,
-                    expires_at TEXT NOT NULL,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    consumed_at TEXT,
-                    created_at TEXT NOT NULL
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS signup_otps (
+                        id BIGSERIAL PRIMARY KEY,
+                        email TEXT NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        password_salt TEXT NOT NULL,
+                        otp_hash TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        consumed_at TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS password_reset_otps (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    email TEXT NOT NULL,
-                    otp_hash TEXT NOT NULL,
-                    expires_at TEXT NOT NULL,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    consumed_at TEXT,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS password_reset_otps (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL REFERENCES users (id),
+                        email TEXT NOT NULL,
+                        otp_hash TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        consumed_at TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            user_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(users)").fetchall()]
-            if "full_name" not in user_columns:
-                cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
-            if "plan_tier" not in user_columns:
-                cursor.execute("ALTER TABLE users ADD COLUMN plan_tier TEXT NOT NULL DEFAULT 'free'")
-            if "email_verified" not in user_columns:
-                cursor.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1")
+                cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT NOT NULL DEFAULT ''")
+                cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_tier TEXT NOT NULL DEFAULT 'free'")
+                cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 1")
+            else:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        full_name TEXT NOT NULL DEFAULT '',
+                        email TEXT NOT NULL UNIQUE,
+                        password_hash TEXT NOT NULL,
+                        password_salt TEXT NOT NULL,
+                        plan_tier TEXT NOT NULL DEFAULT 'free',
+                        credits INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS credit_transactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        action TEXT NOT NULL,
+                        delta INTEGER NOT NULL,
+                        balance_after INTEGER NOT NULL,
+                        meta_json TEXT,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_feedback (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        rating INTEGER NOT NULL,
+                        comment TEXT NOT NULL,
+                        source TEXT,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS analytics_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        event_type TEXT NOT NULL,
+                        event_name TEXT NOT NULL,
+                        meta_json TEXT,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS payment_orders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        gateway TEXT NOT NULL,
+                        order_id TEXT NOT NULL UNIQUE,
+                        user_id INTEGER NOT NULL,
+                        package_id TEXT NOT NULL,
+                        credits INTEGER NOT NULL,
+                        amount_inr INTEGER NOT NULL,
+                        currency TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        payment_id TEXT,
+                        signature TEXT,
+                        created_at TEXT NOT NULL,
+                        verified_at TEXT,
+                        meta_json TEXT,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS signup_otps (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email TEXT NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        password_salt TEXT NOT NULL,
+                        otp_hash TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        consumed_at TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS password_reset_otps (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        email TEXT NOT NULL,
+                        otp_hash TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        consumed_at TEXT,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+                user_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(users)").fetchall()]
+                if "full_name" not in user_columns:
+                    cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
+                if "plan_tier" not in user_columns:
+                    cursor.execute("ALTER TABLE users ADD COLUMN plan_tier TEXT NOT NULL DEFAULT 'free'")
+                if "email_verified" not in user_columns:
+                    cursor.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_credit_tx_user_time ON credit_transactions (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedback_user_time ON user_feedback (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_user_time ON analytics_events (user_id, created_at)")
@@ -1776,7 +1992,7 @@ def create_user_with_welcome_credits(email: str, password: str, source: str = "s
                     ),
                 )
                 connection.commit()
-            except sqlite3.IntegrityError:
+            except DB_INTEGRITY_ERRORS:
                 connection.rollback()
         finally:
             connection.close()
@@ -5461,7 +5677,7 @@ def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Reque
             connection.commit()
         except HTTPException:
             raise
-        except sqlite3.IntegrityError as exc:
+        except DB_INTEGRITY_ERRORS as exc:
             connection.rollback()
             raise HTTPException(status_code=409, detail="Email already exists.") from exc
         finally:
