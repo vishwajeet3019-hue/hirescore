@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import BrandLogo from "./brand-logo";
+import FloatingSupportChat from "./floating-support-chat";
 import SiteHeader from "./site-header";
 
 type AppChromeProps = {
@@ -64,6 +65,8 @@ export default function AppChrome({ children }: AppChromeProps) {
           </a>
         </p>
       </footer>
+
+      <FloatingSupportChat />
     </>
   );
 }
