@@ -152,6 +152,7 @@ export default function AdminPage() {
   const [chatReplyText, setChatReplyText] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
+  const [activityTab, setActivityTab] = useState<"feedback" | "events" | "credits">("feedback");
 
   const [rowEditors, setRowEditors] = useState<Record<number, RowEditorState>>({});
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
@@ -993,43 +994,80 @@ export default function AdminPage() {
               </div>
             </section>
 
-            <section className="grid gap-4 xl:grid-cols-3">
-              <article className="rounded-[1.6rem] border border-slate-200/14 bg-[#0b1120]/94 p-5">
-                <h3 className="text-lg font-semibold text-white">Feedback</h3>
-                <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
-                  {feedbackRows.map((item) => (
+            <section className="rounded-[1.8rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Activity Stream</p>
+                  <h3 className="mt-1 text-xl font-semibold text-white sm:text-2xl">Feedback, Events, and Credit Logs</h3>
+                </div>
+
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActivityTab("feedback")}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      activityTab === "feedback"
+                        ? "border-sky-300/34 bg-sky-400/16 text-sky-100"
+                        : "border-slate-200/16 bg-slate-700/20 text-slate-200/84 hover:bg-slate-700/30"
+                    }`}
+                  >
+                    Feedback
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivityTab("events")}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      activityTab === "events"
+                        ? "border-sky-300/34 bg-sky-400/16 text-sky-100"
+                        : "border-slate-200/16 bg-slate-700/20 text-slate-200/84 hover:bg-slate-700/30"
+                    }`}
+                  >
+                    Events
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActivityTab("credits")}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      activityTab === "credits"
+                        ? "border-sky-300/34 bg-sky-400/16 text-sky-100"
+                        : "border-slate-200/16 bg-slate-700/20 text-slate-200/84 hover:bg-slate-700/30"
+                    }`}
+                  >
+                    Credit Ledger
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                {activityTab === "feedback" &&
+                  feedbackRows.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
                       <p className="font-semibold text-slate-100">{item.email || `User ${item.user_id}`} • {item.rating}/5</p>
                       <p className="mt-1 text-slate-300/84">{item.comment}</p>
                       <p className="mt-1 text-slate-400/78">{item.created_at}</p>
                     </div>
                   ))}
-                </div>
-              </article>
 
-              <article className="rounded-[1.6rem] border border-slate-200/14 bg-[#0b1120]/94 p-5">
-                <h3 className="text-lg font-semibold text-white">Events</h3>
-                <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
-                  {events.map((item) => (
+                {activityTab === "events" &&
+                  events.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
                       <p className="font-semibold text-slate-100">{item.event_type} / {item.event_name}</p>
                       <p className="mt-1 text-slate-300/82">{item.email || "anonymous"} • {item.created_at}</p>
                     </div>
                   ))}
-                </div>
-              </article>
 
-              <article className="rounded-[1.6rem] border border-slate-200/14 bg-[#0b1120]/94 p-5">
-                <h3 className="text-lg font-semibold text-white">Credit Ledger</h3>
-                <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
-                  {transactions.map((item) => (
+                {activityTab === "credits" &&
+                  transactions.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
                       <p className="font-semibold text-slate-100">{item.action} • {item.delta > 0 ? "+" : ""}{item.delta} • balance {item.balance_after}</p>
                       <p className="mt-1 text-slate-300/82">{item.email || `user-${item.user_id}`} • {item.created_at}</p>
                     </div>
                   ))}
-                </div>
-              </article>
+
+                {activityTab === "feedback" && !feedbackRows.length && <p className="text-xs text-slate-300/72">No feedback entries yet.</p>}
+                {activityTab === "events" && !events.length && <p className="text-xs text-slate-300/72">No events yet.</p>}
+                {activityTab === "credits" && !transactions.length && <p className="text-xs text-slate-300/72">No credit transactions yet.</p>}
+              </div>
             </section>
           </div>
         </div>

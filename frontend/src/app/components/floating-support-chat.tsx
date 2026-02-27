@@ -161,46 +161,46 @@ export default function FloatingSupportChat() {
   }, [draft, fetchMessages, sending, token]);
 
   return (
-    <div className="fixed bottom-5 right-5 z-[80] flex items-end justify-end">
+    <div className="fixed bottom-4 right-4 z-[80] flex items-end justify-end sm:bottom-6 sm:right-6">
       <div
         className={`origin-bottom-right transition-all duration-300 ease-out ${
           isOpen ? "pointer-events-auto translate-y-0 scale-100 opacity-100" : "pointer-events-none translate-y-4 scale-95 opacity-0"
         }`}
       >
-        <section className="mb-3 flex h-[min(72vh,560px)] w-[min(92vw,370px)] flex-col overflow-hidden rounded-[1.6rem] border border-emerald-300/28 bg-[#0a1420]/94 shadow-[0_30px_90px_rgba(2,8,23,0.74)]">
-          <header className="flex items-center gap-3 border-b border-emerald-200/24 bg-gradient-to-r from-emerald-500/80 to-emerald-600/80 px-4 py-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/20 text-sm font-bold text-white">HS</span>
+        <section className="mb-2 flex h-[min(70vh,540px)] w-[min(92vw,356px)] flex-col overflow-hidden rounded-[1.55rem] border border-slate-200/20 bg-[#0b1624]/96 shadow-[0_18px_52px_rgba(2,8,23,0.58)]">
+          <header className="flex items-center gap-3 border-b border-slate-100/12 bg-gradient-to-r from-[#15352d] to-[#0f2b24] px-4 py-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-100/38 bg-emerald-100/14 text-sm font-bold text-emerald-50">HS</span>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-white">HireScore Support</p>
-              <p className="text-[11px] text-emerald-100/95">Chat with admin</p>
+              <p className="text-[11px] text-emerald-100/90">Chat with admin</p>
             </div>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="ml-auto rounded-full border border-white/24 bg-white/10 px-2 py-1 text-xs font-semibold text-white transition hover:bg-white/20"
+              className="ml-auto rounded-full border border-emerald-100/26 bg-emerald-100/12 px-2 py-1 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-100/22"
               aria-label="Close chat"
             >
               Close
             </button>
           </header>
 
-          <div className="relative flex-1 overflow-hidden bg-[linear-gradient(155deg,rgba(2,6,23,0.96)_0%,rgba(6,78,59,0.84)_100%)]">
-            <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.25)_1px,transparent_0)] [background-size:22px_22px]" />
+          <div className="relative flex-1 overflow-hidden bg-[linear-gradient(160deg,rgba(7,17,31,0.98)_0%,rgba(10,38,33,0.92)_56%,rgba(7,15,28,0.98)_100%)]">
+            <div className="pointer-events-none absolute inset-0 opacity-22 [background-image:radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.55)_1px,transparent_0)] [background-size:22px_22px]" />
 
             {!token ? (
               <div className="relative z-10 flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                <p className="text-sm text-emerald-50/90">Login to start chatting with admin support.</p>
+                <p className="text-sm text-slate-100/92">Login to start chatting with admin support.</p>
                 <Link
                   href="/upload"
-                  className="rounded-xl border border-emerald-200/40 bg-emerald-300/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-300/30"
+                  className="rounded-xl border border-emerald-200/34 bg-emerald-200/16 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-200/24"
                 >
                   Login / Signup
                 </Link>
               </div>
             ) : (
               <div ref={listRef} className="relative z-10 h-full space-y-2 overflow-y-auto px-3 py-3">
-                {loading && <p className="text-xs text-emerald-50/85">Loading chat...</p>}
-                {!loading && !messages.length && <p className="text-xs text-emerald-50/85">Start the conversation. Admin replies will appear here.</p>}
+                {loading && <p className="text-xs text-slate-100/88">Loading chat...</p>}
+                {!loading && !messages.length && <p className="text-xs text-slate-100/88">Start the conversation. Admin replies will appear here.</p>}
                 {messages.map((message) => {
                   const byUser = message.sender_role === "user";
                   return (
@@ -208,12 +208,12 @@ export default function FloatingSupportChat() {
                       <article
                         className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-[0_6px_18px_rgba(2,8,23,0.26)] ${
                           byUser
-                            ? "rounded-br-sm border border-emerald-200/36 bg-emerald-300/24 text-emerald-50"
-                            : "rounded-bl-sm border border-slate-200/20 bg-slate-50/94 text-slate-900"
+                            ? "rounded-br-sm border border-emerald-300/32 bg-[#0f5342] text-emerald-50"
+                            : "rounded-bl-sm border border-slate-200/22 bg-slate-100/95 text-slate-900"
                         }`}
                       >
                         <p className="whitespace-pre-wrap leading-relaxed">{message.message}</p>
-                        <p className={`mt-1 text-[10px] ${byUser ? "text-emerald-100/86" : "text-slate-500"}`}>{formatTime(message.created_at)}</p>
+                        <p className={`mt-1 text-[10px] ${byUser ? "text-emerald-100/78" : "text-slate-500"}`}>{formatTime(message.created_at)}</p>
                       </article>
                     </div>
                   );
@@ -222,7 +222,7 @@ export default function FloatingSupportChat() {
             )}
           </div>
 
-          <footer className="border-t border-emerald-200/24 bg-[#0b1724] p-3">
+          <footer className="border-t border-slate-200/14 bg-[#0d1927] p-3">
             <div className="flex items-end gap-2">
               <textarea
                 value={draft}
@@ -235,13 +235,13 @@ export default function FloatingSupportChat() {
                 }}
                 placeholder={token ? "Type a message" : "Login required"}
                 disabled={!token || sending}
-                className="h-10 min-h-10 flex-1 resize-none rounded-2xl border border-emerald-200/24 bg-[#08111d] px-3 py-2 text-sm text-emerald-50 placeholder:text-emerald-100/42 outline-none transition focus:border-emerald-300/54 disabled:opacity-60"
+                className="h-10 min-h-10 flex-1 resize-none rounded-2xl border border-slate-200/18 bg-[#081321] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-300/45 outline-none transition focus:border-emerald-300/44 disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={() => void sendMessage()}
                 disabled={!token || sending}
-                className="rounded-2xl border border-emerald-200/36 bg-emerald-300/24 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-300/34 disabled:opacity-60"
+                className="rounded-2xl border border-emerald-200/34 bg-emerald-300/18 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-300/28 disabled:opacity-60"
               >
                 {sending ? "..." : "Send"}
               </button>
@@ -254,7 +254,7 @@ export default function FloatingSupportChat() {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="group relative flex h-14 min-w-14 items-center justify-center gap-2 rounded-full border border-emerald-200/48 bg-gradient-to-br from-emerald-400/90 to-emerald-600/90 px-4 text-white shadow-[0_18px_50px_rgba(16,185,129,0.5)] transition hover:scale-[1.02]"
+        className="group relative flex h-12 min-w-12 items-center justify-center gap-2 rounded-full border border-emerald-200/34 bg-gradient-to-br from-[#1f6f5b] to-[#145645] px-3.5 text-white shadow-[0_12px_28px_rgba(4,120,87,0.36)] transition hover:brightness-110"
         aria-label="Open support chat"
       >
         <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5 fill-current">
