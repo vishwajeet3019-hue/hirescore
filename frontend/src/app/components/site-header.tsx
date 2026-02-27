@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import BrandLogo from "./brand-logo";
 
 type CreditWallet = {
   credits: number;
@@ -89,14 +90,12 @@ export default function SiteHeader() {
       </div>
 
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-3 sm:h-20 sm:px-6">
-        <Link href="/" className="group flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/45 bg-cyan-300/12 shadow-[0_0_24px_rgba(94,228,255,0.25)] sm:h-11 sm:w-11 sm:rounded-2xl">
-            <span className="h-2.5 w-2.5 rounded-full bg-cyan-200 shadow-[0_0_15px_rgba(190,246,255,0.95)]" />
-          </span>
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/70 sm:text-xs sm:tracking-[0.34em]">HireScore</p>
-            <p className="font-mono text-sm tracking-wide text-cyan-50 sm:text-xl">Interview Accelerator</p>
-          </div>
+        <Link href="/" className="group">
+          <BrandLogo
+            subtitle="Predictive Hiring Intelligence"
+            titleClassName="font-mono text-sm tracking-wide sm:text-xl"
+            subtitleClassName="text-[10px] tracking-[0.16em] sm:text-xs sm:tracking-[0.26em]"
+          />
         </Link>
 
         <nav className="hidden items-center gap-4 text-sm font-medium text-cyan-50/78 md:flex">

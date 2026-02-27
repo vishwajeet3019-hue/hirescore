@@ -289,6 +289,15 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 
+class ChatMessageCreateRequest(BaseModel):
+    message: str
+    auth_token: str | None = None
+
+
+class AdminChatReplyRequest(BaseModel):
+    message: str
+
+
 class ResumeExportRequest(BaseModel):
     name: str | None = None
     template: str | None = None
@@ -1737,6 +1746,19 @@ def init_auth_db() -> None:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_chat_messages (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL REFERENCES users (id),
+                        sender_role TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        read_by_user INTEGER NOT NULL DEFAULT 0,
+                        read_by_admin INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT NOT NULL DEFAULT ''")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_tier TEXT NOT NULL DEFAULT 'free'")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 1")
@@ -1846,6 +1868,20 @@ def init_auth_db() -> None:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_chat_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        sender_role TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        read_by_user INTEGER NOT NULL DEFAULT 0,
+                        read_by_admin INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
                 user_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(users)").fetchall()]
                 if "full_name" not in user_columns:
                     cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
@@ -1861,6 +1897,9 @@ def init_auth_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_orders_status ON payment_orders (status, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_signup_otps_email_time ON signup_otps (email, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reset_otps_email_time ON password_reset_otps (email, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_time ON user_chat_messages (user_id, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_admin_unread ON user_chat_messages (read_by_admin, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_unread ON user_chat_messages (user_id, read_by_user, created_at)")
             connection.commit()
         finally:
             connection.close()
@@ -5398,6 +5437,61 @@ def submit_feedback(data: FeedbackSubmitRequest, request: Request) -> dict[str, 
     return payload
 
 
+@app.get("/chat/messages")
+def user_chat_messages(request: Request, auth_token: str | None = None, limit: int = 200) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    safe_limit = int(clamp_float(float(limit), 1, 400))
+    user_id = int(user["id"])
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            messages = collect_chat_messages_for_user(connection, user_id, safe_limit)
+            cursor.execute(
+                """
+                UPDATE user_chat_messages
+                SET read_by_user = 1
+                WHERE user_id = ? AND sender_role = 'admin' AND read_by_user = 0
+                """,
+                (user_id,),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    return {"messages": messages}
+
+
+@app.post("/chat/messages")
+def user_chat_send_message(data: ChatMessageCreateRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    message = normalize_chat_message_body(data.message)
+    if len(message) < 2:
+        raise HTTPException(status_code=400, detail="Please enter a longer message.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            saved = insert_chat_message(
+                connection=connection,
+                user_id=int(user["id"]),
+                sender_role="user",
+                message=message,
+                read_by_user=True,
+                read_by_admin=False,
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    log_analytics_event("chat", "user_message_sent", user_id=int(user["id"]), meta={"chars": len(message)})
+    return {"message": saved}
+
+
 @app.get("/payments/packages")
 def payment_packages() -> dict[str, Any]:
     return {
@@ -5864,6 +5958,149 @@ def parse_meta_json(meta_json: Any) -> dict[str, Any]:
         return {}
 
 
+def normalize_chat_message_body(message: str) -> str:
+    raw = safe_text(message).replace("\r\n", "\n").replace("\r", "\n")
+    cleaned_lines = [line.strip() for line in raw.split("\n")]
+    cleaned = "\n".join(line for line in cleaned_lines if line).strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    if len(cleaned) > 1800:
+        cleaned = cleaned[:1800].rstrip()
+    return cleaned
+
+
+def serialize_chat_message_row(row: Any) -> dict[str, Any]:
+    sender_role = safe_text(row["sender_role"]).lower()
+    return {
+        "id": int(row["id"]),
+        "user_id": int(row["user_id"]),
+        "sender_role": sender_role,
+        "message": safe_text(row["message"]),
+        "read_by_user": bool(int(row["read_by_user"] or 0)),
+        "read_by_admin": bool(int(row["read_by_admin"] or 0)),
+        "created_at": safe_text(row["created_at"]),
+    }
+
+
+def collect_chat_messages_for_user(connection: AuthDBConnection, user_id: int, limit: int | None = 200) -> list[dict[str, Any]]:
+    query = """
+        SELECT id, user_id, sender_role, message, read_by_user, read_by_admin, created_at
+        FROM user_chat_messages
+        WHERE user_id = ?
+        ORDER BY id DESC
+    """
+    params: tuple[Any, ...] = (int(user_id),)
+    if limit is not None:
+        query += "\nLIMIT ?"
+        params = (int(user_id), int(limit))
+    rows = connection.execute(query, params).fetchall()
+    messages = [serialize_chat_message_row(row) for row in rows]
+    messages.reverse()
+    return messages
+
+
+def insert_chat_message(
+    connection: AuthDBConnection,
+    user_id: int,
+    sender_role: str,
+    message: str,
+    read_by_user: bool,
+    read_by_admin: bool,
+) -> dict[str, Any]:
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT INTO user_chat_messages (user_id, sender_role, message, read_by_user, read_by_admin, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(user_id),
+            safe_text(sender_role).lower(),
+            message,
+            1 if read_by_user else 0,
+            1 if read_by_admin else 0,
+            now_utc_iso(),
+        ),
+    )
+    message_id = inserted_row_id(connection, cursor)
+    row = connection.execute(
+        """
+        SELECT id, user_id, sender_role, message, read_by_user, read_by_admin, created_at
+        FROM user_chat_messages
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (message_id,),
+    ).fetchone()
+    if not row:
+        raise RuntimeError("Unable to load inserted chat message.")
+    return serialize_chat_message_row(row)
+
+
+def collect_admin_chat_threads(
+    connection: AuthDBConnection,
+    q: str | None = None,
+    limit: int | None = 120,
+) -> list[dict[str, Any]]:
+    search = safe_text(q).lower()
+    filters: list[str] = []
+    values: list[Any] = []
+    if search:
+        filters.append("(lower(u.email) LIKE ? OR lower(u.full_name) LIKE ?)")
+        values.extend([f"%{search}%", f"%{search}%"])
+    where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+    query = f"""
+        SELECT
+            u.id AS user_id,
+            u.full_name,
+            u.email,
+            u.plan_tier,
+            u.credits,
+            stats.total_messages,
+            stats.unread_by_admin,
+            stats.unread_by_user,
+            COALESCE(last_msg.sender_role, '') AS last_sender_role,
+            COALESCE(last_msg.message, '') AS last_message,
+            COALESCE(last_msg.created_at, '') AS last_created_at
+        FROM users u
+        INNER JOIN (
+            SELECT
+                m.user_id,
+                COUNT(*) AS total_messages,
+                SUM(CASE WHEN m.sender_role = 'user' AND m.read_by_admin = 0 THEN 1 ELSE 0 END) AS unread_by_admin,
+                SUM(CASE WHEN m.sender_role = 'admin' AND m.read_by_user = 0 THEN 1 ELSE 0 END) AS unread_by_user,
+                MAX(m.id) AS last_message_id
+            FROM user_chat_messages m
+            GROUP BY m.user_id
+        ) stats ON stats.user_id = u.id
+        LEFT JOIN user_chat_messages last_msg ON last_msg.id = stats.last_message_id
+        {where_sql}
+        ORDER BY stats.last_message_id DESC
+    """
+    if limit is not None:
+        query += "\nLIMIT ?"
+        values.append(int(limit))
+    rows = connection.execute(query, tuple(values)).fetchall()
+    threads: list[dict[str, Any]] = []
+    for row in rows:
+        threads.append(
+            {
+                "user_id": int(row["user_id"]),
+                "name": safe_text(row["full_name"]) or display_name_from_email(str(row["email"])),
+                "email": safe_text(row["email"]),
+                "plan": normalize_plan_tier(safe_text(row["plan_tier"])),
+                "credits": int(row["credits"] or 0),
+                "total_messages": int(row["total_messages"] or 0),
+                "unread_by_admin": int(row["unread_by_admin"] or 0),
+                "unread_by_user": int(row["unread_by_user"] or 0),
+                "last_sender_role": safe_text(row["last_sender_role"]),
+                "last_message": safe_text(row["last_message"]),
+                "last_created_at": safe_text(row["last_created_at"]),
+            }
+        )
+    return threads
+
+
 def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str, Any]:
     users_total = int(connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"])
     feedback_row = connection.execute(
@@ -6179,6 +6416,99 @@ def admin_users(
     return {"users": users, "limit": safe_limit, "offset": safe_offset, "plan_filter": plan_filter or None}
 
 
+@app.get("/admin/chats")
+def admin_chats(request: Request, q: str | None = None, limit: int = 120) -> dict[str, Any]:
+    require_admin_access(request)
+    safe_limit = int(clamp_float(float(limit), 1, 400))
+    connection = auth_db_connection()
+    try:
+        threads = collect_admin_chat_threads(connection, q=q, limit=safe_limit)
+    finally:
+        connection.close()
+    return {"threads": threads, "limit": safe_limit}
+
+
+@app.get("/admin/chats/{user_id}")
+def admin_chat_messages(request: Request, user_id: int, limit: int = 200) -> dict[str, Any]:
+    require_admin_access(request)
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id.")
+    safe_limit = int(clamp_float(float(limit), 1, 500))
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            user = cursor.execute(
+                "SELECT id, full_name, email, plan_tier, credits FROM users WHERE id = ? LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="User not found.")
+            messages = collect_chat_messages_for_user(connection, user_id=user_id, limit=safe_limit)
+            cursor.execute(
+                """
+                UPDATE user_chat_messages
+                SET read_by_admin = 1
+                WHERE user_id = ? AND sender_role = 'user' AND read_by_admin = 0
+                """,
+                (user_id,),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    return {
+        "user": {
+            "id": int(user["id"]),
+            "name": safe_text(user["full_name"]) or display_name_from_email(str(user["email"])),
+            "email": safe_text(user["email"]),
+            "plan": normalize_plan_tier(safe_text(user["plan_tier"])),
+            "credits": int(user["credits"] or 0),
+        },
+        "messages": messages,
+    }
+
+
+@app.post("/admin/chats/{user_id}/reply")
+def admin_chat_reply(request: Request, user_id: int, data: AdminChatReplyRequest) -> dict[str, Any]:
+    require_admin_access(request)
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id.")
+    message = normalize_chat_message_body(data.message)
+    if len(message) < 2:
+        raise HTTPException(status_code=400, detail="Please enter a longer reply.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            user = cursor.execute(
+                "SELECT id FROM users WHERE id = ? LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="User not found.")
+            saved = insert_chat_message(
+                connection=connection,
+                user_id=user_id,
+                sender_role="admin",
+                message=message,
+                read_by_user=False,
+                read_by_admin=True,
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    log_analytics_event("admin_chat", "admin_reply_sent", user_id=user_id, meta={"chars": len(message)})
+    return {"message": saved}
+
+
 @app.patch("/admin/users/{user_id}")
 def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Request) -> dict[str, Any]:
     require_admin_access(request)
@@ -6360,6 +6690,7 @@ def admin_delete_user(user_id: int, request: Request) -> dict[str, Any]:
             cursor.execute("DELETE FROM credit_transactions WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM user_feedback WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM analytics_events WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM user_chat_messages WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM password_reset_otps WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
             connection.commit()
@@ -6393,6 +6724,7 @@ def admin_export_full_json(request: Request, q: str | None = None, plan: str | N
             "events": collect_admin_events(connection, limit=None),
             "feedback": collect_admin_feedback(connection, limit=None),
             "credit_transactions": collect_admin_credit_transactions(connection, limit=None),
+            "chat_threads": collect_admin_chat_threads(connection, q=q, limit=None),
         }
     finally:
         connection.close()

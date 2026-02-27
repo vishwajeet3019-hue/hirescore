@@ -61,6 +61,36 @@ type AdminCreditTx = {
   created_at: string;
 };
 
+type AdminChatThread = {
+  user_id: number;
+  name: string;
+  email: string;
+  plan: string;
+  credits: number;
+  total_messages: number;
+  unread_by_admin: number;
+  unread_by_user: number;
+  last_sender_role: string;
+  last_message: string;
+  last_created_at: string;
+};
+
+type AdminChatMessage = {
+  id: number;
+  user_id: number;
+  sender_role: string;
+  message: string;
+  created_at: string;
+};
+
+type AdminChatUser = {
+  id: number;
+  name: string;
+  email: string;
+  plan: string;
+  credits: number;
+};
+
 type RowEditorState = {
   name: string;
   email: string;
@@ -87,6 +117,17 @@ const defaultRowEditor = (): RowEditorState => ({
 
 const planOptions = ["all", "free", "starter", "pro", "elite"] as const;
 
+const formatDateTime = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 export default function AdminPage() {
   const [adminLoginId, setAdminLoginId] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -105,6 +146,12 @@ export default function AdminPage() {
   const [events, setEvents] = useState<AdminEvent[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<AdminFeedback[]>([]);
   const [transactions, setTransactions] = useState<AdminCreditTx[]>([]);
+  const [chatThreads, setChatThreads] = useState<AdminChatThread[]>([]);
+  const [activeChatUser, setActiveChatUser] = useState<AdminChatUser | null>(null);
+  const [chatMessages, setChatMessages] = useState<AdminChatMessage[]>([]);
+  const [chatReplyText, setChatReplyText] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
 
   const [rowEditors, setRowEditors] = useState<Record<number, RowEditorState>>({});
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
@@ -174,13 +221,17 @@ export default function AdminPage() {
       query.set("limit", "120");
       if (search.trim()) query.set("q", search.trim());
       if (planFilter !== "all") query.set("plan", planFilter);
+      const chatQuery = new URLSearchParams();
+      chatQuery.set("limit", "120");
+      if (search.trim()) chatQuery.set("q", search.trim());
 
-      const [analyticsData, usersData, eventsData, feedbackData, txData] = await Promise.all([
+      const [analyticsData, usersData, eventsData, feedbackData, txData, chatsData] = await Promise.all([
         adminFetch<AdminAnalytics>("/admin/analytics", undefined, effectiveToken),
         adminFetch<{ users: AdminUser[] }>(`/admin/users?${query.toString()}`, undefined, effectiveToken),
         adminFetch<{ events: AdminEvent[] }>("/admin/events?limit=120", undefined, effectiveToken),
         adminFetch<{ feedback: AdminFeedback[] }>("/admin/feedback?limit=120", undefined, effectiveToken),
         adminFetch<{ transactions: AdminCreditTx[] }>("/admin/credit-transactions?limit=120", undefined, effectiveToken),
+        adminFetch<{ threads: AdminChatThread[] }>(`/admin/chats?${chatQuery.toString()}`, undefined, effectiveToken),
       ]);
 
       setAnalytics(analyticsData);
@@ -188,6 +239,20 @@ export default function AdminPage() {
       setEvents(eventsData.events || []);
       setFeedbackRows(feedbackData.feedback || []);
       setTransactions(txData.transactions || []);
+      const nextThreads = chatsData.threads || [];
+      setChatThreads(nextThreads);
+      setActiveChatUser((prev) => {
+        if (!prev) return null;
+        const matching = nextThreads.find((item) => item.user_id === prev.id);
+        if (!matching) return null;
+        return {
+          id: matching.user_id,
+          name: matching.name,
+          email: matching.email,
+          plan: matching.plan,
+          credits: matching.credits,
+        };
+      });
       setConnected(true);
       window.localStorage.setItem("hirescore_admin_token", effectiveToken);
       if (adminLoginId.trim()) {
@@ -242,6 +307,64 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Unable to login.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadChatConversation = async (userId: number, tokenOverride?: string) => {
+    const effectiveToken = (tokenOverride ?? adminToken).trim();
+    if (!effectiveToken || userId <= 0) return;
+    setChatLoading(true);
+    setError("");
+    try {
+      const payload = await adminFetch<{ user?: AdminChatUser; messages?: AdminChatMessage[] }>(
+        `/admin/chats/${userId}?limit=300`,
+        undefined,
+        effectiveToken,
+      );
+      setActiveChatUser(payload.user || null);
+      setChatMessages(payload.messages || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load chat conversation.");
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const openChatThread = async (thread: AdminChatThread) => {
+    setActiveChatUser({
+      id: thread.user_id,
+      name: thread.name,
+      email: thread.email,
+      plan: thread.plan,
+      credits: thread.credits,
+    });
+    await loadChatConversation(thread.user_id);
+    await loadAdminData();
+  };
+
+  const sendChatReply = async () => {
+    const targetUser = activeChatUser;
+    if (!targetUser || chatSending) return;
+    const message = chatReplyText.trim();
+    if (message.length < 2) {
+      setError("Reply message is too short.");
+      return;
+    }
+
+    setChatSending(true);
+    setError("");
+    try {
+      await adminFetch(`/admin/chats/${targetUser.id}/reply`, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      });
+      setChatReplyText("");
+      await loadChatConversation(targetUser.id);
+      await loadAdminData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to send reply.");
+    } finally {
+      setChatSending(false);
     }
   };
 
@@ -432,6 +555,10 @@ export default function AdminPage() {
                   setError("");
                   setSuccess("");
                   setAdminToken("");
+                  setChatThreads([]);
+                  setActiveChatUser(null);
+                  setChatMessages([]);
+                  setChatReplyText("");
                   window.localStorage.removeItem("hirescore_admin_token");
                 }}
                 className="rounded-xl border border-rose-200/28 bg-rose-300/10 px-3 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-300/16"
@@ -497,6 +624,10 @@ export default function AdminPage() {
                   setEvents([]);
                   setFeedbackRows([]);
                   setTransactions([]);
+                  setChatThreads([]);
+                  setActiveChatUser(null);
+                  setChatMessages([]);
+                  setChatReplyText("");
                   setError("");
                   setSuccess("");
                   window.localStorage.removeItem("hirescore_admin_token");
@@ -743,6 +874,122 @@ export default function AdminPage() {
                   );
                 })}
                 {!users.length && <p className="text-sm text-slate-200/72">No users found.</p>}
+              </div>
+            </section>
+
+            <section className="rounded-[2rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Support Inbox</p>
+                  <h3 className="mt-1 text-xl font-semibold text-white sm:text-2xl">User Chat Conversations</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadAdminData()}
+                  disabled={!connected || loading}
+                  className="ml-auto rounded-xl border border-sky-300/28 bg-sky-400/14 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
+                >
+                  {loading ? "Refreshing..." : "Refresh Inbox"}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+                <aside className="max-h-[460px] space-y-2 overflow-y-auto rounded-2xl border border-slate-200/14 bg-slate-900/38 p-3">
+                  {!chatThreads.length && <p className="text-xs text-slate-300/70">No user chats yet.</p>}
+                  {chatThreads.map((thread) => {
+                    const isActive = activeChatUser?.id === thread.user_id;
+                    return (
+                      <button
+                        key={thread.user_id}
+                        type="button"
+                        onClick={() => void openChatThread(thread)}
+                        className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                          isActive
+                            ? "border-sky-300/42 bg-sky-300/14"
+                            : "border-slate-200/18 bg-slate-800/36 hover:bg-slate-700/36"
+                        }`}
+                      >
+                        <p className="text-sm font-semibold text-slate-100">{thread.name}</p>
+                        <p className="text-xs text-slate-300/76">{thread.email}</p>
+                        <p className="mt-1 text-xs text-slate-300/80">
+                          {thread.last_sender_role === "admin" ? "Admin: " : "User: "}
+                          {thread.last_message || "No message preview"}
+                        </p>
+                        <div className="mt-1 flex items-center justify-between text-[11px] uppercase tracking-[0.1em] text-slate-400/78">
+                          <span>{formatDateTime(thread.last_created_at) || "No time"}</span>
+                          <span className="rounded-full border border-slate-200/16 bg-slate-700/20 px-2 py-0.5">
+                            {thread.unread_by_admin > 0 ? `${thread.unread_by_admin} new` : "Seen"}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </aside>
+
+                <article className="rounded-2xl border border-slate-200/14 bg-slate-900/34 p-4">
+                  {!activeChatUser && (
+                    <p className="text-sm text-slate-300/72">Select a conversation from the left to read and reply.</p>
+                  )}
+
+                  {activeChatUser && (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/12 pb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{activeChatUser.name}</p>
+                          <p className="text-xs text-slate-300/76">{activeChatUser.email}</p>
+                        </div>
+                        <span className="ml-auto rounded-full border border-slate-200/18 bg-slate-700/18 px-2 py-1 text-[11px] uppercase text-slate-200/84">
+                          {activeChatUser.plan}
+                        </span>
+                        <span className="rounded-full border border-emerald-200/24 bg-emerald-300/10 px-2 py-1 text-[11px] uppercase text-emerald-100">
+                          Credits {activeChatUser.credits}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 h-[310px] space-y-2 overflow-y-auto rounded-xl border border-slate-200/14 bg-[#0a1324] p-3">
+                        {chatLoading && <p className="text-xs text-slate-300/74">Loading conversation...</p>}
+                        {!chatLoading && !chatMessages.length && <p className="text-xs text-slate-300/74">No messages in this thread yet.</p>}
+                        {chatMessages.map((msg) => {
+                          const fromAdmin = msg.sender_role === "admin";
+                          return (
+                            <div
+                              key={msg.id}
+                              className={`max-w-[86%] rounded-xl border px-3 py-2 text-sm ${
+                                fromAdmin
+                                  ? "ml-auto border-sky-300/30 bg-sky-300/14 text-sky-100"
+                                  : "mr-auto border-amber-300/24 bg-amber-200/10 text-amber-50"
+                              }`}
+                            >
+                              <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                              <p className="mt-1 text-[11px] uppercase tracking-[0.1em] text-white/62">
+                                {fromAdmin ? "Admin" : "User"} • {formatDateTime(msg.created_at)}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        <textarea
+                          value={chatReplyText}
+                          onChange={(event) => setChatReplyText(event.target.value)}
+                          placeholder="Type your reply to user..."
+                          className="h-24 w-full resize-none rounded-xl border border-slate-200/18 bg-[#0a1324] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400/70 outline-none transition focus:border-sky-300/62"
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => void sendChatReply()}
+                            disabled={chatSending || chatLoading}
+                            className="rounded-xl border border-sky-300/30 bg-sky-400/14 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
+                          >
+                            {chatSending ? "Sending..." : "Send Reply"}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </article>
               </div>
             </section>
 

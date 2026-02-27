@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import BrandLogo from "./brand-logo";
 import SiteHeader from "./site-header";
 
 type AppChromeProps = {
@@ -24,7 +25,11 @@ export default function AppChrome({ children }: AppChromeProps) {
       <footer className="mt-20 border-t border-cyan-50/10 px-4 py-10 sm:mt-24 sm:px-6 sm:py-12">
         <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">HireScore</p>
+            <BrandLogo
+              subtitle="Predictive Hiring Intelligence"
+              titleClassName="text-lg"
+              subtitleClassName="text-[10px] tracking-[0.16em]"
+            />
             <p className="mt-3 text-sm text-cyan-50/72">
               Premium resume intelligence platform focused on one outcome: increasing your interview conversion.
             </p>
