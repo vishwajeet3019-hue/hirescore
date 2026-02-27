@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 
 type ResumeTemplateId = "quantum" | "executive" | "minimal";
 
@@ -156,9 +157,7 @@ export default function StudioPage() {
   }, []);
 
   useEffect(() => {
-    fetch(apiUrl("/"), { method: "GET" }).catch(() => {
-      // Warm-up ping only; ignore failures.
-    });
+    void warmBackend(apiUrl);
   }, []);
 
   const remainingGeneration = wallet ? Math.floor(wallet.credits / Math.max(1, wallet.pricing.ai_resume_generation)) : 0;
@@ -192,10 +191,10 @@ export default function StudioPage() {
   };
 
   const submitAuthRequest = async (mode: "login" | "signup", email: string, password: string) => {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
-    try {
-      const response = await fetch(apiUrl(mode === "signup" ? "/auth/signup/request-otp" : "/auth/login"), {
+    return fetchJsonWithWakeAndRetry<AuthPayload>({
+      apiUrl,
+      path: mode === "signup" ? "/auth/signup/request-otp" : "/auth/login",
+      init: {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -204,60 +203,66 @@ export default function StudioPage() {
           email,
           password,
         }),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error(await parseApiError(response));
-      }
-      return (await response.json()) as AuthPayload;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        throw new Error("Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.");
-      }
-      throw error;
-    } finally {
-      window.clearTimeout(timeout);
-    }
+      },
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: parseApiError,
+      abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
+    });
   };
 
   const verifySignupOtp = async (email: string, otp: string) => {
-    const response = await fetch(apiUrl("/auth/signup/verify-otp"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    return fetchJsonWithWakeAndRetry<AuthPayload>({
+      apiUrl,
+      path: "/auth/signup/verify-otp",
+      init: {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, otp }),
       },
-      body: JSON.stringify({ email, otp }),
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: parseApiError,
+      abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
     });
-    if (!response.ok) throw new Error(await parseApiError(response));
-    return (await response.json()) as AuthPayload;
   };
 
   const requestForgotPasswordOtp = async (email: string) => {
-    const response = await fetch(apiUrl("/auth/forgot-password/request-otp"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    return fetchJsonWithWakeAndRetry<AuthPayload>({
+      apiUrl,
+      path: "/auth/forgot-password/request-otp",
+      init: {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
       },
-      body: JSON.stringify({ email }),
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: parseApiError,
+      abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
     });
-    if (!response.ok) throw new Error(await parseApiError(response));
-    return (await response.json()) as AuthPayload;
   };
 
   const resetForgottenPassword = async (email: string, otp: string, newPassword: string) => {
-    const response = await fetch(apiUrl("/auth/forgot-password/reset"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    return fetchJsonWithWakeAndRetry<AuthPayload>({
+      apiUrl,
+      path: "/auth/forgot-password/reset",
+      init: {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          otp,
+          new_password: newPassword,
+        }),
       },
-      body: JSON.stringify({
-        email,
-        otp,
-        new_password: newPassword,
-      }),
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: parseApiError,
+      abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
     });
-    if (!response.ok) throw new Error(await parseApiError(response));
-    return (await response.json()) as AuthPayload;
   };
 
   const handleAuthSubmit = async () => {

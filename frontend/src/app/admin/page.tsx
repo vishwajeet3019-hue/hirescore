@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 
 type AdminAnalytics = {
   users_total: number;
@@ -72,6 +73,7 @@ type RowEditorState = {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
 const defaultRowEditor = (): RowEditorState => ({
   name: "",
@@ -112,6 +114,10 @@ export default function AdminPage() {
   const canLoad = useMemo(() => adminToken.trim().length > 0, [adminToken]);
 
   useEffect(() => {
+    void warmBackend(apiUrl);
+  }, []);
+
+  useEffect(() => {
     const existingToken = window.localStorage.getItem("hirescore_admin_token");
     const existingLogin = window.localStorage.getItem("hirescore_admin_login_id");
     if (existingToken) {
@@ -136,21 +142,24 @@ export default function AdminPage() {
 
   const adminFetch = async <T,>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> => {
     const effectiveToken = (tokenOverride ?? adminToken).trim();
-    const response = await fetch(apiUrl(path), {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${effectiveToken}`,
-        ...(init?.headers || {}),
+    return fetchJsonWithWakeAndRetry<T>({
+      apiUrl,
+      path,
+      init: {
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken}`,
+          ...(init?.headers || {}),
+        },
       },
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: async (response) => {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+        return payload?.detail || `Request failed (${response.status})`;
+      },
+      abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
     });
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-      throw new Error(payload?.detail || `Request failed (${response.status})`);
-    }
-
-    return (await response.json()) as T;
   };
 
   const loadAdminData = async (tokenOverride?: string) => {
@@ -207,15 +216,22 @@ export default function AdminPage() {
     setError("");
     setSuccess("");
     try {
-      const response = await fetch(apiUrl("/admin/auth/login"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login_id: loginId, password }),
+      const payload = await fetchJsonWithWakeAndRetry<{ admin_token?: string }>({
+        apiUrl,
+        path: "/admin/auth/login",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ login_id: loginId, password }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: async (response) => {
+          const parsed = (await response.json().catch(() => null)) as { detail?: string } | null;
+          return parsed?.detail || "Invalid admin login.";
+        },
+        abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
       });
-      const payload = (await response.json().catch(() => null)) as { admin_token?: string; detail?: string } | null;
-      if (!response.ok || !payload?.admin_token) {
-        throw new Error(payload?.detail || "Invalid admin login.");
-      }
+      if (!payload?.admin_token) throw new Error("Invalid admin login.");
       setAdminToken(payload.admin_token);
       setAdminPassword("");
       setSuccess("Admin login successful.");
