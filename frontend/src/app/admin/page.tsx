@@ -153,6 +153,7 @@ export default function AdminPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
   const [activityTab, setActivityTab] = useState<"feedback" | "events" | "credits">("feedback");
+  const [workspaceTab, setWorkspaceTab] = useState<"users" | "support" | "activity">("users");
 
   const [rowEditors, setRowEditors] = useState<Record<number, RowEditorState>>({});
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
@@ -722,6 +723,45 @@ export default function AdminPage() {
               </div>
             )}
 
+            <section className="rounded-2xl border border-slate-200/14 bg-slate-900/38 p-3 sm:p-4">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceTab("users")}
+                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                    workspaceTab === "users"
+                      ? "border-sky-300/34 bg-sky-400/16 text-sky-100"
+                      : "border-slate-200/16 bg-slate-700/20 text-slate-200/84 hover:bg-slate-700/30"
+                  }`}
+                >
+                  User Management
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceTab("support")}
+                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                    workspaceTab === "support"
+                      ? "border-sky-300/34 bg-sky-400/16 text-sky-100"
+                      : "border-slate-200/16 bg-slate-700/20 text-slate-200/84 hover:bg-slate-700/30"
+                  }`}
+                >
+                  Support Inbox
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceTab("activity")}
+                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                    workspaceTab === "activity"
+                      ? "border-sky-300/34 bg-sky-400/16 text-sky-100"
+                      : "border-slate-200/16 bg-slate-700/20 text-slate-200/84 hover:bg-slate-700/30"
+                  }`}
+                >
+                  Activity Stream
+                </button>
+              </div>
+            </section>
+
+            {workspaceTab === "users" && (
             <section className="rounded-[2rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
@@ -877,7 +917,9 @@ export default function AdminPage() {
                 {!users.length && <p className="text-sm text-slate-200/72">No users found.</p>}
               </div>
             </section>
+            )}
 
+            {workspaceTab === "support" && (
             <section className="rounded-[2rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
@@ -993,7 +1035,9 @@ export default function AdminPage() {
                 </article>
               </div>
             </section>
+            )}
 
+            {workspaceTab === "activity" && (
             <section className="rounded-[1.8rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
@@ -1069,6 +1113,7 @@ export default function AdminPage() {
                 {activityTab === "credits" && !transactions.length && <p className="text-xs text-slate-300/72">No credit transactions yet.</p>}
               </div>
             </section>
+            )}
           </div>
         </div>
       </section>

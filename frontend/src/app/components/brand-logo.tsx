@@ -7,35 +7,32 @@ type BrandLogoProps = {
   titleClassName?: string;
   subtitleClassName?: string;
   subtitle?: string;
+  intro?: boolean;
 };
-
-declare global {
-  interface Window {
-    __hirescoreLogoIntroDone?: boolean;
-  }
-}
 
 export default function BrandLogo({
   className = "",
   titleClassName = "",
   subtitleClassName = "",
   subtitle = "Precision Career Intelligence",
+  intro = false,
 }: BrandLogoProps) {
-  const [introActive, setIntroActive] = useState(() => {
-    if (typeof window === "undefined") return false;
-    if (window.__hirescoreLogoIntroDone) return false;
-    window.__hirescoreLogoIntroDone = true;
-    return true;
-  });
+  const [introActive, setIntroActive] = useState(false);
   const gradientId = useId().replace(/:/g, "");
 
   useEffect(() => {
-    if (!introActive) return;
-    const timer = window.setTimeout(() => {
+    if (!intro) return;
+    const startTimer = window.setTimeout(() => {
+      setIntroActive(true);
+    }, 40);
+    const stopTimer = window.setTimeout(() => {
       setIntroActive(false);
-    }, 5000);
-    return () => window.clearTimeout(timer);
-  }, [introActive]);
+    }, 5040);
+    return () => {
+      window.clearTimeout(startTimer);
+      window.clearTimeout(stopTimer);
+    };
+  }, [intro]);
 
   return (
     <div className={`flex items-center gap-3 ${className}`.trim()}>

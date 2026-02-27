@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type ChatMessage = {
@@ -88,11 +87,13 @@ export default function FloatingSupportChat() {
     const onStorage = () => syncAuth();
     window.addEventListener("storage", onStorage);
     window.addEventListener("focus", onStorage);
+    const tokenPoll = window.setInterval(syncAuth, 1500);
     const saved = Number(window.localStorage.getItem(LAST_SEEN_KEY) || "0");
     if (Number.isFinite(saved) && saved > 0) {
       setLastSeenId(saved);
     }
     return () => {
+      window.clearInterval(tokenPoll);
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onStorage);
     };
@@ -160,6 +161,10 @@ export default function FloatingSupportChat() {
     }
   }, [draft, fetchMessages, sending, token]);
 
+  if (!token) {
+    return null;
+  }
+
   return (
     <div className="fixed bottom-4 right-4 z-[80] flex items-end justify-end sm:bottom-6 sm:right-6">
       <div
@@ -187,39 +192,27 @@ export default function FloatingSupportChat() {
           <div className="relative flex-1 overflow-hidden bg-[linear-gradient(160deg,rgba(7,17,31,0.98)_0%,rgba(10,38,33,0.92)_56%,rgba(7,15,28,0.98)_100%)]">
             <div className="pointer-events-none absolute inset-0 opacity-22 [background-image:radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.55)_1px,transparent_0)] [background-size:22px_22px]" />
 
-            {!token ? (
-              <div className="relative z-10 flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                <p className="text-sm text-slate-100/92">Login to start chatting with admin support.</p>
-                <Link
-                  href="/upload"
-                  className="rounded-xl border border-emerald-200/34 bg-emerald-200/16 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-200/24"
-                >
-                  Login / Signup
-                </Link>
-              </div>
-            ) : (
-              <div ref={listRef} className="relative z-10 h-full space-y-2 overflow-y-auto px-3 py-3">
-                {loading && <p className="text-xs text-slate-100/88">Loading chat...</p>}
-                {!loading && !messages.length && <p className="text-xs text-slate-100/88">Start the conversation. Admin replies will appear here.</p>}
-                {messages.map((message) => {
-                  const byUser = message.sender_role === "user";
-                  return (
-                    <div key={message.id} className={`flex ${byUser ? "justify-end" : "justify-start"}`}>
-                      <article
-                        className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-[0_6px_18px_rgba(2,8,23,0.26)] ${
-                          byUser
-                            ? "rounded-br-sm border border-emerald-300/32 bg-[#0f5342] text-emerald-50"
-                            : "rounded-bl-sm border border-slate-200/22 bg-slate-100/95 text-slate-900"
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap leading-relaxed">{message.message}</p>
-                        <p className={`mt-1 text-[10px] ${byUser ? "text-emerald-100/78" : "text-slate-500"}`}>{formatTime(message.created_at)}</p>
-                      </article>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div ref={listRef} className="relative z-10 h-full space-y-2 overflow-y-auto px-3 py-3">
+              {loading && <p className="text-xs text-slate-100/88">Loading chat...</p>}
+              {!loading && !messages.length && <p className="text-xs text-slate-100/88">Start the conversation. Admin replies will appear here.</p>}
+              {messages.map((message) => {
+                const byUser = message.sender_role === "user";
+                return (
+                  <div key={message.id} className={`flex ${byUser ? "justify-end" : "justify-start"}`}>
+                    <article
+                      className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-[0_6px_18px_rgba(2,8,23,0.26)] ${
+                        byUser
+                          ? "rounded-br-sm border border-emerald-300/32 bg-[#0f5342] text-emerald-50"
+                          : "rounded-bl-sm border border-slate-200/22 bg-slate-100/95 text-slate-900"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap leading-relaxed">{message.message}</p>
+                      <p className={`mt-1 text-[10px] ${byUser ? "text-emerald-100/78" : "text-slate-500"}`}>{formatTime(message.created_at)}</p>
+                    </article>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <footer className="border-t border-slate-200/14 bg-[#0d1927] p-3">

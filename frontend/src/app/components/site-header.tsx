@@ -92,6 +92,7 @@ export default function SiteHeader() {
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-3 sm:h-20 sm:px-6">
         <Link href="/" className="group">
           <BrandLogo
+            intro
             subtitle="Predictive Hiring Intelligence"
             titleClassName="font-mono text-sm tracking-wide sm:text-xl"
             subtitleClassName="text-[10px] tracking-[0.16em] sm:text-xs sm:tracking-[0.26em]"
