@@ -1452,6 +1452,10 @@ class AuthDBCursor:
     def rowcount(self) -> int:
         return int(getattr(self._raw_cursor, "rowcount", 0))
 
+    @property
+    def lastrowid(self) -> Any:
+        return getattr(self._raw_cursor, "lastrowid", None)
+
 
 class AuthDBConnection:
     def __init__(self, raw_connection: Any):
@@ -1497,6 +1501,26 @@ def auth_db_connection() -> AuthDBConnection:
     raw_connection = sqlite3.connect(AUTH_DB_PATH, timeout=15, check_same_thread=False)
     raw_connection.row_factory = sqlite3.Row
     return AuthDBConnection(raw_connection)
+
+
+def begin_write_transaction(cursor: AuthDBCursor) -> None:
+    if AUTH_DB_BACKEND == "postgres":
+        cursor.execute("BEGIN")
+        return
+    cursor.execute("BEGIN IMMEDIATE")
+
+
+def inserted_row_id(connection: AuthDBConnection, cursor: AuthDBCursor) -> int:
+    raw_id = cursor.lastrowid
+    if raw_id not in (None, "", 0):
+        return int(raw_id)
+    if AUTH_DB_BACKEND == "postgres":
+        row = connection.execute("SELECT LASTVAL() AS id").fetchone()
+        if row:
+            row_id = row["id"]
+            if row_id is not None:
+                return int(row_id)
+    raise RuntimeError("Unable to determine inserted row id for the current transaction.")
 
 
 def init_auth_db() -> None:
@@ -1976,7 +2000,7 @@ def create_user_with_welcome_credits(email: str, password: str, source: str = "s
                     """,
                     (full_name, email, password_hash, salt, "free", WELCOME_FREE_CREDITS, now_utc_iso()),
                 )
-                user_id = int(cursor.lastrowid)
+                user_id = inserted_row_id(connection, cursor)
                 cursor.execute(
                     """
                     INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
@@ -2174,7 +2198,7 @@ def verify_signup_otp_and_create_user(email: str, otp: str) -> sqlite3.Row:
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             row = cursor.execute(
                 """
                 SELECT id, email, password_hash, password_salt, otp_hash, expires_at, attempts, consumed_at
@@ -2224,7 +2248,7 @@ def verify_signup_otp_and_create_user(email: str, otp: str) -> sqlite3.Row:
                     now_utc_iso(),
                 ),
             )
-            user_id = int(cursor.lastrowid)
+            user_id = inserted_row_id(connection, cursor)
             cursor.execute(
                 """
                 INSERT INTO credit_transactions (user_id, action, delta, balance_after, meta_json, created_at)
@@ -2292,7 +2316,7 @@ def verify_password_reset_otp(email: str, otp: str, new_password: str) -> sqlite
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             row = cursor.execute(
                 """
                 SELECT id, user_id, otp_hash, expires_at, attempts, consumed_at
@@ -2494,7 +2518,7 @@ def debit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] |
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             user = cursor.execute(
                 "SELECT id, full_name, email, password_hash, password_salt, plan_tier, credits, created_at FROM users WHERE id = ?",
                 (user_id,),
@@ -2528,7 +2552,7 @@ def debit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] |
                     now_utc_iso(),
                 ),
             )
-            transaction_id = int(cursor.lastrowid)
+            transaction_id = inserted_row_id(connection, cursor)
             connection.commit()
             return {
                 "transaction_id": transaction_id,
@@ -2543,7 +2567,7 @@ def credit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] 
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             user = cursor.execute(
                 "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
                 (user_id,),
@@ -2568,7 +2592,7 @@ def credit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] 
                     now_utc_iso(),
                 ),
             )
-            transaction_id = int(cursor.lastrowid)
+            transaction_id = inserted_row_id(connection, cursor)
             connection.commit()
             return {
                 "transaction_id": transaction_id,
@@ -4712,8 +4736,13 @@ def verify_signup_otp(data: SignupOtpVerifyRequest) -> dict[str, Any]:
     otp = re.sub(r"[^0-9]", "", safe_text(data.otp))
     if len(otp) < 4:
         raise HTTPException(status_code=400, detail="Enter a valid OTP.")
-
-    user = verify_signup_otp_and_create_user(email, otp)
+    try:
+        user = verify_signup_otp_and_create_user(email, otp)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unhandled signup OTP verification error for %s", email)
+        raise HTTPException(status_code=500, detail="OTP verification failed due to a server error. Please try again.") from exc
     log_analytics_event("auth", "signup_success", user_id=int(user["id"]), meta={"email": email, "via": "otp"})
     return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
 
@@ -4761,8 +4790,13 @@ def reset_password_with_otp(data: ForgotPasswordResetRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
     if len(otp) < 4:
         raise HTTPException(status_code=400, detail="Enter a valid reset OTP.")
-
-    user = verify_password_reset_otp(email, otp, new_password)
+    try:
+        user = verify_password_reset_otp(email, otp, new_password)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unhandled password reset OTP verification error for %s", email)
+        raise HTTPException(status_code=500, detail="Password reset failed due to a server error. Please try again.") from exc
     log_analytics_event("auth", "password_reset_success", user_id=int(user["id"]), meta={"email": email})
     return auth_response_payload(user, create_auth_token(int(user["id"]), str(user["email"])))
 
@@ -5049,7 +5083,7 @@ def verify_razorpay_payment(data: RazorpayVerifyRequest, request: Request) -> di
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             order_row = cursor.execute(
                 """
                 SELECT id, user_id, package_id, credits, amount_inr, status, payment_id
@@ -5204,7 +5238,7 @@ async def stripe_webhook(request: Request) -> dict[str, bool]:
                 connection = auth_db_connection()
                 try:
                     cursor = connection.cursor()
-                    cursor.execute("BEGIN IMMEDIATE")
+                    begin_write_transaction(cursor)
                     existing = connection.execute(
                         """
                         SELECT id FROM credit_transactions
@@ -5604,7 +5638,7 @@ def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Reque
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             user = cursor.execute(
                 "SELECT id, full_name, email, password_hash, password_salt, plan_tier, credits, created_at FROM users WHERE id = ?",
                 (user_id,),
@@ -5710,7 +5744,7 @@ def admin_adjust_credits(user_id: int, data: AdminCreditAdjustRequest, request: 
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             user = cursor.execute(
                 "SELECT id, email, password_hash, password_salt, credits, created_at FROM users WHERE id = ?",
                 (user_id,),
@@ -5766,7 +5800,7 @@ def admin_delete_user(user_id: int, request: Request) -> dict[str, Any]:
         connection = auth_db_connection()
         try:
             cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             user = cursor.execute("SELECT id, email FROM users WHERE id = ? LIMIT 1", (user_id,)).fetchone()
             if not user:
                 connection.rollback()
