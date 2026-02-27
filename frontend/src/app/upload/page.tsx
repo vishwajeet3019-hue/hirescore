@@ -1394,16 +1394,16 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[260] overflow-y-auto bg-[#020915]/88 px-3 pb-4 pt-20 backdrop-blur-xl sm:px-6 sm:pb-6 sm:pt-24"
+            className="fixed inset-0 z-[260] overflow-y-auto bg-[#020915]/88 px-2 pb-2 pt-14 backdrop-blur-xl sm:px-6 sm:pb-6 sm:pt-24"
             onClick={() => setShowResultModal(false)}
           >
             <motion.section
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="mx-auto my-0 flex max-h-[calc(100dvh-6rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:max-h-[calc(100dvh-7rem)]"
+              className="mx-auto my-0 flex max-h-[calc(100dvh-3rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1.2rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:max-h-[calc(100dvh-7rem)] sm:rounded-[2rem]"
             >
-              <div className="sticky top-0 z-20 flex justify-end border-b border-cyan-100/14 bg-[#041427]/96 px-4 py-3 sm:px-6">
+              <div className="sticky top-0 z-20 flex justify-end border-b border-cyan-100/14 bg-[#041427]/96 px-3 py-2.5 sm:px-6 sm:py-3">
                 <button
                   type="button"
                   onClick={() => setShowResultModal(false)}
@@ -1412,24 +1412,24 @@ export default function UploadPage() {
                   Close
                 </button>
               </div>
-              <div className="border-b border-cyan-100/14 px-4 py-4 sm:px-6">
+              <div className="border-b border-cyan-100/14 px-3 py-3 sm:px-6 sm:py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Analysis Complete</p>
-                    <h3 className="mt-1 text-xl font-semibold text-cyan-50 sm:text-2xl">{result.shortlist_prediction || "Shortlist Analysis Report"}</h3>
-                    <p className="text-sm text-cyan-50/72">{scoreInsight}</p>
+                    <h3 className="mt-1 text-lg font-semibold text-cyan-50 sm:text-2xl">{result.shortlist_prediction || "Shortlist Analysis Report"}</h3>
+                    <p className="text-[13px] text-cyan-50/72 sm:text-sm">{scoreInsight}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Link
                       href="/studio"
-                      className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
+                      className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:text-sm"
                     >
                       Improve Resume Next
                     </Link>
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto whitespace-nowrap px-1 pb-1">
                   {[
                     { id: "summary", label: "Summary" },
                     { id: "strategy", label: "90% Strategy" },
@@ -1441,7 +1441,7 @@ export default function UploadPage() {
                       key={tab.id}
                       type="button"
                       onClick={() => setActiveResultTab(tab.id as ResultTabId)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.1em] transition ${
+                      className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold tracking-[0.06em] transition sm:text-xs sm:tracking-[0.1em] ${
                         activeResultTab === tab.id
                           ? "border-cyan-100/56 bg-cyan-200/24 text-cyan-50"
                           : "border-cyan-100/20 bg-cyan-100/8 text-cyan-50/72 hover:text-cyan-50"
@@ -1453,12 +1453,12 @@ export default function UploadPage() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="flex-1 overflow-y-auto p-3 sm:p-6">
                 {activeResultTab === "summary" && (
-                  <div className="space-y-6">
-                    <div className="rounded-2xl border border-cyan-100/22 bg-cyan-100/8 p-4">
+                  <div className="space-y-4 sm:space-y-6">
+                    <div className="rounded-2xl border border-cyan-100/22 bg-cyan-100/8 p-3 sm:p-4">
                       <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Read This First</p>
-                      <p className="mt-2 text-sm text-cyan-50/78">
+                      <p className="mt-2 text-[13px] leading-relaxed text-cyan-50/78 sm:text-sm">
                         Start with your shortlist score, then follow the plan in this order:
                         <span className="font-semibold text-cyan-100"> Summary, then Strategy, then Salary, then Hiring Timing.</span>
                       </p>
@@ -1512,9 +1512,9 @@ export default function UploadPage() {
                         ))}
 
                         {(result.quick_wins || []).length > 0 && (
-                          <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4">
+                          <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
                             <p className="text-sm font-semibold text-cyan-100">Quick Wins</p>
-                            <ul className="mt-3 space-y-2 text-sm text-cyan-50/75">
+                            <ul className="mt-2 space-y-1.5 text-[13px] text-cyan-50/75 sm:mt-3 sm:space-y-2 sm:text-sm">
                               {(result.quick_wins || []).map((item, index) => (
                                 <li key={`win-${index}`}>- {item}</li>
                               ))}
@@ -1527,16 +1527,16 @@ export default function UploadPage() {
                 )}
 
                 {activeResultTab === "strategy" && (
-                  <div className="space-y-6">
+                  <div className="space-y-4 sm:space-y-6">
                     {result.ninety_plus_strategy && (
-                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
+                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h3 className="text-xl font-semibold text-cyan-50">Path To 90%+ Shortlist Chance</h3>
+                          <h3 className="text-lg font-semibold text-cyan-50 sm:text-xl">Path To 90%+ Shortlist Chance</h3>
                           <span className="rounded-full border border-cyan-100/35 bg-cyan-200/18 px-3 py-1 text-xs font-semibold text-cyan-50">
                             Window: {result.ninety_plus_strategy.execution_window_weeks} weeks
                           </span>
                         </div>
-                        <p className="mt-2 text-sm text-cyan-50/72">
+                        <p className="mt-2 text-[13px] text-cyan-50/72 sm:text-sm">
                           Gap to 90: <span className="font-semibold text-cyan-100">{result.ninety_plus_strategy.gap_to_90} points</span> | Projected after execution:
                           <span className="font-semibold text-cyan-100"> {result.ninety_plus_strategy.projected_score_after_execution}%</span>
                         </p>
@@ -1565,12 +1565,12 @@ export default function UploadPage() {
 
                     {result.positioning_strategy && !result.is_fresher_profile && (
                       <div className="grid gap-4 lg:grid-cols-2">
-                        <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                          <h3 className="text-xl font-semibold text-cyan-50">Your Suggested Field Matches</h3>
-                          <p className="mt-2 text-sm text-cyan-50/72">
+                        <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
+                          <h3 className="text-lg font-semibold text-cyan-50 sm:text-xl">Your Suggested Field Matches</h3>
+                          <p className="mt-2 text-[13px] text-cyan-50/72 sm:text-sm">
                             Target role fit: <span className="font-semibold text-cyan-100">{result.positioning_strategy.target_fit_score}%</span>
                           </p>
-                          <p className="mt-2 text-sm text-cyan-50/76">{result.positioning_strategy.summary}</p>
+                          <p className="mt-2 text-[13px] text-cyan-50/76 sm:text-sm">{result.positioning_strategy.summary}</p>
                           <div className="mt-3 space-y-2">
                             {result.positioning_strategy.higher_probability_roles.map((alt, idx) => (
                               <div key={`alt-${idx}`} className="rounded-xl border border-cyan-100/18 bg-cyan-100/6 p-3">
@@ -1582,9 +1582,9 @@ export default function UploadPage() {
                         </div>
 
                         {result.learning_roadmap && (
-                          <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                            <h3 className="text-xl font-semibold text-cyan-50">Learning Roadmap</h3>
-                            <p className="mt-2 text-sm text-cyan-50/72">Timeline: {result.learning_roadmap.total_duration_weeks} weeks</p>
+                          <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
+                            <h3 className="text-lg font-semibold text-cyan-50 sm:text-xl">Learning Roadmap</h3>
+                            <p className="mt-2 text-[13px] text-cyan-50/72 sm:text-sm">Timeline: {result.learning_roadmap.total_duration_weeks} weeks</p>
                             {result.learning_roadmap.experience_band && (
                               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cyan-100/72">
                                 Experience band: {result.learning_roadmap.experience_band}
@@ -1620,15 +1620,15 @@ export default function UploadPage() {
                 )}
 
                 {activeResultTab === "salary" && (
-                  <div className="space-y-6">
+                  <div className="space-y-4 sm:space-y-6">
                     {result.salary_insight && salaryProjection && (
-                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                        <h3 className="text-xl font-semibold text-cyan-50">India Salary Insight (Role-Aligned)</h3>
-                        <p className="mt-2 text-sm text-cyan-50/72">
+                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
+                        <h3 className="text-lg font-semibold text-cyan-50 sm:text-xl">India Salary Insight (Role-Aligned)</h3>
+                        <p className="mt-2 text-[13px] text-cyan-50/72 sm:text-sm">
                           Base range: <span className="font-semibold text-cyan-100">₹{result.salary_insight.base_range_lpa.low}L - ₹{result.salary_insight.base_range_lpa.high}L</span>
                           {" "}per annum ({result.salary_insight.experience_band} band)
                         </p>
-                        <p className="text-sm text-cyan-50/72">
+                        <p className="text-[13px] text-cyan-50/72 sm:text-sm">
                           With selected boosters: <span className="font-semibold text-cyan-100">₹{salaryProjection.projectedLow}L - ₹{salaryProjection.projectedHigh}L</span>
                           {" "}(+₹{salaryProjection.selectedUplift}L)
                         </p>
@@ -1661,8 +1661,8 @@ export default function UploadPage() {
                     )}
 
                     {result.callback_forecast && callbackSimulation && (
-                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                        <h3 className="text-xl font-semibold text-cyan-50">Interview Callback Rate Simulator (Weekly View)</h3>
+                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
+                        <h3 className="text-lg font-semibold text-cyan-50 sm:text-xl">Interview Callback Rate Simulator (Weekly View)</h3>
                         <p className="mt-2 text-xs text-cyan-50/65">
                           {result.callback_forecast.weekly_note || `Weekly projection shown over a ${callbackSimulation.weeks}-week cycle.`}
                         </p>
@@ -1699,17 +1699,17 @@ export default function UploadPage() {
                 )}
 
                 {activeResultTab === "market" && (
-                  <div className="space-y-6">
+                  <div className="space-y-4 sm:space-y-6">
                     {result.hiring_market_insights && (
-                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                        <h3 className="text-xl font-semibold text-cyan-50">Hiring Timing & Risk Insights (India)</h3>
-                        <p className="mt-2 text-sm text-cyan-50/72">Best months to apply: {result.hiring_market_insights.best_months_to_apply.join(", ")}</p>
-                        <p className="mt-1 text-sm text-cyan-50/72">Hiring peaks: {result.hiring_market_insights.hiring_peak_windows.join(" | ")}</p>
-                        <p className="mt-1 text-sm text-cyan-50/72">
+                      <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
+                        <h3 className="text-lg font-semibold text-cyan-50 sm:text-xl">Hiring Timing & Risk Insights (India)</h3>
+                        <p className="mt-2 text-[13px] text-cyan-50/72 sm:text-sm">Best months to apply: {result.hiring_market_insights.best_months_to_apply.join(", ")}</p>
+                        <p className="mt-1 text-[13px] text-cyan-50/72 sm:text-sm">Hiring peaks: {result.hiring_market_insights.hiring_peak_windows.join(" | ")}</p>
+                        <p className="mt-1 text-[13px] text-cyan-50/72 sm:text-sm">
                           Layoff risk for target direction: <span className="font-semibold text-cyan-100 uppercase">{result.hiring_market_insights.layoff_risk_level}</span>
                         </p>
-                        <p className="mt-1 text-sm text-cyan-50/72">{result.hiring_market_insights.layoff_risk_note}</p>
-                        <p className="mt-2 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-2 text-sm text-cyan-100">
+                        <p className="mt-1 text-[13px] text-cyan-50/72 sm:text-sm">{result.hiring_market_insights.layoff_risk_note}</p>
+                        <p className="mt-2 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-2 text-[13px] text-cyan-100 sm:text-sm">
                           {result.hiring_market_insights.application_timing_tip}
                         </p>
                         <div className="mt-3 rounded-xl border border-amber-100/26 bg-amber-100/10 p-3">
@@ -1727,7 +1727,7 @@ export default function UploadPage() {
 
                 {activeResultTab === "improvements" && (
                   <div>
-                    <h3 className="text-xl font-semibold text-cyan-50">Improvement Areas</h3>
+                    <h3 className="text-lg font-semibold text-cyan-50 sm:text-xl">Improvement Areas</h3>
                     <div className="mt-4 grid gap-4 sm:grid-cols-2">
                       {result.areas_to_improve.map((item, index) => (
                         <motion.div
