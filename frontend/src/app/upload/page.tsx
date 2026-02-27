@@ -1115,143 +1115,169 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 rounded-2xl border border-amber-100/24 bg-[#2a1628]/68 p-4 md:grid-cols-[1.5fr_0.5fr]">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">How This Works</p>
-                    <ul className="mt-2 space-y-1 text-sm text-amber-50/88">
-                      <li>1. Fill role details and click analyze.</li>
-                      <li>2. If not logged in, sign in via popup.</li>
-                      <li>3. Analysis runs and report opens instantly.</li>
-                    </ul>
-                    {!authToken && <p className="mt-2 text-xs text-amber-100/80">New users get 5 free credits (one full analysis).</p>}
-                    {authToken && wallet && (
+                <div className="mt-4 grid gap-3 xl:grid-cols-[1.25fr_0.75fr]">
+                  <div className="rounded-2xl border border-amber-100/24 bg-[#2a1628]/62 p-4">
+                    <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Quick Flow</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      {[
+                        "Fill role details.",
+                        "Click Analyze.",
+                        "View report instantly.",
+                      ].map((item, index) => (
+                        <div key={item} className="rounded-xl border border-amber-100/24 bg-amber-100/8 px-3 py-2 text-xs text-amber-50/84">
+                          <span className="mr-1 font-semibold text-amber-100">{index + 1}.</span>
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                    {!authToken && <p className="mt-3 text-xs text-amber-100/82">New users get 5 free credits on signup (one full analysis).</p>}
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-100/24 bg-[#1c1526]/62 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Account</p>
+                      <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2 py-0.5 text-[11px] text-amber-50/82">
+                        {authToken ? "Signed In" : "Guest"}
+                      </span>
+                    </div>
+                    {authToken && wallet ? (
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-amber-50/82">
                         <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">Credits: {wallet.credits}</span>
                         <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">Reports left: {remainingAnalyze}</span>
-                        <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">Signed in: {authUserEmail || "User"}</span>
+                        <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">{authUserEmail || "User"}</span>
                       </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {!authToken ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowAuthModal(true)}
-                        className="rounded-xl border border-amber-100/38 bg-amber-100/14 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
-                      >
-                        Login / Signup
-                      </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={handleSignOut}
-                        className="rounded-xl border border-rose-100/32 bg-transparent px-3 py-2 text-xs font-semibold text-rose-50/88 transition hover:bg-rose-100/12"
-                      >
-                        Sign Out
-                      </button>
+                      <p className="mt-2 text-xs text-amber-50/78">Login is requested only after you click Analyze.</p>
                     )}
-                    <Link
-                      href="/pricing"
-                      className="rounded-xl border border-rose-100/34 bg-rose-100/12 px-3 py-2 text-center text-xs font-semibold text-rose-50 transition hover:bg-rose-100/18"
-                    >
-                      Buy Credits
-                    </Link>
-                    {feedbackRequired && (
-                      <button
-                        type="button"
-                        onClick={() => setShowFeedbackModal(true)}
-                        className="rounded-xl border border-amber-100/40 bg-amber-100/12 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {!authToken ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowAuthModal(true)}
+                          className="rounded-xl border border-amber-100/38 bg-amber-100/14 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
+                        >
+                          Login / Signup
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleSignOut}
+                          className="rounded-xl border border-rose-100/32 bg-transparent px-3 py-2 text-xs font-semibold text-rose-50/88 transition hover:bg-rose-100/12"
+                        >
+                          Sign Out
+                        </button>
+                      )}
+                      <Link
+                        href="/pricing"
+                        className="rounded-xl border border-rose-100/34 bg-rose-100/12 px-3 py-2 text-center text-xs font-semibold text-rose-50 transition hover:bg-rose-100/18"
                       >
-                        Submit Feedback
-                      </button>
-                    )}
+                        Buy Credits
+                      </Link>
+                      {feedbackRequired && (
+                        <button
+                          type="button"
+                          onClick={() => setShowFeedbackModal(true)}
+                          className="rounded-xl border border-amber-100/40 bg-amber-100/12 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
+                        >
+                          Submit Feedback
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Target Industry</label>
-                    <input
-                      type="text"
-                      value={industry}
-                      onChange={(event) => {
-                        setIndustry(event.target.value);
-                        setAnalysisError("");
-                      }}
-                      placeholder="AI, FinTech, Product, Marketing"
-                      className={analysisFieldClass}
-                      required
-                    />
-                  </div>
+                <div className="mt-5 rounded-2xl border border-amber-100/20 bg-amber-100/[0.05] p-4">
+                  <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Role Target</p>
+                  <div className="mt-3 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-amber-50/90">Target Industry</label>
+                      <input
+                        type="text"
+                        value={industry}
+                        onChange={(event) => {
+                          setIndustry(event.target.value);
+                          setAnalysisError("");
+                        }}
+                        placeholder="AI, FinTech, Product, Marketing"
+                        className={analysisFieldClass}
+                        required
+                      />
+                    </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Target Role</label>
-                    <input
-                      type="text"
-                      value={role}
-                      list="hirescore-role-suggestions"
-                      onChange={(event) => {
-                        setRole(event.target.value);
-                        setAnalysisError("");
-                      }}
-                      placeholder="Product Manager, Account Executive, Backend Engineer"
-                      className={analysisFieldClass}
-                      required
-                    />
-                    <datalist id="hirescore-role-suggestions">
-                      {ROLE_EXAMPLE_TITLES.map((title) => (
-                        <option key={title} value={title} />
-                      ))}
-                    </datalist>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-amber-50/90">Target Role</label>
+                      <input
+                        type="text"
+                        value={role}
+                        list="hirescore-role-suggestions"
+                        onChange={(event) => {
+                          setRole(event.target.value);
+                          setAnalysisError("");
+                        }}
+                        placeholder="Product Manager, Account Executive, Backend Engineer"
+                        className={analysisFieldClass}
+                        required
+                      />
+                      <datalist id="hirescore-role-suggestions">
+                        {ROLE_EXAMPLE_TITLES.map((title) => (
+                          <option key={title} value={title} />
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Years of Experience (optional)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="35"
-                      step="0.5"
-                      value={experienceYears}
-                      onChange={(event) => setExperienceYears(event.target.value)}
-                      placeholder="2"
-                      className={analysisFieldClass}
-                    />
-                  </div>
+                <div className="mt-4 rounded-2xl border border-amber-100/20 bg-amber-100/[0.05] p-4">
+                  <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Profile Signals</p>
+                  <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-amber-50/90">Years of Experience (optional)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="35"
+                        step="0.5"
+                        value={experienceYears}
+                        onChange={(event) => setExperienceYears(event.target.value)}
+                        placeholder="2"
+                        className={analysisFieldClass}
+                      />
+                    </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Age (optional)</label>
-                    <input
-                      type="number"
-                      min="16"
-                      max="70"
-                      step="1"
-                      value={ageYears}
-                      onChange={(event) => setAgeYears(event.target.value)}
-                      placeholder="24"
-                      className={analysisFieldClass}
-                    />
-                  </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-amber-50/90">Age (optional)</label>
+                      <input
+                        type="number"
+                        min="16"
+                        max="70"
+                        step="1"
+                        value={ageYears}
+                        onChange={(event) => setAgeYears(event.target.value)}
+                        placeholder="24"
+                        className={analysisFieldClass}
+                      />
+                    </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Job Applications Planned Per Week</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="2500"
-                      value={applicationsCount}
-                      onChange={(event) => setApplicationsCount(event.target.value)}
-                      placeholder="30"
-                      className={analysisFieldClass}
-                    />
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-amber-50/90">Job Applications Planned Per Week</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="2500"
+                        value={applicationsCount}
+                        onChange={(event) => setApplicationsCount(event.target.value)}
+                        placeholder="30"
+                        className={analysisFieldClass}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {analysisMode === "manual" ? (
-                  <div className="mt-5">
-                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Current Skills (optional for freshers)</label>
+                  <div className="mt-4 rounded-2xl border border-amber-100/20 bg-amber-100/[0.05] p-4">
+                    <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Skill Snapshot</p>
+                    <label className="mb-2 mt-3 block text-sm font-medium text-amber-50/90">Current Skills (optional for freshers)</label>
                     <textarea
                       value={analysisSkills}
                       onChange={(event) => {
@@ -1264,8 +1290,9 @@ export default function UploadPage() {
                     <p className="mt-2 text-xs text-amber-50/70">Experienced users: add at least 3 specific skills. Freshers (0-1 years): you can leave this blank.</p>
                   </div>
                 ) : (
-                  <div className="mt-5">
-                    <label className="mb-2 block text-sm font-medium text-amber-50/90">Resume File (PDF or TXT)</label>
+                  <div className="mt-4 rounded-2xl border border-amber-100/20 bg-amber-100/[0.05] p-4">
+                    <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Resume Upload</p>
+                    <label className="mb-2 mt-3 block text-sm font-medium text-amber-50/90">Resume File (PDF or TXT)</label>
                     <div
                       onDragOver={(event) => {
                         event.preventDefault();
@@ -1315,25 +1342,27 @@ export default function UploadPage() {
                   </div>
                 )}
 
-                {analysisError && (
-                  <div className="mt-4 rounded-xl border border-amber-100/42 bg-amber-100/14 px-3 py-2 text-sm text-amber-50">{analysisError}</div>
-                )}
+                <div className="mt-5 rounded-2xl border border-amber-100/20 bg-amber-100/[0.05] p-4">
+                  <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Actions</p>
+                  {analysisError && (
+                    <div className="mt-3 rounded-xl border border-amber-100/42 bg-amber-100/14 px-3 py-2 text-sm text-amber-50">{analysisError}</div>
+                  )}
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="rounded-2xl border border-amber-100/45 bg-gradient-to-r from-rose-500/34 via-amber-300/28 to-orange-300/28 px-5 py-3.5 text-sm font-semibold tracking-wide text-amber-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-75"
+                    >
+                      {loading ? "Analyzing..." : analysisMode === "manual" ? "Analyze My Profile" : "Analyze Uploaded Resume"}
+                    </button>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="rounded-2xl border border-amber-100/45 bg-gradient-to-r from-rose-500/34 via-amber-300/28 to-orange-300/28 px-5 py-3.5 text-sm font-semibold tracking-wide text-amber-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-75"
-                  >
-                    {loading ? "Analyzing..." : analysisMode === "manual" ? "Analyze My Profile" : "Analyze Uploaded Resume"}
-                  </button>
-
-                  <Link
-                    href="/studio"
-                    className="rounded-2xl border border-rose-100/36 bg-rose-100/12 px-5 py-3.5 text-center text-sm font-semibold text-rose-50 transition hover:bg-rose-100/20"
-                  >
-                    Improve Resume Next
-                  </Link>
+                    <Link
+                      href="/studio"
+                      className="rounded-2xl border border-rose-100/36 bg-rose-100/12 px-5 py-3.5 text-center text-sm font-semibold text-rose-50 transition hover:bg-rose-100/20"
+                    >
+                      Improve Resume Next
+                    </Link>
+                  </div>
                 </div>
 
                 {result && !showResultModal && (
