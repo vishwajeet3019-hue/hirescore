@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
 
 const proofStats = [
   { label: "Prediction Layers", value: "12+", showAurora: true },
@@ -89,12 +88,7 @@ export default function Home() {
   return (
     <main className="min-h-screen px-4 pb-20 pt-8 sm:px-6 sm:pt-12 lg:px-8">
       <section className="mx-auto max-w-7xl">
-        <motion.div
-          initial={{ opacity: 0, y: 22 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.65 }}
-          className="premium-panel holo-sheen relative overflow-hidden rounded-[2rem] p-6 sm:rounded-[2.2rem] sm:p-10 lg:p-12"
-        >
+        <div className="premium-panel holo-sheen relative overflow-hidden rounded-[2rem] p-6 sm:rounded-[2.2rem] sm:p-10 lg:p-12">
           <div className="absolute -top-24 right-[-60px] h-72 w-72 rounded-full bg-cyan-200/24 blur-[100px]" />
           <div className="absolute bottom-[-120px] left-[-40px] h-72 w-72 rounded-full bg-amber-100/16 blur-[110px]" />
 
@@ -135,61 +129,36 @@ export default function Home() {
             </div>
 
             <div className="space-y-3">
-              {proofStats.map((stat, index) => (
-                <motion.div
-                  key={stat.label}
-                  initial={{ opacity: 0, x: 16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.08 * index, duration: 0.4 }}
-                  className="holo-sheen soft-pulse rounded-2xl border border-cyan-100/18 bg-cyan-100/7 p-4"
-                >
+              {proofStats.map((stat) => (
+                <div key={stat.label} className="holo-sheen soft-pulse rounded-2xl border border-cyan-100/18 bg-cyan-100/7 p-4">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/62 sm:text-xs sm:tracking-[0.2em]">{stat.label}</p>
                   <p className="mt-1 text-2xl font-semibold text-cyan-50">{stat.value}</p>
                   {stat.showAurora && <div className="aurora-strip mt-3 h-1 rounded-full" />}
-                </motion.div>
+                </div>
               ))}
             </div>
           </div>
-        </motion.div>
+        </div>
       </section>
 
       <section className="mx-auto mt-10 max-w-7xl">
         <div className="grid gap-5 md:grid-cols-3">
           {valueCards.map((card, index) => (
-            <motion.article
-              key={card.title}
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ delay: 0.08 * index, duration: 0.45 }}
-              whileHover={{ y: -8 }}
-              className="neon-panel holo-sheen rounded-3xl p-5 sm:p-6"
-            >
+            <article key={card.title} className="neon-panel holo-sheen rounded-3xl p-5 sm:p-6 transition-transform duration-200 hover:-translate-y-1">
               <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.2em]">Value {index + 1}</p>
               <h2 className="mt-4 text-xl font-semibold text-cyan-50 sm:text-2xl">{card.title}</h2>
               <p className="mt-3 text-sm leading-relaxed text-cyan-50/70">{card.description}</p>
 
               <div className="signal-line mt-6 h-2 rounded-full bg-cyan-100/12">
-                <motion.div
-                  initial={{ width: 0 }}
-                  whileInView={{ width: "100%" }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 1.3, delay: 0.15 * index }}
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-amber-100"
-                />
+                <div className="h-full w-full rounded-full bg-gradient-to-r from-cyan-300 to-amber-100" />
               </div>
-            </motion.article>
+            </article>
           ))}
         </div>
       </section>
 
       <section className="mx-auto mt-12 max-w-7xl">
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-30px" }}
-          className="neon-panel rounded-[2rem] p-6 sm:p-8"
-        >
+        <div className="neon-panel rounded-[2rem] p-6 sm:p-8">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.22em]">
@@ -211,16 +180,11 @@ export default function Home() {
               </article>
             ))}
           </div>
-        </motion.div>
+        </div>
       </section>
 
       <section className="mx-auto mt-12 max-w-7xl">
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-20px" }}
-          className="premium-panel rounded-[2rem] p-6 sm:p-10"
-        >
+        <div className="premium-panel rounded-[2rem] p-6 sm:p-10">
           <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.22em]">
             Success Stories
           </p>
@@ -239,16 +203,11 @@ export default function Home() {
               </article>
             ))}
           </div>
-        </motion.div>
+        </div>
       </section>
 
       <section id="workflow" className="mx-auto mt-14 max-w-7xl">
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-40px" }}
-          className="premium-panel holo-sheen rounded-[2rem] p-6 sm:p-10"
-        >
+        <div className="premium-panel holo-sheen rounded-[2rem] p-6 sm:p-10">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.24em]">Workflow</p>
@@ -264,31 +223,19 @@ export default function Home() {
 
           <div className="mt-8 grid gap-5 md:grid-cols-3">
             {workflowSteps.map((step, index) => (
-              <motion.article
-                key={step.title}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-40px" }}
-                transition={{ delay: index * 0.08, duration: 0.45 }}
-                className="rounded-2xl border border-cyan-100/16 bg-cyan-100/6 p-5"
-              >
+              <article key={step.title} className="rounded-2xl border border-cyan-100/16 bg-cyan-100/6 p-5">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.2em]">Step {index + 1}</p>
                 <h4 className="mt-2 text-lg font-semibold text-cyan-50 sm:text-xl">{step.title}</h4>
                 <p className="mt-3 text-sm leading-relaxed text-cyan-50/72">{step.description}</p>
-              </motion.article>
+              </article>
             ))}
           </div>
 
-        </motion.div>
+        </div>
       </section>
 
       <section className="mx-auto mt-14 max-w-7xl">
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-20px" }}
-          className="neon-panel holo-sheen rounded-[2rem] p-6 text-center sm:p-10"
-        >
+        <div className="neon-panel holo-sheen rounded-[2rem] p-6 text-center sm:p-10">
           <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/62 sm:text-xs sm:tracking-[0.26em]">Monetization Promise</p>
           <h3 className="mx-auto mt-3 max-w-3xl text-2xl font-semibold text-cyan-50 sm:text-4xl">
             You are not paying for a resume editor. You are paying for a higher probability of getting shortlisted.
@@ -307,7 +254,7 @@ export default function Home() {
               Start Analysis
             </Link>
           </div>
-        </motion.div>
+        </div>
       </section>
     </main>
   );
