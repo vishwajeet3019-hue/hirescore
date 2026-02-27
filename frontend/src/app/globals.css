@@ -1324,4 +1324,13 @@ body::after {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+
+  .logo-intro-active,
+  .logo-intro-active::before,
+  .logo-intro-active::after,
+  .logo-intro-orbit,
+  .logo-intro-flare {
+    animation-duration: 5s !important;
+    animation-iteration-count: 1 !important;
+  }
 }

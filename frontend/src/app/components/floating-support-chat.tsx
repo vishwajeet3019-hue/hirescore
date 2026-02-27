@@ -35,6 +35,7 @@ const parseMessages = (payload: unknown): ChatMessage[] => {
 
 export default function FloatingSupportChat() {
   const [token, setToken] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -55,7 +56,7 @@ export default function FloatingSupportChat() {
   }, []);
 
   const fetchMessages = useCallback(async (silent = false) => {
-    if (!token) return;
+    if (!token || !isAuthenticated) return;
     if (!silent) setLoading(true);
     setError("");
     try {
@@ -79,7 +80,7 @@ export default function FloatingSupportChat() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [isOpen, setLatestSeen, token]);
+  }, [isAuthenticated, isOpen, setLatestSeen, token]);
 
   useEffect(() => {
     const syncAuth = () => setToken(window.localStorage.getItem("hirescore_auth_token") || "");
@@ -101,6 +102,7 @@ export default function FloatingSupportChat() {
 
   useEffect(() => {
     if (!token) {
+      setIsAuthenticated(false);
       setMessages([]);
       setError("");
       return;
@@ -109,12 +111,42 @@ export default function FloatingSupportChat() {
   }, [fetchMessages, token]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setIsAuthenticated(false);
+      return;
+    }
+    let active = true;
+    const validateSession = async () => {
+      try {
+        const response = await fetch(apiUrl("/auth/me"), {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!response.ok) throw new Error("Session expired");
+        if (!active) return;
+        setIsAuthenticated(true);
+      } catch {
+        if (!active) return;
+        setIsAuthenticated(false);
+        setIsOpen(false);
+        setToken("");
+        window.localStorage.removeItem("hirescore_auth_token");
+      }
+    };
+    void validateSession();
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || !isAuthenticated) return;
     const timer = window.setInterval(() => {
       void fetchMessages(true);
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [fetchMessages, token]);
+  }, [fetchMessages, isAuthenticated, token]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -129,7 +161,7 @@ export default function FloatingSupportChat() {
   const unreadCount = useMemo(() => messages.filter((message) => message.sender_role !== "user" && message.id > lastSeenId).length, [messages, lastSeenId]);
 
   const sendMessage = useCallback(async () => {
-    if (!token || sending) return;
+    if (!token || !isAuthenticated || sending) return;
     const message = draft.trim();
     if (message.length < 2) {
       setError("Please type at least 2 characters.");
@@ -159,9 +191,9 @@ export default function FloatingSupportChat() {
     } finally {
       setSending(false);
     }
-  }, [draft, fetchMessages, sending, token]);
+  }, [draft, fetchMessages, isAuthenticated, sending, token]);
 
-  if (!token) {
+  if (!token || !isAuthenticated) {
     return null;
   }
 

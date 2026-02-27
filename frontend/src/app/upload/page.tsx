@@ -1115,47 +1115,35 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 xl:grid-cols-[1.25fr_0.75fr]">
-                  <div className="rounded-2xl border border-amber-100/24 bg-[#2a1628]/62 p-4">
-                    <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Quick Flow</p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      {[
-                        "Fill role details.",
-                        "Click Analyze.",
-                        "View report instantly.",
-                      ].map((item, index) => (
-                        <div key={item} className="rounded-xl border border-amber-100/24 bg-amber-100/8 px-3 py-2 text-xs text-amber-50/84">
-                          <span className="mr-1 font-semibold text-amber-100">{index + 1}.</span>
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-                    {!authToken && <p className="mt-3 text-xs text-amber-100/82">New users get 5 free credits on signup (one full analysis).</p>}
-                  </div>
-
-                  <div className="rounded-2xl border border-amber-100/24 bg-[#1c1526]/62 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Account</p>
-                      <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2 py-0.5 text-[11px] text-amber-50/82">
-                        {authToken ? "Signed In" : "Guest"}
+                <div className="mt-4 rounded-2xl border border-amber-100/24 bg-[#24162a]/58 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-2 text-xs text-amber-50/86">
+                      <span className="rounded-xl border border-amber-100/24 bg-amber-100/8 px-2.5 py-1.5">
+                        1. Fill details
+                      </span>
+                      <span className="rounded-xl border border-amber-100/24 bg-amber-100/8 px-2.5 py-1.5">
+                        2. Click Analyze
+                      </span>
+                      <span className="rounded-xl border border-amber-100/24 bg-amber-100/8 px-2.5 py-1.5">
+                        3. Read report
                       </span>
                     </div>
-                    {authToken && wallet ? (
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-amber-50/82">
-                        <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">Credits: {wallet.credits}</span>
-                        <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">Reports left: {remainingAnalyze}</span>
-                        <span className="rounded-lg border border-amber-100/30 bg-amber-100/10 px-2.5 py-1.5">{authUserEmail || "User"}</span>
-                      </div>
-                    ) : (
-                      <p className="mt-2 text-xs text-amber-50/78">Login is requested only after you click Analyze.</p>
-                    )}
 
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">
+                        {authToken ? "Signed In" : "Guest"}
+                      </span>
+                      {authToken && wallet && (
+                        <>
+                          <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Credits: {wallet.credits}</span>
+                          <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Reports: {remainingAnalyze}</span>
+                        </>
+                      )}
                       {!authToken ? (
                         <button
                           type="button"
                           onClick={() => setShowAuthModal(true)}
-                          className="rounded-xl border border-amber-100/38 bg-amber-100/14 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
+                          className="rounded-xl border border-amber-100/38 bg-amber-100/14 px-3 py-1.5 font-semibold text-amber-50 transition hover:bg-amber-100/20"
                         >
                           Login / Signup
                         </button>
@@ -1163,14 +1151,14 @@ export default function UploadPage() {
                         <button
                           type="button"
                           onClick={handleSignOut}
-                          className="rounded-xl border border-rose-100/32 bg-transparent px-3 py-2 text-xs font-semibold text-rose-50/88 transition hover:bg-rose-100/12"
+                          className="rounded-xl border border-rose-100/32 bg-transparent px-3 py-1.5 font-semibold text-rose-50/88 transition hover:bg-rose-100/12"
                         >
                           Sign Out
                         </button>
                       )}
                       <Link
                         href="/pricing"
-                        className="rounded-xl border border-rose-100/34 bg-rose-100/12 px-3 py-2 text-center text-xs font-semibold text-rose-50 transition hover:bg-rose-100/18"
+                        className="rounded-xl border border-rose-100/34 bg-rose-100/12 px-3 py-1.5 text-center font-semibold text-rose-50 transition hover:bg-rose-100/18"
                       >
                         Buy Credits
                       </Link>
@@ -1178,13 +1166,15 @@ export default function UploadPage() {
                         <button
                           type="button"
                           onClick={() => setShowFeedbackModal(true)}
-                          className="rounded-xl border border-amber-100/40 bg-amber-100/12 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
+                          className="rounded-xl border border-amber-100/40 bg-amber-100/12 px-3 py-1.5 font-semibold text-amber-50 transition hover:bg-amber-100/20"
                         >
                           Submit Feedback
                         </button>
                       )}
                     </div>
                   </div>
+                  {!authToken && <p className="mt-3 text-xs text-amber-100/82">New users get 5 free credits on signup (one full analysis).</p>}
+                  {authToken && authUserEmail && <p className="mt-2 text-xs text-amber-50/74">Signed in as: {authUserEmail}</p>}
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-amber-100/20 bg-amber-100/[0.05] p-4">
