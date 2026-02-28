@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import BrandLogo from "./brand-logo";
+import CaptureDeterrence from "./capture-deterrence";
 import FloatingSupportChat from "./floating-support-chat";
 import SiteHeader from "./site-header";
 
@@ -19,6 +20,7 @@ export default function AppChrome({ children }: AppChromeProps) {
 
   return (
     <>
+      <CaptureDeterrence />
       <SiteHeader />
 
       <main className="relative">{children}</main>

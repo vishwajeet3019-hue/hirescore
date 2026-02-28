@@ -297,6 +297,15 @@ class ChatMessageCreateRequest(BaseModel):
     auth_token: str | None = None
 
 
+class SecurityLeakTraceRequest(BaseModel):
+    action: str
+    source: str | None = None
+    detail: str | None = None
+    path: str | None = None
+    user_agent: str | None = None
+    auth_token: str | None = None
+
+
 class AdminChatReplyRequest(BaseModel):
     message: str
 
@@ -5633,6 +5642,28 @@ def reset_password_with_otp(data: ForgotPasswordResetRequest) -> dict[str, Any]:
 def auth_me(request: Request, auth_token: str | None = None) -> dict[str, Any]:
     user = require_authenticated_user(request, auth_token)
     return auth_response_payload(user)
+
+
+@app.post("/security/leak-trace")
+def security_leak_trace(data: SecurityLeakTraceRequest, request: Request) -> dict[str, Any]:
+    action = re.sub(r"[^a-z0-9_:-]", "", safe_text(data.action).lower())[:64] or "unknown"
+    user_id: int | None = None
+    try:
+        user = require_authenticated_user(request, data.auth_token)
+        user_id = int(user["id"])
+    except HTTPException:
+        user_id = None
+
+    meta = {
+        "action": action,
+        "source": safe_text(data.source)[:64],
+        "detail": safe_text(data.detail)[:200],
+        "path": safe_text(data.path)[:240],
+        "user_agent": safe_text(data.user_agent or request.headers.get("user-agent"))[:240],
+        "ip_hint": safe_text((request.client.host if request.client else ""))[:64],
+    }
+    log_analytics_event("security", "capture_deterrence_triggered", user_id=user_id, meta=meta)
+    return {"ok": True}
 
 
 @app.post("/auth/topup")
