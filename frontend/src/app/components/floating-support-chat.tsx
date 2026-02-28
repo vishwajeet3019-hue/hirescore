@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type ChatMessage = {
@@ -34,6 +35,7 @@ const parseMessages = (payload: unknown): ChatMessage[] => {
 };
 
 export default function FloatingSupportChat() {
+  const pathname = usePathname() || "/";
   const [token, setToken] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -158,6 +160,10 @@ export default function FloatingSupportChat() {
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages, isOpen]);
 
+  useEffect(() => {
+    setIsOpen(false);
+  }, [pathname]);
+
   const unreadCount = useMemo(() => messages.filter((message) => message.sender_role !== "user" && message.id > lastSeenId).length, [messages, lastSeenId]);
 
   const sendMessage = useCallback(async () => {
@@ -198,13 +204,9 @@ export default function FloatingSupportChat() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-[80] flex items-end justify-end sm:bottom-6 sm:right-6">
-      <div
-        className={`origin-bottom-right transition-all duration-300 ease-out ${
-          isOpen ? "pointer-events-auto translate-y-0 scale-100 opacity-100" : "pointer-events-none translate-y-4 scale-95 opacity-0"
-        }`}
-      >
-        <section className="mb-2 flex h-[min(70vh,540px)] w-[min(92vw,356px)] flex-col overflow-hidden rounded-[1.55rem] border border-slate-200/20 bg-[#0b1624]/96 shadow-[0_18px_52px_rgba(2,8,23,0.58)]">
+    <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.8rem)] right-4 z-[90] sm:bottom-6 sm:right-6">
+      {isOpen && (
+        <section className="fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+5.2rem)] top-[11.25rem] flex flex-col overflow-hidden rounded-[1.55rem] border border-slate-200/20 bg-[#0b1624]/96 shadow-[0_18px_52px_rgba(2,8,23,0.58)] sm:absolute sm:inset-x-auto sm:bottom-[calc(100%+0.6rem)] sm:right-0 sm:top-auto sm:h-[min(70vh,540px)] sm:w-[min(92vw,356px)]">
           <header className="flex items-center gap-3 border-b border-slate-100/12 bg-gradient-to-r from-[#15352d] to-[#0f2b24] px-4 py-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-100/38 bg-emerald-100/14 text-sm font-bold text-emerald-50">HS</span>
             <div className="min-w-0">
@@ -274,7 +276,7 @@ export default function FloatingSupportChat() {
             {error ? <p className="mt-2 text-xs text-rose-200">{error}</p> : null}
           </footer>
         </section>
-      </div>
+      )}
 
       <button
         type="button"
