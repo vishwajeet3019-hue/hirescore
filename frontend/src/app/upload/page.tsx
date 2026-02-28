@@ -1222,7 +1222,7 @@ export default function UploadPage() {
                   <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Profile Signals</p>
                   <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-amber-50/90">Years of Experience (optional)</label>
+                      <label className="mb-2 block min-h-[2.8rem] text-sm font-medium leading-snug text-amber-50/90">Years of Experience (optional)</label>
                       <input
                         type="number"
                         min="0"
@@ -1236,7 +1236,7 @@ export default function UploadPage() {
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-amber-50/90">Age (optional)</label>
+                      <label className="mb-2 block min-h-[2.8rem] text-sm font-medium leading-snug text-amber-50/90">Age (optional)</label>
                       <input
                         type="number"
                         min="16"
@@ -1250,7 +1250,7 @@ export default function UploadPage() {
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-amber-50/90">Job Applications Planned Per Week</label>
+                      <label className="mb-2 block min-h-[2.8rem] text-sm font-medium leading-snug text-amber-50/90">Job Applications Planned Per Week</label>
                       <input
                         type="number"
                         min="1"
