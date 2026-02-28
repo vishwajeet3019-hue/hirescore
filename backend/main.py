@@ -4866,12 +4866,73 @@ def looks_like_contact_line(line: str) -> bool:
     )
 
 
+BULLET_PREFIX_RE = re.compile(r"^(?:[-*•]\s+|\d{1,2}[\).]\s+)")
+INLINE_BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1")
+INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
+RESUME_RENDER_DROP_LINES = {
+    "optimized resume",
+    "optimised resume",
+    "resume",
+    "resume draft",
+    "references available upon request",
+}
+
+
+def clean_resume_line(line: str) -> str:
+    text = safe_text(line).replace("\t", " ").strip()
+    if not text:
+        return ""
+    text = re.sub(r"^#+\s*", "", text)
+    text = re.sub(r"[ ]{2,}", " ", text).strip()
+    return text
+
+
+def is_bullet_line(line: str) -> bool:
+    return bool(BULLET_PREFIX_RE.match(clean_resume_line(line)))
+
+
 def strip_bullet_prefix(line: str) -> str:
-    return re.sub(r"^(?:[-*•]|(?:\d+[\).\s]))\s*", "", safe_text(line))
+    return BULLET_PREFIX_RE.sub("", clean_resume_line(line)).strip()
+
+
+def resume_inline_html(line: str) -> str:
+    raw = clean_resume_line(line)
+    if not raw:
+        return ""
+    escaped = html.escape(raw)
+    escaped = INLINE_BOLD_RE.sub(lambda match: f"<b>{match.group(2).strip()}</b>", escaped)
+    escaped = INLINE_ITALIC_RE.sub(lambda match: f"<i>{match.group(1).strip()}</i>", escaped)
+    return escaped
+
+
+def looks_like_role_heading_line(section_key: str, line: str) -> bool:
+    text = clean_resume_line(re.sub(r"[*_`]+", "", safe_text(line)))
+    if not text or len(text) > 130:
+        return False
+    if section_key not in {"experience", "projects"}:
+        return False
+    if re.search(r"\b(19|20)\d{2}\b", text) and ("|" in text or "—" in text or " - " in text):
+        return True
+    if "—" in text and len(text.split()) <= 18:
+        return True
+    if "|" in text and len(text.split()) <= 16:
+        return True
+    return False
+
+
+def looks_like_meta_note_line(section_key: str, line: str) -> bool:
+    text = clean_resume_line(re.sub(r"[*_`]+", "", safe_text(line)))
+    if not text or len(text) > 120:
+        return False
+    if section_key in {"experience", "projects"} and re.search(r"\b(19|20)\d{2}\b", text):
+        return True
+    if re.match(r"^(location|email|phone|linkedin|github)\b", text.lower()):
+        return True
+    return False
 
 
 def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
-    raw_lines = [safe_text(line) for line in resume_text.replace("\r", "\n").split("\n")]
+    raw_lines = [clean_resume_line(line) for line in resume_text.replace("\r", "\n").split("\n")]
     lines = [line for line in raw_lines if line]
 
     guessed_name = safe_text(name)
@@ -4886,11 +4947,17 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
     seen_heading = False
 
     for index, line in enumerate(lines):
-        if index == 0 and guessed_name and line.lower() == guessed_name.lower():
+        normalized_line = clean_resume_line(line)
+        if not normalized_line:
+            continue
+        dropped = re.sub(r"[^a-z0-9]+", " ", normalized_line.lower()).strip()
+        if dropped in RESUME_RENDER_DROP_LINES:
+            continue
+        if index == 0 and guessed_name and normalized_line.lower() == guessed_name.lower():
             continue
 
-        if looks_like_resume_heading(line):
-            current = normalize_resume_section_key(line.strip(":"))
+        if looks_like_resume_heading(normalized_line):
+            current = normalize_resume_section_key(re.sub(r"[*_`]+", "", normalized_line).strip(":"))
             if current == "meta_ignore":
                 current = "summary"
                 continue
@@ -4898,11 +4965,11 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
             seen_heading = True
             continue
 
-        if (not seen_heading) and len(contact_lines) < 2 and looks_like_contact_line(line):
-            contact_lines.append(line)
+        if (not seen_heading) and len(contact_lines) < 3 and looks_like_contact_line(normalized_line):
+            contact_lines.append(normalized_line)
             continue
 
-        sections.setdefault(current, []).append(line)
+        sections.setdefault(current, []).append(normalized_line)
 
     cleaned_sections: dict[str, list[str]] = {}
     for key, value in sections.items():
@@ -4918,10 +4985,13 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
 
     headline = ""
     summary_lines = cleaned_sections.get("summary", [])
-    if summary_lines:
-        first_summary = summary_lines[0]
-        if len(first_summary) <= 115:
-            headline = first_summary
+    for summary_line in summary_lines:
+        candidate = clean_resume_line(summary_line)
+        if not candidate or is_bullet_line(candidate):
+            continue
+        if len(candidate) <= 115 and not looks_like_contact_line(candidate):
+            headline = candidate
+            break
 
     return {
         "name": guessed_name or "Candidate",
@@ -4934,28 +5004,28 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
 def template_palette(template_key: str) -> dict[str, colors.Color]:
     palettes = {
         "minimal": {
-            "name": colors.HexColor("#0F243A"),
-            "accent": colors.HexColor("#2E6A9E"),
-            "text": colors.HexColor("#1B2733"),
-            "muted": colors.HexColor("#567086"),
-            "line": colors.HexColor("#D7E2EA"),
-            "surface": colors.HexColor("#F5F9FC"),
+            "name": colors.HexColor("#0E2A43"),
+            "accent": colors.HexColor("#2B6EA6"),
+            "text": colors.HexColor("#1A2F40"),
+            "muted": colors.HexColor("#5B768A"),
+            "line": colors.HexColor("#D3E2ED"),
+            "surface": colors.HexColor("#F4FAFF"),
         },
         "executive": {
-            "name": colors.HexColor("#132135"),
-            "accent": colors.HexColor("#223A59"),
-            "text": colors.HexColor("#1F2A36"),
-            "muted": colors.HexColor("#546273"),
-            "line": colors.HexColor("#C2CCD8"),
-            "surface": colors.HexColor("#EFF3F7"),
+            "name": colors.HexColor("#102038"),
+            "accent": colors.HexColor("#1D2F49"),
+            "text": colors.HexColor("#1B2838"),
+            "muted": colors.HexColor("#5C6978"),
+            "line": colors.HexColor("#C4CEDA"),
+            "surface": colors.HexColor("#F1F4F8"),
         },
         "quantum": {
-            "name": colors.HexColor("#0C3154"),
-            "accent": colors.HexColor("#0F87B5"),
-            "text": colors.HexColor("#13384D"),
-            "muted": colors.HexColor("#4A6C80"),
-            "line": colors.HexColor("#BED8E5"),
-            "surface": colors.HexColor("#EEF8FC"),
+            "name": colors.HexColor("#0A3052"),
+            "accent": colors.HexColor("#0D86B4"),
+            "text": colors.HexColor("#123E57"),
+            "muted": colors.HexColor("#4D7084"),
+            "line": colors.HexColor("#BBDCEB"),
+            "surface": colors.HexColor("#EBF8FF"),
         },
     }
     return palettes.get(template_key, palettes["minimal"])
@@ -4964,8 +5034,15 @@ def template_palette(template_key: str) -> dict[str, colors.Color]:
 def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
     sample = getSampleStyleSheet()
     palette = template_palette(template_key)
-    header_size = 23 if template_key == "executive" else 25
-    body_size = 10.0 if template_key == "minimal" else 10.2
+    if template_key == "executive":
+        header_size = 24
+        body_size = 10.15
+    elif template_key == "quantum":
+        header_size = 25
+        body_size = 10.05
+    else:
+        header_size = 23.5
+        body_size = 10.0
 
     styles = {
         "name": ParagraphStyle(
@@ -4973,16 +5050,16 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             parent=sample["Title"],
             fontName="Helvetica-Bold",
             fontSize=header_size,
-            leading=header_size + 2,
+            leading=header_size + 1.5,
             textColor=palette["name"],
-            spaceAfter=2,
+            spaceAfter=2.5,
         ),
         "contact": ParagraphStyle(
             "contact",
             parent=sample["Normal"],
-            fontName="Helvetica",
-            fontSize=9.6,
-            leading=12,
+            fontName="Helvetica-Bold" if template_key == "quantum" else "Helvetica",
+            fontSize=9.5,
+            leading=12.2,
             textColor=palette["muted"],
             spaceAfter=2,
         ),
@@ -5017,10 +5094,10 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             "section",
             parent=sample["Heading3"],
             fontName="Helvetica-Bold",
-            fontSize=11.4,
-            leading=14,
+            fontSize=11.1 if template_key == "minimal" else 11.3,
+            leading=13.8,
             textColor=colors.white if template_key == "executive" else palette["accent"],
-            spaceBefore=7,
+            spaceBefore=8,
             spaceAfter=4,
         ),
         "body": ParagraphStyle(
@@ -5028,21 +5105,41 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             parent=sample["Normal"],
             fontName="Helvetica",
             fontSize=body_size,
-            leading=14.2,
+            leading=14.5,
             textColor=palette["text"],
-            spaceAfter=3,
+            spaceAfter=3.4,
         ),
         "bullet": ParagraphStyle(
             "bullet",
             parent=sample["Normal"],
             fontName="Helvetica",
             fontSize=body_size,
-            leading=14.2,
+            leading=14.4,
             textColor=palette["text"],
-            leftIndent=14,
-            bulletIndent=2,
-            spaceBefore=1,
-            spaceAfter=3,
+            leftIndent=18 if template_key == "executive" else 16,
+            bulletIndent=8 if template_key == "executive" else 6,
+            spaceBefore=0.8,
+            spaceAfter=2.2,
+        ),
+        "role_line": ParagraphStyle(
+            "role_line",
+            parent=sample["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=10.8 if template_key == "executive" else 10.6,
+            leading=14.3,
+            textColor=palette["name"],
+            spaceBefore=1.8,
+            spaceAfter=2.2,
+        ),
+        "meta_line": ParagraphStyle(
+            "meta_line",
+            parent=sample["Normal"],
+            fontName="Helvetica-Oblique",
+            fontSize=9.3,
+            leading=12.5,
+            textColor=palette["muted"],
+            spaceBefore=0.4,
+            spaceAfter=1.8,
         ),
     }
     return styles
@@ -5076,23 +5173,36 @@ def section_header_flowable(
         return table
 
     if template_key == "quantum":
-        table = Table([["", title_para]], colWidths=[7, width - 7])
+        table = Table([["", title_para]], colWidths=[10, width - 10])
         table.setStyle(
             TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (0, -1), palette["accent"]),
                     ("BACKGROUND", (1, 0), (1, -1), palette["surface"]),
-                    ("LEFTPADDING", (1, 0), (1, -1), 7),
-                    ("RIGHTPADDING", (1, 0), (1, -1), 7),
-                    ("TOPPADDING", (1, 0), (1, -1), 4),
-                    ("BOTTOMPADDING", (1, 0), (1, -1), 3),
-                    ("BOX", (0, 0), (-1, -1), 0.7, palette["line"]),
+                    ("LEFTPADDING", (1, 0), (1, -1), 8),
+                    ("RIGHTPADDING", (1, 0), (1, -1), 8),
+                    ("TOPPADDING", (1, 0), (1, -1), 4.5),
+                    ("BOTTOMPADDING", (1, 0), (1, -1), 4),
+                    ("BOX", (0, 0), (-1, -1), 0.75, palette["line"]),
                 ]
             )
         )
         return table
 
-    return Paragraph(html.escape(section_title), styles["section"])
+    table = Table([[Paragraph(html.escape(section_title.upper()), styles["section"])]], colWidths=[width])
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.8, palette["line"]),
+            ]
+        )
+    )
+    return table
 
 
 def draw_template_page_decoration(pdf: canvas.Canvas, doc: SimpleDocTemplate, template_key: str) -> None:
@@ -5102,19 +5212,25 @@ def draw_template_page_decoration(pdf: canvas.Canvas, doc: SimpleDocTemplate, te
 
     if template_key == "executive":
         pdf.setFillColor(palette["accent"])
-        pdf.rect(0, height - 22, width, 22, fill=1, stroke=0)
-        pdf.setFillColor(colors.Color(1, 1, 1, alpha=0.18))
-        pdf.rect(0, height - 24.2, width, 2.2, fill=1, stroke=0)
+        pdf.rect(0, height - 26, width, 26, fill=1, stroke=0)
+        pdf.setFillColor(colors.HexColor("#D7B37A"))
+        pdf.rect(0, height - 28.4, width, 2.4, fill=1, stroke=0)
+        pdf.setFillColor(colors.Color(1, 1, 1, alpha=0.12))
+        pdf.rect(0, 0, width, 20, fill=1, stroke=0)
     elif template_key == "quantum":
         pdf.setFillColor(palette["accent"])
-        pdf.rect(0, 0, 8, height, fill=1, stroke=0)
-        pdf.setFillColor(colors.Color(0.08, 0.52, 0.68, alpha=0.22))
-        pdf.circle(width - doc.rightMargin - 22, height - 15, 8, fill=1, stroke=0)
-        pdf.circle(width - doc.rightMargin - 42, height - 20, 4, fill=1, stroke=0)
+        pdf.rect(0, 0, 10, height, fill=1, stroke=0)
+        pdf.setFillColor(colors.Color(0.08, 0.52, 0.68, alpha=0.2))
+        pdf.circle(width - doc.rightMargin - 26, height - 19, 9, fill=1, stroke=0)
+        pdf.circle(width - doc.rightMargin - 48, height - 24, 4.8, fill=1, stroke=0)
+        pdf.setFillColor(colors.Color(0.08, 0.52, 0.68, alpha=0.14))
+        pdf.rect(width - 54, 0, 54, 18, fill=1, stroke=0)
     else:
         pdf.setStrokeColor(palette["line"])
-        pdf.setLineWidth(0.9)
-        pdf.line(doc.leftMargin, height - 24, doc.leftMargin + doc.width, height - 24)
+        pdf.setLineWidth(0.95)
+        pdf.line(doc.leftMargin, height - 25, doc.leftMargin + doc.width, height - 25)
+        pdf.setLineWidth(0.55)
+        pdf.line(doc.leftMargin, height - 28.5, doc.leftMargin + doc.width * 0.82, height - 28.5)
 
     pdf.setStrokeColor(palette["line"])
     pdf.setLineWidth(0.6)
@@ -5157,9 +5273,9 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
     if template_key == "executive":
         meta_lines = []
         if parsed["contact_line"]:
-            meta_lines.append(Paragraph(html.escape(parsed["contact_line"]), styles["header_inverse_meta"]))
+            meta_lines.append(Paragraph(resume_inline_html(parsed["contact_line"]), styles["header_inverse_meta"]))
         if parsed["headline"]:
-            meta_lines.append(Paragraph(html.escape(parsed["headline"]), styles["header_inverse_meta"]))
+            meta_lines.append(Paragraph(resume_inline_html(parsed["headline"]), styles["header_inverse_meta"]))
         header_rows: list[list[Any]] = [[Paragraph(html.escape(parsed["name"]), styles["header_inverse"])]]
         for meta in meta_lines[:2]:
             header_rows.append([meta])
@@ -5179,12 +5295,43 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
         )
         story.append(header_table)
         story.append(Spacer(1, 8))
-    else:
-        story.append(Paragraph(html.escape(parsed["name"]), styles["name"]))
-        if parsed["contact_line"]:
-            story.append(Paragraph(html.escape(parsed["contact_line"]), styles["contact"]))
+    elif template_key == "quantum":
+        left_header: list[Any] = [Paragraph(resume_inline_html(parsed["name"]), styles["name"])]
         if parsed["headline"]:
-            story.append(Paragraph(html.escape(parsed["headline"]), styles["headline"]))
+            left_header.append(Paragraph(resume_inline_html(parsed["headline"]), styles["headline"]))
+
+        right_header: list[Any] = []
+        if parsed["contact_line"]:
+            right_header.append(Paragraph(resume_inline_html(parsed["contact_line"]), styles["contact"]))
+        right_header.append(Paragraph("Quantum Grid Resume", styles["meta_line"]))
+
+        header_table = Table(
+            [[left_header, right_header]],
+            colWidths=[doc.width * 0.62, doc.width * 0.38],
+            hAlign="LEFT",
+        )
+        header_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (0, 0), colors.white),
+                    ("BACKGROUND", (1, 0), (1, 0), palette["surface"]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                    ("BOX", (0, 0), (-1, -1), 0.8, palette["line"]),
+                    ("LINEBEFORE", (1, 0), (1, 0), 0.8, palette["line"]),
+                ]
+            )
+        )
+        story.append(header_table)
+        story.append(Spacer(1, 7))
+    else:
+        story.append(Paragraph(resume_inline_html(parsed["name"]), styles["name"]))
+        if parsed["contact_line"]:
+            story.append(Paragraph(resume_inline_html(parsed["contact_line"]), styles["contact"]))
+        if parsed["headline"]:
+            story.append(Paragraph(resume_inline_html(parsed["headline"]), styles["headline"]))
         story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.9, spaceBefore=2, spaceAfter=7))
 
     for section_key, lines in parsed["sections"]:
@@ -5196,16 +5343,21 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
             story.append(Spacer(1, 4))
 
         for line in lines:
-            content = safe_text(line)
+            content = clean_resume_line(line)
             if not content:
                 continue
-            if re.match(r"^(?:[-*•]|(?:\d+[\).\s]))\s*", content):
-                bullet_text = html.escape(strip_bullet_prefix(content))
-                story.append(Paragraph(bullet_text, styles["bullet"], bulletText="• "))
+            if is_bullet_line(content):
+                bullet_text = resume_inline_html(strip_bullet_prefix(content))
+                bullet_symbol = "▪" if template_key == "executive" else ("▸" if template_key == "quantum" else "•")
+                story.append(Paragraph(bullet_text, styles["bullet"], bulletText=f"{bullet_symbol} "))
+            elif looks_like_role_heading_line(section_key, content):
+                story.append(Paragraph(resume_inline_html(content), styles["role_line"]))
+            elif looks_like_meta_note_line(section_key, content):
+                story.append(Paragraph(resume_inline_html(content), styles["meta_line"]))
             else:
-                story.append(Paragraph(html.escape(content), styles["body"]))
+                story.append(Paragraph(resume_inline_html(content), styles["body"]))
 
-        story.append(Spacer(1, 5 if template_key == "minimal" else 6))
+        story.append(Spacer(1, 4.5 if template_key == "minimal" else 6))
 
     doc.build(
         story,
