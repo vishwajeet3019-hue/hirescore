@@ -126,19 +126,22 @@ AUTH_DB_BACKEND = "postgres" if DATABASE_URL.startswith("postgresql://") else "s
 AUTH_DB_PATH = resolve_auth_db_path()
 AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
 AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
-ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", True)
+# Testing helper endpoint (/auth/topup) should be disabled by default in production.
+ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", False)
 EMAIL_OTP_REQUIRED = env_flag("EMAIL_OTP_REQUIRED", True)
 ADMIN_API_KEYS = {
     key.strip()
     for key in (os.getenv("ADMIN_API_KEYS") or os.getenv("ADMIN_API_KEY") or "").split(",")
     if key.strip()
 }
-ADMIN_LOGIN_ID = "vishwajeet3019@gmail.com"
-ADMIN_PASSWORD = "Vishwajeet098@"
+ADMIN_LOGIN_ID = (os.getenv("ADMIN_LOGIN_ID") or "").strip()
+ADMIN_PASSWORD = (os.getenv("ADMIN_PASSWORD") or "").strip()
 ADMIN_AUTH_SECRET = ((os.getenv("ADMIN_AUTH_SECRET") or "").strip()) or AUTH_TOKEN_SECRET
 ADMIN_TOKEN_TTL_HOURS = max(1, int((os.getenv("ADMIN_TOKEN_TTL_HOURS") or "72").strip()))
 if AUTH_TOKEN_SECRET == "replace-this-in-production":
     logger.warning("AUTH_TOKEN_SECRET is using a default value. Set AUTH_TOKEN_SECRET in production.")
+if not ADMIN_API_KEYS and not (ADMIN_LOGIN_ID and ADMIN_PASSWORD):
+    logger.warning("Admin auth is not configured. Set ADMIN_API_KEYS or ADMIN_LOGIN_ID + ADMIN_PASSWORD.")
 if AUTH_DB_BACKEND == "sqlite" and AUTH_DB_PATH.startswith("/tmp/"):
     logger.warning("AUTH_DB_PATH is using temporary storage (%s). Use persistent storage in production.", AUTH_DB_PATH)
 if AUTH_DB_BACKEND == "postgres":
@@ -6606,7 +6609,7 @@ def admin_auth_login(data: AdminLoginRequest) -> dict[str, Any]:
     password = safe_text(data.password)
     if not login_id or not password:
         raise HTTPException(status_code=400, detail="Enter admin login id and password.")
-    if login_id != ADMIN_LOGIN_ID or password != ADMIN_PASSWORD:
+    if not hmac.compare_digest(login_id, ADMIN_LOGIN_ID) or not hmac.compare_digest(password, ADMIN_PASSWORD):
         raise HTTPException(status_code=401, detail="Invalid admin login credentials.")
     token = create_admin_token(login_id)
     return {
