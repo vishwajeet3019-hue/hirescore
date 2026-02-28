@@ -2364,6 +2364,31 @@ def fetch_user_by_email(email: str) -> sqlite3.Row | None:
         connection.close()
 
 
+def is_google_sso_user(user_id: int) -> bool:
+    connection = auth_db_connection()
+    try:
+        row = connection.execute(
+            """
+            SELECT meta_json
+            FROM credit_transactions
+            WHERE user_id = ? AND action = 'welcome_credits'
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        return False
+    try:
+        payload = json.loads(safe_text(row["meta_json"]) or "{}")
+    except Exception:
+        return False
+    source = safe_text(str(payload.get("source") or "")).lower()
+    return source == "google_sso"
+
+
 def fetch_user_by_id(user_id: int) -> sqlite3.Row | None:
     connection = auth_db_connection()
     try:
@@ -5461,6 +5486,9 @@ def login(data: AuthRequest) -> dict[str, Any]:
 
     expected = hash_password(password, str(user["password_salt"]))
     if not hmac.compare_digest(expected, str(user["password_hash"])):
+        if is_google_sso_user(int(user["id"])):
+            log_analytics_event("auth", "login_failed_google_password_attempt", user_id=int(user["id"]), meta={"email": email})
+            raise HTTPException(status_code=401, detail="This account uses Google sign-in. Click Continue with Google.")
         log_analytics_event("auth", "login_failed_wrong_password", user_id=int(user["id"]), meta={"email": email})
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 

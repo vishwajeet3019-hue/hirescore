@@ -44,6 +44,31 @@ let googleScriptPromise: Promise<void> | null = null;
 
 const GOOGLE_IDENTITY_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 
+const injectGoogleFallbackButton = (container: HTMLElement, onClick: () => void) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.setAttribute("aria-label", "Continue with Google");
+  button.textContent = "Continue with Google";
+  button.style.width = "min(320px, 100%)";
+  button.style.minHeight = "42px";
+  button.style.borderRadius = "999px";
+  button.style.border = "1px solid rgba(186, 230, 253, 0.55)";
+  button.style.background = "rgba(8, 35, 63, 0.88)";
+  button.style.color = "#e6f6ff";
+  button.style.fontSize = "14px";
+  button.style.fontWeight = "600";
+  button.style.cursor = "pointer";
+  button.style.transition = "background-color 160ms ease";
+  button.addEventListener("mouseover", () => {
+    button.style.background = "rgba(14, 58, 96, 0.92)";
+  });
+  button.addEventListener("mouseout", () => {
+    button.style.background = "rgba(8, 35, 63, 0.88)";
+  });
+  button.addEventListener("click", onClick);
+  container.appendChild(button);
+};
+
 const loadGoogleIdentityScript = async () => {
   const globalWindow = window as GoogleWindow;
   if (globalWindow.google?.accounts?.id) return;
@@ -122,7 +147,7 @@ export const renderGoogleSignInButton = async ({
       void onCredential(credential);
     },
     cancel_on_tap_outside: true,
-    use_fedcm_for_prompt: true,
+    use_fedcm_for_prompt: false,
   });
 
   const buttonOptions: GoogleButtonOptions = {
@@ -136,19 +161,25 @@ export const renderGoogleSignInButton = async ({
   if (width && Number.isFinite(width)) {
     buttonOptions.width = String(Math.max(220, Math.round(width)));
   }
-  googleId.renderButton(container, buttonOptions);
+  let hasRenderedButton = false;
+  try {
+    googleId.renderButton(container, buttonOptions);
+    hasRenderedButton = container.childElementCount > 0;
+  } catch {
+    hasRenderedButton = false;
+  }
+
+  if (!hasRenderedButton) {
+    injectGoogleFallbackButton(container, () => {
+      googleId.prompt();
+    });
+  }
 
   googleId.prompt((notification) => {
     if (notification.isNotDisplayed()) {
       const reason = notification.getNotDisplayedReason();
-      if (reason && reason !== "suppressed_by_user") {
+      if (reason && reason !== "suppressed_by_user" && reason !== "browser_not_supported") {
         onError?.("Google sign-in prompt was blocked. Please use the button again.");
-      }
-    }
-    if (notification.isSkippedMoment()) {
-      const reason = notification.getSkippedReason();
-      if (reason && reason !== "user_cancel") {
-        onError?.("Google sign-in was skipped. Please try again.");
       }
     }
   });
