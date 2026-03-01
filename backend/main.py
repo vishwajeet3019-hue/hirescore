@@ -120,6 +120,14 @@ else:
 ANALYZE_LLM_LOW_MODEL = (os.getenv("ANALYZE_LLM_LOW_MODEL") or ANALYZE_LLM_MODEL).strip() or ANALYZE_LLM_MODEL
 default_high_model = OPENAI_FALLBACK_MODELS[0] if OPENAI_FALLBACK_MODELS else ANALYZE_LLM_MODEL
 ANALYZE_LLM_HIGH_MODEL = (os.getenv("ANALYZE_LLM_HIGH_MODEL") or default_high_model).strip() or ANALYZE_LLM_MODEL
+APP_BUILD_SHA = (
+    (os.getenv("APP_BUILD_SHA") or "")
+    or (os.getenv("RENDER_GIT_COMMIT") or "")
+    or (os.getenv("VERCEL_GIT_COMMIT_SHA") or "")
+    or (os.getenv("GIT_COMMIT_SHA") or "")
+    or (os.getenv("GITHUB_SHA") or "")
+).strip()[:40]
+APP_STARTED_AT = datetime.now(timezone.utc).isoformat()
 client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 if client is None:
@@ -6497,6 +6505,18 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
 @app.get("/")
 def root() -> dict[str, str]:
     return {"message": "Hirescore backend running"}
+
+
+@app.get("/version")
+def version() -> dict[str, Any]:
+    short_sha = APP_BUILD_SHA[:12] if APP_BUILD_SHA else "unknown"
+    return {
+        "service": "hirescore-backend",
+        "version": short_sha,
+        "commit_sha": APP_BUILD_SHA or None,
+        "started_at": APP_STARTED_AT,
+        "analyze_mode": ANALYZE_MODE,
+    }
 
 
 @app.get("/plan-status")
