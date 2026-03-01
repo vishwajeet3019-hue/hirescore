@@ -5843,8 +5843,11 @@ Instructions:
 
 
 def sanitize_download_name(value: str | None) -> str:
-    base = re.sub(r"[^a-zA-Z0-9._-]+", "-", safe_text(value) or "optimized-resume").strip("-").lower()
-    return base or "optimized-resume"
+    cleaned = safe_text(value)
+    if cleaned and should_drop_resume_line(cleaned):
+        cleaned = ""
+    base = re.sub(r"[^a-zA-Z0-9._-]+", "-", cleaned or "resume").strip("-").lower()
+    return base or "resume"
 
 
 RESUME_SECTION_ALIASES = {
@@ -6000,6 +6003,8 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
         first_line = lines[0]
         if len(first_line) <= 64 and not looks_like_resume_heading(first_line):
             guessed_name = first_line
+    if guessed_name and should_drop_resume_line(guessed_name):
+        guessed_name = ""
 
     sections: dict[str, list[str]] = {}
     contact_lines: list[str] = []
@@ -6708,11 +6713,24 @@ def download_user_analysis_report(report_id: int, request: Request, auth_token: 
     if not isinstance(parsed_payload, dict):
         parsed_payload = {"analysis": parsed_payload}
     parsed_payload["report_meta"] = serialize_analysis_report_row(row)
+    parsed_payload.setdefault("role", safe_text(row["role"]))
+    parsed_payload.setdefault("industry", safe_text(row["industry"]))
+    parsed_payload.setdefault("created_at", safe_text(row["created_at"]))
+    parsed_payload.setdefault("source", safe_text(row["source"]))
 
     filename_base = sanitize_download_name(
         f"{safe_text(row['role']) or 'analysis'}-{safe_text(row['created_at'])[:10] or 'report'}-{report_id}"
     )
-    return json_download_response(f"{filename_base}.json", parsed_payload)
+    try:
+        pdf_bytes = render_analysis_report_pdf_bytes(parsed_payload, row)
+    except Exception as exc:
+        logger.exception("Failed to render analysis report PDF for report_id=%s user_id=%s", report_id, user_id)
+        raise HTTPException(status_code=500, detail="Unable to generate report PDF right now.") from exc
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename_base}.pdf"'},
+    )
 
 
 @app.post("/security/leak-trace")
@@ -7804,6 +7822,269 @@ def json_download_response(filename: str, payload: dict[str, Any]) -> StreamingR
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def analysis_scalar_text(value: Any, max_len: int = 180) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        if abs(numeric - round(numeric)) < 1e-6:
+            return str(int(round(numeric)))
+        return f"{numeric:.2f}".rstrip("0").rstrip(".")
+    if isinstance(value, list):
+        joined = ", ".join(analysis_scalar_text(item, 42) for item in value[:4] if analysis_scalar_text(item, 42))
+        return safe_text(joined)[:max_len]
+    if isinstance(value, dict):
+        compact = []
+        for key in list(value.keys())[:4]:
+            label = safe_text(str(key)).replace("_", " ").strip().title()
+            raw = analysis_scalar_text(value.get(key), 42)
+            if label and raw:
+                compact.append(f"{label}: {raw}")
+        return safe_text(" | ".join(compact))[:max_len]
+    return safe_text(str(value))[:max_len]
+
+
+def analysis_list_items(value: Any, limit: int = 8, max_item_len: int = 180) -> list[str]:
+    items = normalize_string_list(value, limit=limit, max_item_len=max_item_len)
+    if items:
+        return items
+    if isinstance(value, dict):
+        result: list[str] = []
+        for key in list(value.keys())[:limit]:
+            label = safe_text(str(key)).replace("_", " ").strip().title()
+            raw = analysis_scalar_text(value.get(key), max_len=max_item_len)
+            if label and raw:
+                result.append(f"{label}: {raw}")
+        return result[:limit]
+    text = analysis_scalar_text(value, max_len=max_item_len)
+    return [text] if text else []
+
+
+def analysis_dict_lines(value: Any, preferred_keys: list[str], limit: int = 8, max_item_len: int = 180) -> list[str]:
+    if not isinstance(value, dict):
+        return analysis_list_items(value, limit=limit, max_item_len=max_item_len)
+    lines: list[str] = []
+    used: set[str] = set()
+    ordered_keys = [*preferred_keys, *[key for key in value.keys() if key not in preferred_keys]]
+    for key in ordered_keys:
+        if key in used:
+            continue
+        used.add(key)
+        label = safe_text(str(key)).replace("_", " ").strip().title()
+        raw_value = value.get(key)
+        if isinstance(raw_value, list):
+            nested = normalize_string_list(raw_value, limit=3, max_item_len=110)
+            if nested:
+                lines.append(f"{label}: {', '.join(nested)}")
+        else:
+            scalar = analysis_scalar_text(raw_value, max_len=max_item_len)
+            if scalar:
+                lines.append(f"{label}: {scalar}")
+        if len(lines) >= limit:
+            break
+    return lines[:limit]
+
+
+def render_analysis_report_pdf_bytes(report_payload: dict[str, Any], report_row: Any | None = None) -> bytes:
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=A4,
+        leftMargin=44,
+        rightMargin=44,
+        topMargin=42,
+        bottomMargin=34,
+        title="HireScore Analysis Report",
+        author="HireScore AI",
+    )
+
+    sample = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "analysis_title",
+        parent=sample["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=21,
+        leading=25,
+        textColor=colors.HexColor("#0D2D47"),
+        spaceAfter=3,
+    )
+    subtitle_style = ParagraphStyle(
+        "analysis_subtitle",
+        parent=sample["Normal"],
+        fontName="Helvetica",
+        fontSize=9.6,
+        leading=12.2,
+        textColor=colors.HexColor("#4A6A80"),
+        spaceAfter=12,
+    )
+    section_style = ParagraphStyle(
+        "analysis_section",
+        parent=sample["Heading3"],
+        fontName="Helvetica-Bold",
+        fontSize=11.5,
+        leading=14,
+        textColor=colors.HexColor("#145B87"),
+        spaceBefore=9,
+        spaceAfter=4,
+    )
+    body_style = ParagraphStyle(
+        "analysis_body",
+        parent=sample["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#1E3F56"),
+        spaceAfter=3,
+    )
+    bullet_style = ParagraphStyle(
+        "analysis_bullet",
+        parent=sample["Normal"],
+        fontName="Helvetica",
+        fontSize=9.9,
+        leading=13.2,
+        textColor=colors.HexColor("#1E3F56"),
+        leftIndent=14,
+        bulletIndent=4,
+        spaceAfter=2,
+    )
+    metric_label_style = ParagraphStyle(
+        "analysis_metric_label",
+        parent=sample["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9.3,
+        leading=12,
+        textColor=colors.HexColor("#0E2A43"),
+    )
+    metric_value_style = ParagraphStyle(
+        "analysis_metric_value",
+        parent=sample["Normal"],
+        fontName="Helvetica",
+        fontSize=9.6,
+        leading=12.2,
+        textColor=colors.HexColor("#264B63"),
+    )
+
+    role = safe_text(str(report_payload.get("role") or (report_row["role"] if report_row else "")))
+    industry = safe_text(str(report_payload.get("industry") or (report_row["industry"] if report_row else "")))
+    created_at = safe_text(str((report_row["created_at"] if report_row else "") or report_payload.get("created_at") or now_utc_iso()))
+    shortlist = safe_text(str(report_payload.get("shortlist_prediction", "")))
+    source = safe_text(str(report_payload.get("source", ""))) or (safe_text(str(report_row["source"])) if report_row else "manual_input")
+    mode = safe_text(str(report_payload.get("analysis_mode", ""))) or "hybrid"
+
+    overall_score = clamp_float(safe_float(report_payload.get("overall_score"), 0), 0.0, 100.0)
+    confidence = clamp_float(safe_float(report_payload.get("confidence"), 0), 0.0, 100.0)
+    skill_match = clamp_float(safe_float(report_payload.get("skill_match"), 0), 0.0, 100.0)
+    ats_friendliness = clamp_float(safe_float(report_payload.get("ats_friendliness"), 0), 0.0, 100.0)
+    prediction_range = safe_text(str(report_payload.get("prediction_range", "")))
+
+    story: list[Any] = []
+    story.append(Paragraph("HireScore Analysis Report", title_style))
+    subtitle = (
+        f"Role: {html.escape(role or 'General')}  |  "
+        f"Industry: {html.escape(industry or 'General')}  |  "
+        f"Generated: {html.escape(created_at[:19].replace('T', ' '))}"
+    )
+    story.append(Paragraph(subtitle, subtitle_style))
+
+    metrics_rows = [
+        ("Overall Score", f"{int(round(overall_score))}%"),
+        ("Skill Match", f"{int(round(skill_match))}%"),
+        ("ATS Friendliness", f"{int(round(ats_friendliness))}%"),
+        ("Confidence", f"{int(round(confidence))}%"),
+        ("Shortlist Prediction", shortlist or "Not available"),
+        ("Prediction Range", prediction_range or "Not available"),
+        ("Analysis Mode", mode),
+        ("Source", source.replace("_", " ").title()),
+    ]
+    metrics_table = Table(
+        [[Paragraph(html.escape(label), metric_label_style), Paragraph(html.escape(value), metric_value_style)] for label, value in metrics_rows],
+        colWidths=[doc.width * 0.34, doc.width * 0.66],
+    )
+    metrics_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5FAFE")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#BFD9EC")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D5E6F3")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(metrics_table)
+    story.append(Spacer(1, 6))
+
+    def add_section(title: str, items: list[str], bullet: bool = True) -> None:
+        filtered = [safe_text(item)[:200] for item in items if safe_text(item)]
+        if not filtered:
+            return
+        story.append(Paragraph(html.escape(title), section_style))
+        story.append(HRFlowable(width="100%", color=colors.HexColor("#D5E6F3"), thickness=0.65, spaceBefore=0.6, spaceAfter=3))
+        for item in filtered:
+            if bullet:
+                story.append(Paragraph(html.escape(item), bullet_style, bulletText="•"))
+            else:
+                story.append(Paragraph(html.escape(item), body_style))
+
+    semantic_summary = safe_text(str(report_payload.get("semantic_summary", "")))
+    if semantic_summary:
+        add_section("Summary", [semantic_summary], bullet=False)
+
+    add_section("Why This Score", analysis_list_items(report_payload.get("prediction_reasoning"), limit=6, max_item_len=190))
+    add_section("Priority Actions", analysis_list_items(report_payload.get("quick_wins"), limit=7, max_item_len=180))
+    add_section("Critical Missing Skills", analysis_list_items(report_payload.get("critical_missing_skills"), limit=10, max_item_len=80))
+    add_section("Strength Signals", analysis_list_items(report_payload.get("matched_core_skills") or report_payload.get("matched_keywords"), limit=10, max_item_len=80))
+
+    strategy_lines = analysis_dict_lines(
+        report_payload.get("ninety_plus_strategy"),
+        preferred_keys=["target_score", "focus", "timeline", "priority", "actions", "week_plan", "risk"],
+        limit=8,
+        max_item_len=200,
+    )
+    add_section("90+ Strategy", strategy_lines)
+
+    salary_lines = analysis_dict_lines(
+        report_payload.get("salary_insight"),
+        preferred_keys=["trajectory", "salary_band", "positioning", "levers", "next_step"],
+        limit=7,
+        max_item_len=190,
+    )
+    add_section("Salary Insight", salary_lines)
+
+    market_lines = analysis_dict_lines(
+        report_payload.get("hiring_market_insights"),
+        preferred_keys=["market_signal", "timing", "hiring_note", "layoff_note", "advantage_window"],
+        limit=7,
+        max_item_len=190,
+    )
+    add_section("Hiring Market", market_lines)
+
+    callback_lines = analysis_dict_lines(
+        report_payload.get("callback_forecast"),
+        preferred_keys=["expected_calls", "confidence_band", "max_likely_calls", "next_focus"],
+        limit=6,
+        max_item_len=170,
+    )
+    add_section("Callback Forecast", callback_lines)
+
+    story.append(Spacer(1, 8))
+    story.append(
+        Paragraph(
+            "Generated by HireScore AI. This report is advisory and should be used with role-specific judgment.",
+            subtitle_style,
+        )
+    )
+
+    doc.build(story)
+    output.seek(0)
+    return output.getvalue()
 
 
 @app.post("/admin/auth/login")
