@@ -401,7 +401,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 80,
         "generation_limit": 15,
         "pdf_polish_limit": 6,
-        "allowed_templates": ["minimal", "executive", "dublin"],
+        "allowed_templates": ["minimal", "executive", "dublin", "metro"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
     },
@@ -410,7 +410,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 320,
         "generation_limit": 90,
         "pdf_polish_limit": 40,
-        "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate"],
+        "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate", "metro"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
     },
@@ -419,7 +419,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 1200,
         "generation_limit": 320,
         "pdf_polish_limit": 160,
-        "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate"],
+        "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate", "metro"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
     },
@@ -6132,6 +6132,19 @@ def template_palette(template_key: str) -> dict[str, colors.Color]:
             "footer_text": colors.HexColor("#E4F4F4"),
             "highlight": colors.HexColor("#0FB5B5"),
         },
+        "metro": {
+            "name": colors.HexColor("#171D25"),
+            "accent": colors.HexColor("#456BB3"),
+            "accent_soft": colors.HexColor("#DDE4F4"),
+            "text": colors.HexColor("#2D3746"),
+            "muted": colors.HexColor("#5F6B7A"),
+            "line": colors.HexColor("#CFD6E0"),
+            "surface": colors.HexColor("#F7F8FA"),
+            "header_bg": colors.white,
+            "header_text": colors.HexColor("#171D25"),
+            "footer_text": colors.HexColor("#66707D"),
+            "highlight": colors.HexColor("#C77852"),
+        },
     }
     return palettes.get(template_key, palettes["minimal"])
 
@@ -6157,6 +6170,12 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
         title_font = "Times-Bold"
         body_font = "Times-Roman"
         body_leading = 13.2
+    elif template_key == "metro":
+        header_size = 28.2
+        body_size = 10.0
+        title_font = "Times-Bold"
+        body_font = "Helvetica"
+        body_leading = 14.0
     elif template_key == "quantum":
         header_size = 24.8
         body_size = 10.0
@@ -6211,7 +6230,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             "headline",
             parent=sample["Normal"],
             fontName="Times-Italic" if template_key == "executive" else "Helvetica-Bold",
-            fontSize=10.1 if template_key == "dublin" else 10.6,
+            fontSize=10.1 if template_key == "dublin" else (10.0 if template_key == "metro" else 10.6),
             leading=14,
             textColor=palette["text"],
             spaceAfter=6.2,
@@ -6220,7 +6239,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             "section",
             parent=sample["Heading3"],
             fontName="Helvetica-Bold",
-            fontSize=10.3 if template_key in {"dublin", "slate"} else (10.9 if template_key == "minimal" else 11.1),
+            fontSize=10.3 if template_key in {"dublin", "slate"} else (10.7 if template_key == "metro" else (10.9 if template_key == "minimal" else 11.1)),
             leading=13.5,
             textColor=colors.white if template_key == "executive" else palette["accent"],
             spaceBefore=9,
@@ -6242,7 +6261,9 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             fontSize=body_size,
             leading=body_leading,
             textColor=palette["text"],
-            leftIndent=19 if template_key == "executive" else (17 if template_key == "quantum" else (15 if template_key == "dublin" else 14)),
+            leftIndent=19
+            if template_key == "executive"
+            else (17 if template_key == "quantum" else (15 if template_key == "dublin" else (13.5 if template_key == "metro" else 14))),
             bulletIndent=8 if template_key == "executive" else 6,
             spaceBefore=0.6,
             spaceAfter=1.8,
@@ -6251,7 +6272,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             "role_line",
             parent=sample["Normal"],
             fontName="Times-Bold" if template_key == "executive" else "Helvetica-Bold",
-            fontSize=10.8 if template_key == "executive" else 10.55,
+            fontSize=10.8 if template_key == "executive" else (11.0 if template_key == "metro" else 10.55),
             leading=14.2,
             textColor=palette["name"],
             spaceBefore=1.6,
@@ -6359,6 +6380,22 @@ def section_header_flowable(
         )
         return table
 
+    if template_key == "metro":
+        table = Table([[Paragraph(html.escape(section_title.upper()), styles["section"])]], colWidths=[width])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1.8),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.72, palette["line"]),
+                ]
+            )
+        )
+        return table
+
     table = Table([["", Paragraph(html.escape(section_title.upper()), styles["section"])]], colWidths=[4.5, width - 4.5])
     table.setStyle(
         TableStyle(
@@ -6420,6 +6457,14 @@ def draw_template_page_decoration(pdf: canvas.Canvas, doc: SimpleDocTemplate, te
         pdf.setStrokeColor(colors.HexColor("#C8CED3"))
         pdf.setLineWidth(0.95)
         pdf.line(doc.leftMargin, height - 116, width - sidebar_width - 16, height - 116)
+    elif template_key == "metro":
+        pdf.setFillColor(palette["surface"])
+        pdf.rect(0, height - 42, width, 42, fill=1, stroke=0)
+        pdf.setFillColor(palette["highlight"])
+        pdf.rect(doc.leftMargin, height - 78, 3.2, 22, fill=1, stroke=0)
+        pdf.setStrokeColor(palette["line"])
+        pdf.setLineWidth(0.88)
+        pdf.line(doc.leftMargin + 8, height - 62, doc.leftMargin + doc.width, height - 62)
     else:
         pdf.setFillColor(palette["surface"])
         pdf.rect(0, height - 27, width, 27, fill=1, stroke=0)
@@ -6458,7 +6503,7 @@ def append_resume_sections_to_story(
     for section_key, lines in sections:
         section_title = RESUME_SECTION_TITLES.get(section_key, section_key.replace("_", " ").title())
         story.append(section_header_flowable(template_key, section_title, styles, palette, section_width))
-        if template_key in {"minimal", "dublin", "slate"}:
+        if template_key in {"minimal", "dublin", "slate", "metro"}:
             story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.48, spaceBefore=0.8, spaceAfter=3.0))
         else:
             story.append(Spacer(1, 4.4))
@@ -6478,7 +6523,7 @@ def append_resume_sections_to_story(
             else:
                 story.append(Paragraph(resume_inline_html(content), styles["body"]))
 
-        story.append(Spacer(1, 4.8 if template_key in {"dublin", "slate"} else (5 if template_key == "minimal" else 6.5)))
+        story.append(Spacer(1, 4.8 if template_key in {"dublin", "slate"} else (5 if template_key in {"minimal", "metro"} else 6.5)))
 
 
 def wrap_canvas_text(pdf: canvas.Canvas, text: str, font_name: str, font_size: float, max_width: float) -> list[str]:
@@ -6604,7 +6649,7 @@ def draw_slate_sidebar_content(pdf: canvas.Canvas, parsed: dict[str, Any], sideb
 
 def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes:
     template_key = safe_text(template).lower() or "minimal"
-    if template_key not in {"minimal", "executive", "quantum", "dublin", "slate"}:
+    if template_key not in {"minimal", "executive", "quantum", "dublin", "slate", "metro"}:
         template_key = "minimal"
 
     parsed = parse_resume_sections(name, sanitize_resume_output(resume_text))
@@ -6632,6 +6677,11 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
         right_margin = 38
         top_margin = 56
         bottom_margin = 34
+    elif template_key == "metro":
+        left_margin = 42
+        right_margin = 42
+        top_margin = 58
+        bottom_margin = 35
     else:
         left_margin = 44
         right_margin = left_margin
@@ -6812,6 +6862,72 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
                 )
             )
         story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.72, spaceBefore=1, spaceAfter=4.6))
+    elif template_key == "metro":
+        left_header: list[Any] = [
+            Paragraph(
+                resume_inline_html(parsed["name"]),
+                ParagraphStyle(
+                    "metro_name",
+                    parent=styles["name"],
+                    fontName="Times-Bold",
+                    fontSize=31,
+                    leading=32.8,
+                    textColor=palette["name"],
+                    spaceAfter=2.4,
+                ),
+            )
+        ]
+        if parsed["headline"]:
+            left_header.append(
+                Paragraph(
+                    resume_inline_html(parsed["headline"]),
+                    ParagraphStyle(
+                        "metro_headline",
+                        parent=styles["headline"],
+                        fontName="Helvetica-Bold",
+                        fontSize=11.2,
+                        leading=14.1,
+                        textColor=palette["accent"],
+                        spaceAfter=0,
+                    ),
+                )
+            )
+
+        right_lines: list[Any] = []
+        for item in [piece.strip() for piece in safe_text(parsed["contact_line"]).split("|") if piece.strip()]:
+            right_lines.append(
+                Paragraph(
+                    resume_inline_html(item),
+                    ParagraphStyle(
+                        "metro_contact_item",
+                        parent=styles["contact"],
+                        fontName="Helvetica-Bold",
+                        fontSize=9.3,
+                        leading=11.8,
+                        textColor=palette["text"],
+                        alignment=2,
+                        spaceAfter=0.5,
+                    ),
+                )
+            )
+        if not right_lines:
+            right_lines.append(Paragraph("Metro Prime Resume", styles["meta_line"]))
+
+        header_table = Table([[left_header, right_lines]], colWidths=[doc.width * 0.64, doc.width * 0.36])
+        header_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4.8),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story.append(header_table)
+        story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.86, spaceBefore=0.8, spaceAfter=5.8))
     else:
         story.append(Paragraph("MINIMAL FLOW", styles["badge"]))
         story.append(Paragraph(resume_inline_html(parsed["name"]), styles["name"]))

@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
 
-type ResumeTemplateId = "quantum" | "executive" | "minimal" | "dublin" | "slate";
+type ResumeTemplateId = "quantum" | "executive" | "minimal" | "dublin" | "slate" | "metro";
 
 type CreditWallet = {
   credits: number;
@@ -40,15 +40,25 @@ type ResumeTemplate = {
   description: string;
   badge: string;
   panelClass: string;
+  previewSrc: string;
 };
 
 const RESUME_TEMPLATES: ResumeTemplate[] = [
+  {
+    id: "metro",
+    name: "Metro Prime",
+    description: "Modern two-column professional format with clear role and skill separation.",
+    badge: "Modern",
+    panelClass: "border-indigo-100/32 bg-gradient-to-br from-indigo-200/15 via-cyan-100/7 to-slate-100/8",
+    previewSrc: "/template-previews/metro-prime.png",
+  },
   {
     id: "dublin",
     name: "Dublin Profile",
     description: "Clean single-column profile with bold teal highlights and compact bio header.",
     badge: "Corporate",
     panelClass: "border-emerald-100/36 bg-gradient-to-br from-emerald-200/18 via-cyan-100/10 to-sky-100/8",
+    previewSrc: "/template-previews/dublin-profile.png",
   },
   {
     id: "slate",
@@ -56,6 +66,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Two-column premium layout with deep teal achievement rail.",
     badge: "Showcase",
     panelClass: "border-teal-100/40 bg-gradient-to-br from-teal-300/20 via-cyan-200/8 to-slate-100/8",
+    previewSrc: "/template-previews/slate-sidebar.png",
   },
   {
     id: "quantum",
@@ -63,6 +74,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Bold modern style for technical and product applications.",
     badge: "Tech",
     panelClass: "border-cyan-100/40 bg-gradient-to-br from-cyan-300/20 via-cyan-200/10 to-sky-200/8",
+    previewSrc: "/template-previews/quantum-grid.png",
   },
   {
     id: "executive",
@@ -70,6 +82,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Premium business-forward structure with concise hierarchy.",
     badge: "Premium",
     panelClass: "border-amber-100/38 bg-gradient-to-br from-amber-100/15 via-amber-50/8 to-cyan-100/8",
+    previewSrc: "/template-previews/executive-edge.png",
   },
   {
     id: "minimal",
@@ -77,6 +90,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Clean ATS-friendly format for broad recruiter readability.",
     badge: "ATS",
     panelClass: "border-cyan-100/24 bg-cyan-100/6",
+    previewSrc: "/template-previews/minimal-flow.png",
   },
 ];
 
@@ -1312,7 +1326,7 @@ export default function StudioPage() {
 
             <div className="mb-5 rounded-2xl border border-cyan-100/20 bg-cyan-100/5 p-4">
               <p className="mb-3 text-sm font-semibold text-cyan-100">Choose Template Style</p>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {RESUME_TEMPLATES.map((template) => {
                   const active = selectedTemplate === template.id;
                   return (
@@ -1327,6 +1341,14 @@ export default function StudioPage() {
                         active ? "ring-1 ring-cyan-100/65" : "hover:brightness-110"
                       }`}
                     >
+                      <div className="mb-3 overflow-hidden rounded-xl border border-cyan-100/20 bg-[#071a33]">
+                        <img
+                          src={template.previewSrc}
+                          alt={`${template.name} preview`}
+                          className="h-32 w-full object-cover object-top"
+                          loading="lazy"
+                        />
+                      </div>
                       <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/70">{template.badge}</p>
                       <p className="mt-2 text-base font-semibold text-cyan-50">{template.name}</p>
                       <p className="mt-2 text-sm text-cyan-50/72">{template.description}</p>
