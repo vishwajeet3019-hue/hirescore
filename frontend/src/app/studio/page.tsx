@@ -50,7 +50,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Modern two-column professional format with clear role and skill separation.",
     badge: "Modern",
     panelClass: "border-indigo-100/32 bg-gradient-to-br from-indigo-200/15 via-cyan-100/7 to-slate-100/8",
-    previewSrc: "/template-previews/metro-prime.png",
+    previewSrc: "/template-previews/metro-overview.png",
   },
   {
     id: "dublin",
@@ -58,7 +58,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Clean single-column profile with bold teal highlights and compact bio header.",
     badge: "Corporate",
     panelClass: "border-emerald-100/36 bg-gradient-to-br from-emerald-200/18 via-cyan-100/10 to-sky-100/8",
-    previewSrc: "/template-previews/dublin-profile.png",
+    previewSrc: "/template-previews/dublin-overview.png",
   },
   {
     id: "slate",
@@ -66,7 +66,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Two-column premium layout with deep teal achievement rail.",
     badge: "Showcase",
     panelClass: "border-teal-100/40 bg-gradient-to-br from-teal-300/20 via-cyan-200/8 to-slate-100/8",
-    previewSrc: "/template-previews/slate-sidebar.png",
+    previewSrc: "/template-previews/slate-overview.png",
   },
   {
     id: "quantum",
@@ -74,7 +74,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Bold modern style for technical and product applications.",
     badge: "Tech",
     panelClass: "border-cyan-100/40 bg-gradient-to-br from-cyan-300/20 via-cyan-200/10 to-sky-200/8",
-    previewSrc: "/template-previews/quantum-grid.png",
+    previewSrc: "/template-previews/quantum-overview.png",
   },
   {
     id: "executive",
@@ -82,7 +82,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Premium business-forward structure with concise hierarchy.",
     badge: "Premium",
     panelClass: "border-amber-100/38 bg-gradient-to-br from-amber-100/15 via-amber-50/8 to-cyan-100/8",
-    previewSrc: "/template-previews/executive-edge.png",
+    previewSrc: "/template-previews/executive-overview.png",
   },
   {
     id: "minimal",
@@ -90,7 +90,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     description: "Clean ATS-friendly format for broad recruiter readability.",
     badge: "ATS",
     panelClass: "border-cyan-100/24 bg-cyan-100/6",
-    previewSrc: "/template-previews/minimal-flow.png",
+    previewSrc: "/template-previews/minimal-overview.png",
   },
 ];
 
