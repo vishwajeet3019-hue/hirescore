@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
 
-type ResumeTemplateId = "quantum" | "executive" | "minimal";
+type ResumeTemplateId = "quantum" | "executive" | "minimal" | "dublin" | "slate";
 
 type CreditWallet = {
   credits: number;
@@ -43,6 +43,20 @@ type ResumeTemplate = {
 };
 
 const RESUME_TEMPLATES: ResumeTemplate[] = [
+  {
+    id: "dublin",
+    name: "Dublin Profile",
+    description: "Clean single-column profile with bold teal highlights and compact bio header.",
+    badge: "Corporate",
+    panelClass: "border-emerald-100/36 bg-gradient-to-br from-emerald-200/18 via-cyan-100/10 to-sky-100/8",
+  },
+  {
+    id: "slate",
+    name: "Slate Sidebar",
+    description: "Two-column premium layout with deep teal achievement rail.",
+    badge: "Showcase",
+    panelClass: "border-teal-100/40 bg-gradient-to-br from-teal-300/20 via-cyan-200/8 to-slate-100/8",
+  },
   {
     id: "quantum",
     name: "Quantum Grid",
@@ -1298,7 +1312,7 @@ export default function StudioPage() {
 
             <div className="mb-5 rounded-2xl border border-cyan-100/20 bg-cyan-100/5 p-4">
               <p className="mb-3 text-sm font-semibold text-cyan-100">Choose Template Style</p>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 {RESUME_TEMPLATES.map((template) => {
                   const active = selectedTemplate === template.id;
                   return (

@@ -401,7 +401,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 80,
         "generation_limit": 15,
         "pdf_polish_limit": 6,
-        "allowed_templates": ["minimal", "executive"],
+        "allowed_templates": ["minimal", "executive", "dublin"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
     },
@@ -410,7 +410,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 320,
         "generation_limit": 90,
         "pdf_polish_limit": 40,
-        "allowed_templates": ["minimal", "executive", "quantum"],
+        "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
     },
@@ -419,7 +419,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 1200,
         "generation_limit": 320,
         "pdf_polish_limit": 160,
-        "allowed_templates": ["minimal", "executive", "quantum"],
+        "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
     },
@@ -6106,6 +6106,32 @@ def template_palette(template_key: str) -> dict[str, colors.Color]:
             "footer_text": colors.HexColor("#4E7489"),
             "highlight": colors.HexColor("#67D4F2"),
         },
+        "dublin": {
+            "name": colors.HexColor("#2E3445"),
+            "accent": colors.HexColor("#0AA594"),
+            "accent_soft": colors.HexColor("#CBEDE8"),
+            "text": colors.HexColor("#2B3442"),
+            "muted": colors.HexColor("#6E7787"),
+            "line": colors.HexColor("#CFD9E4"),
+            "surface": colors.HexColor("#F8FBFD"),
+            "header_bg": colors.HexColor("#EDF5F8"),
+            "header_text": colors.HexColor("#2E3445"),
+            "footer_text": colors.HexColor("#6D7787"),
+            "highlight": colors.HexColor("#0AA594"),
+        },
+        "slate": {
+            "name": colors.HexColor("#333A42"),
+            "accent": colors.HexColor("#0A6D6D"),
+            "accent_soft": colors.HexColor("#CFE6E6"),
+            "text": colors.HexColor("#333A42"),
+            "muted": colors.HexColor("#66707A"),
+            "line": colors.HexColor("#CAD2D8"),
+            "surface": colors.HexColor("#F4F6F7"),
+            "header_bg": colors.HexColor("#0A6D6D"),
+            "header_text": colors.white,
+            "footer_text": colors.HexColor("#E4F4F4"),
+            "highlight": colors.HexColor("#0FB5B5"),
+        },
     }
     return palettes.get(template_key, palettes["minimal"])
 
@@ -6119,6 +6145,18 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
         title_font = "Times-Bold"
         body_font = "Times-Roman"
         body_leading = 14.8
+    elif template_key == "dublin":
+        header_size = 22.3
+        body_size = 9.8
+        title_font = "Helvetica-Bold"
+        body_font = "Helvetica"
+        body_leading = 13.8
+    elif template_key == "slate":
+        header_size = 20.8
+        body_size = 9.6
+        title_font = "Times-Bold"
+        body_font = "Times-Roman"
+        body_leading = 13.2
     elif template_key == "quantum":
         header_size = 24.8
         body_size = 10.0
@@ -6145,7 +6183,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
         "contact": ParagraphStyle(
             "contact",
             parent=sample["Normal"],
-            fontName="Helvetica-Bold" if template_key == "quantum" else body_font,
+            fontName="Helvetica-Bold" if template_key in {"quantum", "dublin"} else body_font,
             fontSize=9.4,
             leading=12.3,
             textColor=palette["muted"],
@@ -6173,7 +6211,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             "headline",
             parent=sample["Normal"],
             fontName="Times-Italic" if template_key == "executive" else "Helvetica-Bold",
-            fontSize=10.6,
+            fontSize=10.1 if template_key == "dublin" else 10.6,
             leading=14,
             textColor=palette["text"],
             spaceAfter=6.2,
@@ -6182,7 +6220,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             "section",
             parent=sample["Heading3"],
             fontName="Helvetica-Bold",
-            fontSize=10.9 if template_key == "minimal" else 11.1,
+            fontSize=10.3 if template_key in {"dublin", "slate"} else (10.9 if template_key == "minimal" else 11.1),
             leading=13.5,
             textColor=colors.white if template_key == "executive" else palette["accent"],
             spaceBefore=9,
@@ -6204,7 +6242,7 @@ def build_pdf_styles(template_key: str) -> dict[str, ParagraphStyle]:
             fontSize=body_size,
             leading=body_leading,
             textColor=palette["text"],
-            leftIndent=19 if template_key == "executive" else (17 if template_key == "quantum" else 16),
+            leftIndent=19 if template_key == "executive" else (17 if template_key == "quantum" else (15 if template_key == "dublin" else 14)),
             bulletIndent=8 if template_key == "executive" else 6,
             spaceBefore=0.6,
             spaceAfter=1.8,
@@ -6287,6 +6325,40 @@ def section_header_flowable(
         )
         return table
 
+    if template_key == "dublin":
+        table = Table([[Paragraph(html.escape(section_title.upper()), styles["section"])]], colWidths=[width])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), palette["accent"]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1.8),
+                    ("LINEABOVE", (0, 0), (-1, -1), 0.7, palette["line"]),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.7, palette["line"]),
+                ]
+            )
+        )
+        return table
+
+    if template_key == "slate":
+        table = Table([[Paragraph(html.escape(section_title.upper()), styles["section"])]], colWidths=[width])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1.6),
+                    ("LINEBELOW", (0, 0), (-1, -1), 0.75, palette["line"]),
+                ]
+            )
+        )
+        return table
+
     table = Table([["", Paragraph(html.escape(section_title.upper()), styles["section"])]], colWidths=[4.5, width - 4.5])
     table.setStyle(
         TableStyle(
@@ -6329,6 +6401,25 @@ def draw_template_page_decoration(pdf: canvas.Canvas, doc: SimpleDocTemplate, te
         pdf.setStrokeColor(palette["line"])
         pdf.setLineWidth(0.8)
         pdf.line(doc.leftMargin, height - 24, doc.leftMargin + doc.width, height - 24)
+    elif template_key == "dublin":
+        pdf.setFillColor(palette["surface"])
+        pdf.rect(0, height - 90, width, 90, fill=1, stroke=0)
+        pdf.setStrokeColor(palette["line"])
+        pdf.setLineWidth(1.0)
+        pdf.line(doc.leftMargin, height - 92.5, doc.leftMargin + doc.width, height - 92.5)
+        pdf.setFillColor(palette["accent"])
+        pdf.rect(doc.leftMargin, height - 94.8, doc.width * 0.74, 2.2, fill=1, stroke=0)
+    elif template_key == "slate":
+        sidebar_width = width * 0.33
+        pdf.setFillColor(palette["accent"])
+        pdf.rect(width - sidebar_width, 0, sidebar_width, height, fill=1, stroke=0)
+        pdf.setFillColor(colors.Color(1, 1, 1, alpha=0.07))
+        pdf.rect(width - sidebar_width, height - 126, sidebar_width, 126, fill=1, stroke=0)
+        pdf.setFillColor(colors.HexColor("#EFEFEF"))
+        pdf.rect(0, 0, width - sidebar_width, height, fill=1, stroke=0)
+        pdf.setStrokeColor(colors.HexColor("#C8CED3"))
+        pdf.setLineWidth(0.95)
+        pdf.line(doc.leftMargin, height - 116, width - sidebar_width - 16, height - 116)
     else:
         pdf.setFillColor(palette["surface"])
         pdf.rect(0, height - 27, width, 27, fill=1, stroke=0)
@@ -6342,17 +6433,178 @@ def draw_template_page_decoration(pdf: canvas.Canvas, doc: SimpleDocTemplate, te
     pdf.setLineWidth(0.62)
     pdf.line(doc.leftMargin, 22.8, doc.leftMargin + doc.width, 22.8)
     pdf.setFont("Helvetica", 8)
-    if template_key == "executive":
-        pdf.setFillColor(palette["footer_text"])
+    if template_key == "slate":
+        sidebar_width = width * 0.33
+        pdf.setFillColor(colors.Color(1, 1, 1, alpha=0.85))
+        pdf.drawRightString(width - 10, 11.2, f"Page {pdf.getPageNumber()}")
+        pdf.setFillColor(colors.HexColor("#5E6B75"))
+        pdf.drawString(doc.leftMargin, 11.2, "HireScore Resume")
+        pdf.setStrokeColor(colors.Color(1, 1, 1, alpha=0.2))
+        pdf.line(width - sidebar_width + 10, 22.8, width - 10, 22.8)
     else:
         pdf.setFillColor(palette["footer_text"])
-    pdf.drawRightString(doc.leftMargin + doc.width, 11.2, f"Page {pdf.getPageNumber()}")
+        pdf.drawRightString(doc.leftMargin + doc.width, 11.2, f"Page {pdf.getPageNumber()}")
     pdf.restoreState()
+
+
+def append_resume_sections_to_story(
+    story: list[Any],
+    template_key: str,
+    sections: list[tuple[str, list[str]]],
+    styles: dict[str, ParagraphStyle],
+    palette: dict[str, colors.Color],
+    section_width: float,
+) -> None:
+    for section_key, lines in sections:
+        section_title = RESUME_SECTION_TITLES.get(section_key, section_key.replace("_", " ").title())
+        story.append(section_header_flowable(template_key, section_title, styles, palette, section_width))
+        if template_key in {"minimal", "dublin", "slate"}:
+            story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.48, spaceBefore=0.8, spaceAfter=3.0))
+        else:
+            story.append(Spacer(1, 4.4))
+
+        for line in lines:
+            content = clean_resume_line(line)
+            if not content:
+                continue
+            if is_bullet_line(content):
+                bullet_text = resume_inline_html(strip_bullet_prefix(content))
+                bullet_symbol = "▪" if template_key == "executive" else ("▸" if template_key == "quantum" else "•")
+                story.append(Paragraph(bullet_text, styles["bullet"], bulletText=f"{bullet_symbol} "))
+            elif looks_like_role_heading_line(section_key, content):
+                story.append(Paragraph(resume_inline_html(content), styles["role_line"]))
+            elif looks_like_meta_note_line(section_key, content):
+                story.append(Paragraph(resume_inline_html(content), styles["meta_line"]))
+            else:
+                story.append(Paragraph(resume_inline_html(content), styles["body"]))
+
+        story.append(Spacer(1, 4.8 if template_key in {"dublin", "slate"} else (5 if template_key == "minimal" else 6.5)))
+
+
+def wrap_canvas_text(pdf: canvas.Canvas, text: str, font_name: str, font_size: float, max_width: float) -> list[str]:
+    cleaned = re.sub(r"\s+", " ", safe_text(text)).strip()
+    if not cleaned:
+        return []
+    words = cleaned.split(" ")
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = word if not current else f"{current} {word}"
+        if pdf.stringWidth(candidate, font_name, font_size) <= max_width:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+            current = word
+        else:
+            lines.append(word)
+            current = ""
+    if current:
+        lines.append(current)
+    return lines
+
+
+def draw_canvas_paragraph(
+    pdf: canvas.Canvas,
+    text: str,
+    x: float,
+    y: float,
+    max_width: float,
+    font_name: str,
+    font_size: float,
+    text_color: colors.Color,
+    leading: float,
+    max_lines: int | None = None,
+) -> float:
+    lines = wrap_canvas_text(pdf, text, font_name, font_size, max_width)
+    if max_lines is not None:
+        lines = lines[: max(1, max_lines)]
+    pdf.setFont(font_name, font_size)
+    pdf.setFillColor(text_color)
+    for line in lines:
+        pdf.drawString(x, y, line)
+        y -= leading
+    return y
+
+
+def collect_slate_sidebar_sections(parsed: dict[str, Any]) -> list[tuple[str, list[str]]]:
+    sections_map: dict[str, list[str]] = {key: value for key, value in parsed.get("sections", [])}
+    sidebar_order = ["achievements", "education", "skills", "certifications", "languages"]
+    blocks: list[tuple[str, list[str]]] = []
+    for key in sidebar_order:
+        lines = sections_map.get(key) or []
+        clipped = [safe_text(line) for line in lines if safe_text(line)][:14]
+        if clipped:
+            blocks.append((key, clipped))
+    return blocks
+
+
+def draw_slate_sidebar_content(pdf: canvas.Canvas, parsed: dict[str, Any], sidebar_sections: list[tuple[str, list[str]]]) -> None:
+    width, height = A4
+    sidebar_width = width * 0.33
+    x = width - sidebar_width + 16
+    text_width = sidebar_width - 30
+    y = height - 42
+
+    # Profile circle placeholder
+    photo_radius = 34
+    center_x = width - sidebar_width / 2
+    center_y = height - 54
+    pdf.setFillColor(colors.Color(1, 1, 1, alpha=0.18))
+    pdf.circle(center_x, center_y, photo_radius, fill=1, stroke=0)
+    pdf.setStrokeColor(colors.Color(1, 1, 1, alpha=0.6))
+    pdf.setLineWidth(0.9)
+    pdf.circle(center_x, center_y, photo_radius, fill=0, stroke=1)
+    initial = (safe_text(parsed.get("name")) or "C")[0].upper()
+    pdf.setFont("Helvetica-Bold", 26)
+    pdf.setFillColor(colors.white)
+    pdf.drawCentredString(center_x, center_y - 9, initial)
+
+    y = height - 116
+    heading_color = colors.white
+    body_color = colors.Color(1, 1, 1, alpha=0.93)
+    muted_color = colors.Color(1, 1, 1, alpha=0.78)
+
+    for section_key, lines in sidebar_sections[:4]:
+        title = RESUME_SECTION_TITLES.get(section_key, section_key.replace("_", " ").title()).upper()
+        pdf.setFont("Helvetica-Bold", 10.8)
+        pdf.setFillColor(heading_color)
+        pdf.drawString(x, y, title)
+        y -= 5
+        pdf.setStrokeColor(colors.Color(1, 1, 1, alpha=0.55))
+        pdf.setLineWidth(0.7)
+        pdf.line(x, y, x + text_width, y)
+        y -= 12
+
+        for raw_line in lines[:7]:
+            line = strip_bullet_prefix(raw_line) if is_bullet_line(raw_line) else clean_resume_line(raw_line)
+            if not line:
+                continue
+            pdf.setFillColor(body_color)
+            pdf.circle(x + 1.8, y + 3.2, 1.2, fill=1, stroke=0)
+            y = draw_canvas_paragraph(
+                pdf,
+                line,
+                x + 8,
+                y,
+                text_width - 8,
+                "Helvetica",
+                9.2,
+                muted_color,
+                leading=11.3,
+                max_lines=3,
+            )
+            y -= 1.5
+            if y < 74:
+                return
+        y -= 7
+        if y < 74:
+            return
 
 
 def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes:
     template_key = safe_text(template).lower() or "minimal"
-    if template_key not in {"minimal", "executive", "quantum"}:
+    if template_key not in {"minimal", "executive", "quantum", "dublin", "slate"}:
         template_key = "minimal"
 
     parsed = parse_resume_sections(name, sanitize_resume_output(resume_text))
@@ -6360,19 +6612,31 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
     palette = template_palette(template_key)
 
     output = io.BytesIO()
-    if template_key == "quantum":
+    if template_key == "slate":
+        left_margin = 36
+        right_margin = 214
+        top_margin = 40
+        bottom_margin = 34
+    elif template_key == "quantum":
         left_margin = 52
+        right_margin = left_margin
         top_margin = 44
         bottom_margin = 34
     elif template_key == "executive":
         left_margin = 36
+        right_margin = left_margin
         top_margin = 54
+        bottom_margin = 34
+    elif template_key == "dublin":
+        left_margin = 38
+        right_margin = 38
+        top_margin = 56
         bottom_margin = 34
     else:
         left_margin = 44
+        right_margin = left_margin
         top_margin = 48
         bottom_margin = 35
-    right_margin = left_margin
     doc = SimpleDocTemplate(
         output,
         pagesize=A4,
@@ -6385,7 +6649,67 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
     )
 
     story: list[Any] = []
-    if template_key == "executive":
+    if template_key == "dublin":
+        name_tokens = [token for token in safe_text(parsed["name"]).split(" ") if token]
+        first_name = html.escape(name_tokens[0] if name_tokens else "Candidate")
+        last_name = html.escape(" ".join(name_tokens[1:]) if len(name_tokens) > 1 else "")
+
+        name_lines: list[Any] = [Paragraph(f"<font color='#2E3445'>{first_name}</font>", styles["name"])]
+        if last_name:
+            name_lines.append(
+                Paragraph(
+                    f"<font color='#0AA594'>{last_name}</font>",
+                    ParagraphStyle(
+                        "dublin_last_name",
+                        parent=styles["name"],
+                        fontSize=20.8,
+                        leading=22.8,
+                        textColor=palette["accent"],
+                        spaceAfter=0.5,
+                    ),
+                )
+            )
+        if parsed["headline"]:
+            name_lines.append(Paragraph(resume_inline_html(parsed["headline"]).upper(), styles["meta_line"]))
+
+        profile_cell = Table([[Paragraph("PHOTO", styles["meta_line"])]], colWidths=[56], rowHeights=[56])
+        profile_cell.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                    ("BOX", (0, 0), (-1, -1), 1.0, palette["line"]),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ]
+            )
+        )
+
+        right_lines: list[Any] = []
+        if parsed["contact_line"]:
+            right_lines.append(Paragraph(resume_inline_html(parsed["contact_line"]), styles["contact"]))
+        right_lines.append(Paragraph("Dublin Profile Resume", styles["meta_line"]))
+
+        header_table = Table(
+            [[profile_cell, name_lines, right_lines]],
+            colWidths=[66, doc.width * 0.51, doc.width * 0.29],
+        )
+        header_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), palette["header_bg"]),
+                    ("BOX", (0, 0), (-1, -1), 0.8, palette["line"]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7.5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6.8),
+                    ("LINEBEFORE", (2, 0), (2, 0), 0.7, palette["line"]),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story.append(header_table)
+        story.append(Spacer(1, 8))
+    elif template_key == "executive":
         left_block: list[Any] = [Paragraph(html.escape(parsed["name"]), styles["header_inverse"])]
         if parsed["headline"]:
             left_block.append(Paragraph(resume_inline_html(parsed["headline"]), styles["header_inverse_meta"]))
@@ -6443,6 +6767,51 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
         )
         story.append(header_table)
         story.append(Spacer(1, 7.8))
+    elif template_key == "slate":
+        story.append(
+            Paragraph(
+                html.escape(parsed["name"]).upper(),
+                ParagraphStyle(
+                    "slate_name",
+                    parent=styles["name"],
+                    fontSize=20.2,
+                    leading=22.8,
+                    textColor=palette["name"],
+                    spaceAfter=2.2,
+                ),
+            )
+        )
+        if parsed["headline"]:
+            story.append(
+                Paragraph(
+                    resume_inline_html(parsed["headline"]),
+                    ParagraphStyle(
+                        "slate_headline",
+                        parent=styles["headline"],
+                        fontName="Helvetica",
+                        fontSize=10.7,
+                        leading=13.6,
+                        textColor=colors.HexColor("#0A8C90"),
+                        spaceAfter=3.5,
+                    ),
+                )
+            )
+        if parsed["contact_line"]:
+            story.append(
+                Paragraph(
+                    resume_inline_html(parsed["contact_line"]),
+                    ParagraphStyle(
+                        "slate_contact",
+                        parent=styles["contact"],
+                        fontName="Helvetica",
+                        fontSize=9.6,
+                        leading=12.3,
+                        textColor=palette["muted"],
+                        spaceAfter=6.8,
+                    ),
+                )
+            )
+        story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.72, spaceBefore=1, spaceAfter=4.6))
     else:
         story.append(Paragraph("MINIMAL FLOW", styles["badge"]))
         story.append(Paragraph(resume_inline_html(parsed["name"]), styles["name"]))
@@ -6473,36 +6842,31 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
             story.append(Spacer(1, 3.2))
         story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.9, spaceBefore=1.5, spaceAfter=6.4))
 
-    for section_key, lines in parsed["sections"]:
-        section_title = RESUME_SECTION_TITLES.get(section_key, section_key.replace("_", " ").title())
-        story.append(section_header_flowable(template_key, section_title, styles, palette, doc.width))
-        if template_key == "minimal":
-            story.append(HRFlowable(width="100%", color=palette["line"], thickness=0.48, spaceBefore=0.8, spaceAfter=3.6))
-        else:
-            story.append(Spacer(1, 4.4))
+    sidebar_sections: list[tuple[str, list[str]]] = []
+    if template_key == "slate":
+        sidebar_sections = collect_slate_sidebar_sections(parsed)
+        sidebar_keys = {key for key, _lines in sidebar_sections}
+        main_sections = [(key, lines) for key, lines in parsed["sections"] if key not in sidebar_keys] or parsed["sections"]
+        append_resume_sections_to_story(story, template_key, main_sections, styles, palette, doc.width)
+    else:
+        append_resume_sections_to_story(story, template_key, parsed["sections"], styles, palette, doc.width)
 
-        for line in lines:
-            content = clean_resume_line(line)
-            if not content:
-                continue
-            if is_bullet_line(content):
-                bullet_text = resume_inline_html(strip_bullet_prefix(content))
-                bullet_symbol = "▪" if template_key == "executive" else ("▸" if template_key == "quantum" else "•")
-                story.append(Paragraph(bullet_text, styles["bullet"], bulletText=f"{bullet_symbol} "))
-            elif looks_like_role_heading_line(section_key, content):
-                story.append(Paragraph(resume_inline_html(content), styles["role_line"]))
-            elif looks_like_meta_note_line(section_key, content):
-                story.append(Paragraph(resume_inline_html(content), styles["meta_line"]))
-            else:
-                story.append(Paragraph(resume_inline_html(content), styles["body"]))
+    if template_key == "slate":
+        def _on_first(pdf: canvas.Canvas, page_doc: SimpleDocTemplate) -> None:
+            draw_template_page_decoration(pdf, page_doc, template_key)
+            draw_slate_sidebar_content(pdf, parsed, sidebar_sections)
 
-        story.append(Spacer(1, 5 if template_key == "minimal" else 6.5))
+        def _on_later(pdf: canvas.Canvas, page_doc: SimpleDocTemplate) -> None:
+            draw_template_page_decoration(pdf, page_doc, template_key)
+            draw_slate_sidebar_content(pdf, parsed, sidebar_sections)
 
-    doc.build(
-        story,
-        onFirstPage=lambda pdf, page_doc: draw_template_page_decoration(pdf, page_doc, template_key),
-        onLaterPages=lambda pdf, page_doc: draw_template_page_decoration(pdf, page_doc, template_key),
-    )
+        doc.build(story, onFirstPage=_on_first, onLaterPages=_on_later)
+    else:
+        doc.build(
+            story,
+            onFirstPage=lambda pdf, page_doc: draw_template_page_decoration(pdf, page_doc, template_key),
+            onLaterPages=lambda pdf, page_doc: draw_template_page_decoration(pdf, page_doc, template_key),
+        )
     output.seek(0)
     return output.getvalue()
 
