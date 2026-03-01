@@ -93,6 +93,15 @@ app.add_middleware(
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = (os.getenv("OPENAI_MODEL") or "gpt-4o-mini").strip()
+ANALYZE_MODE = (os.getenv("ANALYZE_MODE") or "hybrid").strip().lower()
+if ANALYZE_MODE not in {"rules", "hybrid", "llm"}:
+    ANALYZE_MODE = "hybrid"
+ANALYZE_LLM_MODEL = (os.getenv("ANALYZE_LLM_MODEL") or OPENAI_MODEL).strip() or OPENAI_MODEL
+try:
+    ANALYZE_LLM_BLEND = float((os.getenv("ANALYZE_LLM_BLEND") or "0.28").strip())
+except Exception:
+    ANALYZE_LLM_BLEND = 0.28
+ANALYZE_LLM_BLEND = max(0.08, min(0.6, ANALYZE_LLM_BLEND))
 configured_fallback_models = [model.strip() for model in (os.getenv("OPENAI_FALLBACK_MODELS") or "").split(",") if model.strip()]
 if configured_fallback_models:
     OPENAI_FALLBACK_MODELS = configured_fallback_models
@@ -4660,6 +4669,264 @@ def analyze_profile(
     }
 
 
+def parse_llm_json_payload(content: str) -> dict[str, Any] | None:
+    text = safe_text(content)
+    if not text:
+        return None
+
+    candidates = [text]
+    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        candidates.insert(0, fenced.group(1).strip())
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        candidates.insert(0, text[start : end + 1].strip())
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def normalize_string_list(value: Any, limit: int = 6, max_item_len: int = 140) -> list[str]:
+    if isinstance(value, str):
+        raw_items = [item.strip() for item in re.split(r"[\n,;]+", value) if item.strip()]
+    elif isinstance(value, list):
+        raw_items = [safe_text(str(item)) for item in value if safe_text(str(item))]
+    else:
+        raw_items = []
+    normalized: list[str] = []
+    for item in raw_items:
+        clipped = item[:max_item_len]
+        if clipped and clipped not in normalized:
+            normalized.append(clipped)
+        if len(normalized) >= limit:
+            break
+    return normalized
+
+
+def request_semantic_analysis_overlay(
+    industry: str,
+    role: str,
+    skills_text: str,
+    base_analysis: dict[str, Any],
+    experience_years: float | None = None,
+    age_years: float | None = None,
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    if client is None:
+        return None, None, "OPENAI_API_KEY not configured"
+
+    models: list[str] = []
+    for model in [ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
+        cleaned = safe_text(model)
+        if cleaned and cleaned not in models:
+            models.append(cleaned)
+
+    prompt = f"""
+You are a strict hiring analyst. Return only one valid JSON object.
+
+Input:
+- Target role: {safe_text(role)}
+- Target industry: {safe_text(industry)}
+- Experience years: {experience_years}
+- Age years: {age_years}
+- Candidate profile text:
+{safe_text(skills_text)[:7000]}
+
+Deterministic baseline:
+{json.dumps({
+    "overall_score": int(base_analysis.get("overall_score", 0)),
+    "skill_match": int(base_analysis.get("skill_match", 0)),
+    "confidence": int(base_analysis.get("confidence", 0)),
+    "critical_missing_skills": base_analysis.get("critical_missing_skills", [])[:8],
+    "missing_core_skills": base_analysis.get("missing_core_skills", [])[:8],
+    "matched_core_skills": base_analysis.get("matched_core_skills", [])[:8],
+}, ensure_ascii=False)}
+
+JSON schema (all keys required):
+{{
+  "semantic_skill_match": <number 0-100>,
+  "semantic_confidence": <number 0-100>,
+  "semantic_overall_adjustment": <number from -8 to 8>,
+  "semantic_prediction_reasoning": ["reason 1", "reason 2", "reason 3"],
+  "semantic_quick_wins": ["win 1", "win 2", "win 3", "win 4"],
+  "semantic_missing_skills": ["skill 1", "skill 2", "skill 3"],
+  "semantic_strengths": ["strength 1", "strength 2", "strength 3"],
+  "semantic_summary": "short summary (max 240 chars)"
+}}
+"""
+
+    last_error: str | None = None
+    for model in models:
+        for attempt in range(3):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "Return strict JSON only. No markdown."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.15,
+                )
+                content = extract_llm_text(response.choices[0].message.content if response.choices else "")
+                parsed = parse_llm_json_payload(content)
+                if parsed is not None:
+                    return parsed, model, None
+                last_error = f"invalid_json_from_{model}"
+                logger.error("Semantic analysis returned non-JSON content for model '%s'.", model)
+                break
+            except Exception as exc:
+                last_error = f"{type(exc).__name__} on model {model}"
+                logger.exception("Semantic analysis failed for model '%s' (attempt %s).", model, attempt + 1)
+                if attempt < 2 and is_transient_openai_error(exc):
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                break
+    return None, None, last_error
+
+
+def analyze_profile_hybrid(
+    industry: str,
+    role: str,
+    skills_text: str,
+    experience_years: float | None = None,
+    age_years: float | None = None,
+    applications_count: int | None = None,
+    salary_boost_toggles: list[str] | None = None,
+    source: str = "manual_input",
+) -> dict[str, Any]:
+    base = analyze_profile(
+        industry=industry,
+        role=role,
+        skills_text=skills_text,
+        experience_years=experience_years,
+        age_years=age_years,
+        applications_count=applications_count,
+        salary_boost_toggles=salary_boost_toggles,
+    )
+    base["source"] = source
+
+    if ANALYZE_MODE == "rules":
+        base["analysis_mode"] = "rules"
+        base["analysis_ai"] = {"used": False, "model": None, "reason": "ANALYZE_MODE=rules"}
+        return base
+
+    semantic_payload, semantic_model, semantic_error = request_semantic_analysis_overlay(
+        industry=industry,
+        role=role,
+        skills_text=skills_text,
+        base_analysis=base,
+        experience_years=experience_years,
+        age_years=age_years,
+    )
+    if semantic_payload is None:
+        base["analysis_mode"] = "rules_fallback"
+        base["analysis_ai"] = {"used": False, "model": semantic_model, "reason": semantic_error}
+        return base
+
+    def safe_float_from_payload(key: str, default_value: float) -> float:
+        try:
+            return float(semantic_payload.get(key, default_value))
+        except Exception:
+            return float(default_value)
+
+    deterministic_skill_match = int(base.get("skill_match", 0))
+    deterministic_confidence = int(base.get("confidence", 0))
+    deterministic_overall = int(base.get("overall_score", 0))
+
+    semantic_skill_match = clamp_float(
+        safe_float_from_payload("semantic_skill_match", deterministic_skill_match),
+        0.0,
+        100.0,
+    )
+    semantic_confidence = clamp_float(
+        safe_float_from_payload("semantic_confidence", deterministic_confidence),
+        0.0,
+        100.0,
+    )
+    semantic_adjustment = clamp_float(safe_float_from_payload("semantic_overall_adjustment", 0.0), -8.0, 8.0)
+
+    blend = ANALYZE_LLM_BLEND
+    blended_skill_match = clamp((1.0 - blend) * deterministic_skill_match + blend * semantic_skill_match)
+    blended_confidence = clamp((1.0 - blend) * deterministic_confidence + blend * semantic_confidence)
+    blended_confidence = min(96, blended_confidence)
+    blended_overall = clamp((1.0 - blend) * deterministic_overall + blend * semantic_skill_match + semantic_adjustment)
+
+    base["skill_match"] = blended_skill_match
+    base["confidence"] = blended_confidence
+    base["overall_score"] = blended_overall
+    base["shortlist_prediction"] = build_shortlist_prediction(blended_overall)
+    base["prediction_range"] = build_prediction_band(blended_overall, blended_confidence)
+    base["likely_interview_call"] = build_interview_call_likelihood(blended_overall, blended_confidence)
+
+    semantic_reasoning = normalize_string_list(semantic_payload.get("semantic_prediction_reasoning"), limit=3, max_item_len=180)
+    if semantic_reasoning:
+        base["prediction_reasoning"] = dedupe_preserve_order([*semantic_reasoning, *(base.get("prediction_reasoning") or [])])[:6]
+
+    semantic_quick_wins = normalize_string_list(semantic_payload.get("semantic_quick_wins"), limit=4, max_item_len=160)
+    if semantic_quick_wins:
+        base["quick_wins"] = dedupe_preserve_order([*semantic_quick_wins, *(base.get("quick_wins") or [])])[:7]
+
+    semantic_missing = normalize_string_list(semantic_payload.get("semantic_missing_skills"), limit=6, max_item_len=64)
+    if semantic_missing:
+        base["critical_missing_skills"] = dedupe_preserve_order([*(base.get("critical_missing_skills") or []), *semantic_missing])[:10]
+
+    semantic_strengths = normalize_string_list(semantic_payload.get("semantic_strengths"), limit=6, max_item_len=64)
+    if semantic_strengths:
+        base["matched_keywords"] = dedupe_preserve_order([*semantic_strengths, *(base.get("matched_keywords") or [])])[:12]
+
+    semantic_summary = safe_text(str(semantic_payload.get("semantic_summary", "")))[:240]
+    if semantic_summary:
+        base["semantic_summary"] = semantic_summary
+
+    role_track = safe_text(str(base.get("role_track", ""))) or infer_role_track(role, industry)
+    seniority = safe_text(str(base.get("seniority_assumption", ""))) or infer_seniority(role)
+    critical_missing = [safe_text(str(item)) for item in (base.get("critical_missing_skills") or []) if safe_text(str(item))]
+    core_missing = [safe_text(str(item)) for item in (base.get("missing_core_skills") or []) if safe_text(str(item))]
+    adjacent_missing = [safe_text(str(item)) for item in (base.get("missing_adjacent_skills") or []) if safe_text(str(item))]
+    applications_used = normalize_applications_count(applications_count)
+    experience_band = infer_experience_band(experience_years, seniority)
+
+    base["ninety_plus_strategy"] = build_ninety_plus_plan(
+        blended_overall,
+        role_track,
+        role,
+        industry,
+        experience_band,
+        critical_missing,
+        core_missing,
+        adjacent_missing,
+    )
+    base["salary_insight"] = build_salary_insight(
+        role_track=role_track,
+        role=role,
+        industry=industry,
+        overall_score=blended_overall,
+        confidence=blended_confidence,
+        seniority=seniority,
+        experience_years=experience_years,
+        selected_toggle_ids=salary_boost_toggles,
+    )
+    base["callback_forecast"] = build_callback_estimator(
+        blended_overall,
+        blended_confidence,
+        applications_used,
+        base["ninety_plus_strategy"],
+    )
+    base["analysis_mode"] = "hybrid"
+    base["analysis_ai"] = {
+        "used": True,
+        "model": semantic_model or ANALYZE_LLM_MODEL,
+        "blend": ANALYZE_LLM_BLEND,
+    }
+    return base
+
+
 def fallback_build_resume(data: ResumeBuildRequest) -> str:
     sections: list[str] = []
     sections.append((safe_text(data.name) or "Candidate").upper())
@@ -7359,7 +7626,7 @@ def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:
 
     try:
         skills_text = safe_text(data.skills or data.description)
-        analysis = analyze_profile(
+        analysis = analyze_profile_hybrid(
             data.industry,
             data.role,
             skills_text,
@@ -7367,10 +7634,10 @@ def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:
             age_years=data.age_years,
             applications_count=data.applications_count,
             salary_boost_toggles=data.salary_boost_toggles,
+            source="manual_input",
         )
         analysis["wallet"] = debit["wallet"]
         analysis["credit_transaction_id"] = debit["transaction_id"]
-        analysis["source"] = "manual_input"
         analysis["feedback_required"] = feedback_required_for_user(int(user["id"]))
         report_id = save_analysis_report(
             user_id=int(user["id"]),
@@ -7434,7 +7701,7 @@ async def analyze_resume_file(
             raise HTTPException(status_code=400, detail="No readable text found in the uploaded file.")
 
         toggle_ids = [token.strip() for token in salary_boost_toggles.split(",") if token.strip()]
-        analysis = analyze_profile(
+        analysis = analyze_profile_hybrid(
             industry,
             role,
             extracted_text,
@@ -7442,10 +7709,10 @@ async def analyze_resume_file(
             age_years=age_years,
             applications_count=applications_count,
             salary_boost_toggles=toggle_ids,
+            source="resume_upload",
         )
         analysis["wallet"] = debit["wallet"]
         analysis["credit_transaction_id"] = debit["transaction_id"]
-        analysis["source"] = "resume_upload"
         analysis["extracted_chars"] = len(extracted_text)
         analysis["feedback_required"] = feedback_required_for_user(int(user["id"]))
         report_id = save_analysis_report(
@@ -7494,7 +7761,7 @@ def suggest_actions(data: ResumeRequest, request: Request) -> dict[str, Any]:
     )
 
     skills_text = safe_text(data.skills or data.description)
-    analysis = analyze_profile(
+    analysis = analyze_profile_hybrid(
         data.industry,
         data.role,
         skills_text,
@@ -7502,6 +7769,7 @@ def suggest_actions(data: ResumeRequest, request: Request) -> dict[str, Any]:
         age_years=data.age_years,
         applications_count=data.applications_count,
         salary_boost_toggles=data.salary_boost_toggles,
+        source="suggest",
     )
 
     payload = build_suggestion_payload(
