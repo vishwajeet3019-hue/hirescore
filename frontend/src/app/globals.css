@@ -146,10 +146,20 @@ body::after {
 }
 
 .aurora-strip {
-  background: linear-gradient(90deg, rgba(93, 223, 255, 0.22), rgba(255, 213, 154, 0.24), rgba(108, 234, 228, 0.22));
-  background-size: 220% 100%;
-  animation: auroraPulse10 10s ease-in-out infinite;
-  box-shadow: 0 0 24px rgba(119, 226, 255, 0.25);
+  position: relative;
+  overflow: hidden;
+  background: rgba(119, 226, 255, 0.14);
+  box-shadow: 0 0 18px rgba(119, 226, 255, 0.2);
+}
+
+.aurora-strip::after {
+  content: "";
+  position: absolute;
+  inset: -120% -45%;
+  background: linear-gradient(90deg, rgba(93, 223, 255, 0.05), rgba(255, 213, 154, 0.34), rgba(108, 234, 228, 0.08));
+  transform: translateX(-34%);
+  animation: auroraPulse10 6.2s linear infinite alternate;
+  will-change: transform, opacity;
 }
 
 .ring-spin {
@@ -171,7 +181,7 @@ body::after {
 }
 
 .soft-pulse {
-  animation: softPulse 5.8s ease-in-out infinite;
+  animation: none;
 }
 
 .stat-live-card {
@@ -185,6 +195,9 @@ body::after {
   inset: 0;
   border-radius: inherit;
   background: radial-gradient(circle at 82% 18%, rgba(157, 239, 255, 0.14), transparent 38%);
+  animation: statCardBreathe 6.4s ease-in-out infinite;
+  transform-origin: center;
+  will-change: transform, opacity;
   pointer-events: none;
 }
 
@@ -727,16 +740,12 @@ body::after {
 
 @keyframes auroraPulse10 {
   0% {
-    background-position: 0% 50%;
+    transform: translateX(-34%);
     opacity: 0.28;
-  }
-  50% {
-    background-position: 100% 50%;
-    opacity: 0.42;
   }
   100% {
-    background-position: 220% 50%;
-    opacity: 0.28;
+    transform: translateX(34%);
+    opacity: 0.46;
   }
 }
 
@@ -777,6 +786,18 @@ body::after {
   }
   50% {
     box-shadow: 0 0 26px rgba(109, 216, 255, 0.28);
+  }
+}
+
+@keyframes statCardBreathe {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.96;
+    transform: scale(1.012);
   }
 }
 
