@@ -14,7 +14,7 @@ export default function BrandLogo({
   className = "",
   titleClassName = "",
   subtitleClassName = "",
-  subtitle = "Precision Career Intelligence",
+  subtitle = "Interview Calls Made Easier",
   intro = false,
 }: BrandLogoProps) {
   const [introActive, setIntroActive] = useState(false);

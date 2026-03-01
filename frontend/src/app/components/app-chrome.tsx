@@ -29,7 +29,7 @@ export default function AppChrome({ children }: AppChromeProps) {
         <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-3">
           <div>
             <BrandLogo
-              subtitle="Predictive Hiring Intelligence"
+              subtitle="Interview Calls Made Easier"
               titleClassName="text-lg"
               subtitleClassName="text-[10px] tracking-[0.16em]"
             />

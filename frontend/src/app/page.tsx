@@ -4,7 +4,7 @@ import Link from "next/link";
 
 const proofStats = [
   { label: "Prediction Layers", value: "12+", showAurora: true },
-  { label: "Role Universe", value: "Unlimited", showAurora: true },
+  { label: "Jobs We Cover", value: "All Major Domains", showAurora: true },
   { label: "Resume Output Modes", value: "3", showAurora: false },
   { label: "Actionable Suggestions", value: "Deep Strategy", showAurora: false },
 ];

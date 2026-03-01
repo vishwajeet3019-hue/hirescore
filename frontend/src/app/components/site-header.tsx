@@ -93,7 +93,7 @@ export default function SiteHeader() {
         <Link href="/" className="group">
           <BrandLogo
             intro
-            subtitle="Predictive Hiring Intelligence"
+            subtitle="Interview Calls Made Easier"
             titleClassName="font-mono text-sm tracking-wide sm:text-xl"
             subtitleClassName="text-[10px] tracking-[0.16em] sm:text-xs sm:tracking-[0.26em]"
           />

@@ -6988,6 +6988,75 @@ def admin_chat_reply(request: Request, user_id: int, data: AdminChatReplyRequest
     return {"message": saved}
 
 
+@app.delete("/admin/chats/{user_id}/messages/{message_id}")
+def admin_chat_delete_message(request: Request, user_id: int, message_id: int) -> dict[str, Any]:
+    require_admin_access(request)
+    if user_id <= 0 or message_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id or message id.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            user = cursor.execute("SELECT id FROM users WHERE id = ? LIMIT 1", (user_id,)).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="User not found.")
+
+            message_row = cursor.execute(
+                """
+                SELECT id, sender_role
+                FROM user_chat_messages
+                WHERE id = ? AND user_id = ?
+                LIMIT 1
+                """,
+                (message_id, user_id),
+            ).fetchone()
+            if not message_row:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="Chat message not found.")
+
+            cursor.execute("DELETE FROM user_chat_messages WHERE id = ? AND user_id = ?", (message_id, user_id))
+            connection.commit()
+        finally:
+            connection.close()
+
+    log_analytics_event(
+        "admin_chat",
+        "message_deleted",
+        user_id=user_id,
+        meta={"message_id": message_id, "sender_role": safe_text(message_row["sender_role"])},
+    )
+    return {"deleted": True, "user_id": user_id, "message_id": message_id}
+
+
+@app.delete("/admin/chats/{user_id}")
+def admin_chat_clear_thread(request: Request, user_id: int) -> dict[str, Any]:
+    require_admin_access(request)
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            user = cursor.execute("SELECT id FROM users WHERE id = ? LIMIT 1", (user_id,)).fetchone()
+            if not user:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="User not found.")
+
+            cursor.execute("DELETE FROM user_chat_messages WHERE user_id = ?", (user_id,))
+            deleted_count = int(max(0, cursor.rowcount))
+            connection.commit()
+        finally:
+            connection.close()
+
+    log_analytics_event("admin_chat", "thread_cleared", user_id=user_id, meta={"deleted_messages": deleted_count})
+    return {"deleted": True, "user_id": user_id, "deleted_messages": deleted_count}
+
+
 @app.patch("/admin/users/{user_id}")
 def admin_update_user(user_id: int, data: AdminUserUpdateRequest, request: Request) -> dict[str, Any]:
     require_admin_access(request)

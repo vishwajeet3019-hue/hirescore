@@ -152,6 +152,7 @@ export default function AdminPage() {
   const [chatReplyText, setChatReplyText] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
+  const [chatModerationKey, setChatModerationKey] = useState<string | null>(null);
   const [activityTab, setActivityTab] = useState<"feedback" | "events" | "credits">("feedback");
   const [workspaceTab, setWorkspaceTab] = useState<"users" | "support" | "activity">("users");
 
@@ -367,6 +368,54 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Unable to send reply.");
     } finally {
       setChatSending(false);
+    }
+  };
+
+  const deleteChatMessage = async (messageId: number) => {
+    const targetUser = activeChatUser;
+    if (!targetUser || messageId <= 0) return;
+    if (!window.confirm(`Delete this message #${messageId}?`)) return;
+
+    const key = `msg-${messageId}`;
+    setChatModerationKey(key);
+    setError("");
+    setSuccess("");
+    try {
+      await adminFetch(`/admin/chats/${targetUser.id}/messages/${messageId}`, {
+        method: "DELETE",
+      });
+      setSuccess(`Message #${messageId} deleted.`);
+      await loadChatConversation(targetUser.id);
+      await loadAdminData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete chat message.");
+    } finally {
+      setChatModerationKey(null);
+    }
+  };
+
+  const clearChatThread = async (thread: AdminChatThread) => {
+    if (!window.confirm(`Clear all messages for ${thread.name}? This cannot be undone.`)) return;
+    const key = `thread-${thread.user_id}`;
+    setChatModerationKey(key);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await adminFetch<{ deleted_messages?: number }>(`/admin/chats/${thread.user_id}`, {
+        method: "DELETE",
+      });
+      const deletedCount = Number(response.deleted_messages || 0);
+      setSuccess(`${thread.name} chat cleared (${deletedCount} deleted).`);
+      if (activeChatUser?.id === thread.user_id) {
+        setActiveChatUser(null);
+        setChatMessages([]);
+        setChatReplyText("");
+      }
+      await loadAdminData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to clear chat thread.");
+    } finally {
+      setChatModerationKey(null);
     }
   };
 
@@ -942,29 +991,43 @@ export default function AdminPage() {
                   {chatThreads.map((thread) => {
                     const isActive = activeChatUser?.id === thread.user_id;
                     return (
-                      <button
+                      <article
                         key={thread.user_id}
-                        type="button"
-                        onClick={() => void openChatThread(thread)}
-                        className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                        className={`rounded-xl border px-2 py-2 transition ${
                           isActive
                             ? "border-sky-300/42 bg-sky-300/14"
                             : "border-slate-200/18 bg-slate-800/36 hover:bg-slate-700/36"
                         }`}
                       >
-                        <p className="text-sm font-semibold text-slate-100">{thread.name}</p>
-                        <p className="text-xs text-slate-300/76">{thread.email}</p>
-                        <p className="mt-1 text-xs text-slate-300/80">
-                          {thread.last_sender_role === "admin" ? "Admin: " : "User: "}
-                          {thread.last_message || "No message preview"}
-                        </p>
-                        <div className="mt-1 flex items-center justify-between text-[11px] uppercase tracking-[0.1em] text-slate-400/78">
-                          <span>{formatDateTime(thread.last_created_at) || "No time"}</span>
-                          <span className="rounded-full border border-slate-200/16 bg-slate-700/20 px-2 py-0.5">
-                            {thread.unread_by_admin > 0 ? `${thread.unread_by_admin} new` : "Seen"}
-                          </span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void openChatThread(thread)}
+                            className="flex-1 px-1 text-left"
+                          >
+                            <p className="text-sm font-semibold text-slate-100">{thread.name}</p>
+                            <p className="text-xs text-slate-300/76">{thread.email}</p>
+                            <p className="mt-1 text-xs text-slate-300/80">
+                              {thread.last_sender_role === "admin" ? "Admin: " : "User: "}
+                              {thread.last_message || "No message preview"}
+                            </p>
+                            <div className="mt-1 flex items-center justify-between text-[11px] uppercase tracking-[0.1em] text-slate-400/78">
+                              <span>{formatDateTime(thread.last_created_at) || "No time"}</span>
+                              <span className="rounded-full border border-slate-200/16 bg-slate-700/20 px-2 py-0.5">
+                                {thread.unread_by_admin > 0 ? `${thread.unread_by_admin} new` : "Seen"}
+                              </span>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void clearChatThread(thread)}
+                            disabled={chatModerationKey === `thread-${thread.user_id}`}
+                            className="self-start rounded-lg border border-rose-300/34 bg-rose-300/12 px-2 py-1 text-[11px] font-semibold text-rose-100 transition hover:bg-rose-300/20 disabled:opacity-60"
+                          >
+                            {chatModerationKey === `thread-${thread.user_id}` ? "..." : "Clear"}
+                          </button>
                         </div>
-                      </button>
+                      </article>
                     );
                   })}
                 </aside>
@@ -1004,9 +1067,19 @@ export default function AdminPage() {
                               }`}
                             >
                               <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
-                              <p className="mt-1 text-[11px] uppercase tracking-[0.1em] text-white/62">
-                                {fromAdmin ? "Admin" : "User"} • {formatDateTime(msg.created_at)}
-                              </p>
+                              <div className="mt-1 flex items-center justify-between gap-2">
+                                <p className="text-[11px] uppercase tracking-[0.1em] text-white/62">
+                                  {fromAdmin ? "Admin" : "User"} • {formatDateTime(msg.created_at)}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => void deleteChatMessage(msg.id)}
+                                  disabled={chatModerationKey === `msg-${msg.id}`}
+                                  className="rounded-md border border-rose-300/35 bg-rose-300/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-100 transition hover:bg-rose-300/20 disabled:opacity-60"
+                                >
+                                  {chatModerationKey === `msg-${msg.id}` ? "..." : "Delete"}
+                                </button>
+                              </div>
                             </div>
                           );
                         })}
@@ -1023,7 +1096,7 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() => void sendChatReply()}
-                            disabled={chatSending || chatLoading}
+                            disabled={chatSending || chatLoading || Boolean(chatModerationKey)}
                             className="rounded-xl border border-sky-300/30 bg-sky-400/14 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
                           >
                             {chatSending ? "Sending..." : "Send Reply"}
