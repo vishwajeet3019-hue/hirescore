@@ -102,11 +102,24 @@ try:
 except Exception:
     ANALYZE_LLM_BLEND = 0.28
 ANALYZE_LLM_BLEND = max(0.08, min(0.6, ANALYZE_LLM_BLEND))
+ANALYZE_CACHE_ENABLED = env_flag("ANALYZE_CACHE_ENABLED", True)
+ANALYZE_SMART_ROUTING_ENABLED = env_flag("ANALYZE_SMART_ROUTING_ENABLED", True)
+ANALYZE_SELF_LEARNING_ENABLED = env_flag("ANALYZE_SELF_LEARNING_ENABLED", True)
+ANALYZE_MEMORY_ROUTE_ENABLED = env_flag("ANALYZE_MEMORY_ROUTE_ENABLED", True)
+try:
+    ANALYZE_CACHE_TTL_HOURS = float((os.getenv("ANALYZE_CACHE_TTL_HOURS") or "240").strip())
+except Exception:
+    ANALYZE_CACHE_TTL_HOURS = 240.0
+ANALYZE_CACHE_TTL_HOURS = max(1.0, min(24.0 * 60.0, ANALYZE_CACHE_TTL_HOURS))
+ANALYZE_MEMORY_MIN_FEEDBACK = max(1, min(80, int((os.getenv("ANALYZE_MEMORY_MIN_FEEDBACK") or "6").strip())))
 configured_fallback_models = [model.strip() for model in (os.getenv("OPENAI_FALLBACK_MODELS") or "").split(",") if model.strip()]
 if configured_fallback_models:
     OPENAI_FALLBACK_MODELS = configured_fallback_models
 else:
     OPENAI_FALLBACK_MODELS = [model for model in ["gpt-4.1-mini", "gpt-4o-mini"] if model != OPENAI_MODEL]
+ANALYZE_LLM_LOW_MODEL = (os.getenv("ANALYZE_LLM_LOW_MODEL") or ANALYZE_LLM_MODEL).strip() or ANALYZE_LLM_MODEL
+default_high_model = OPENAI_FALLBACK_MODELS[0] if OPENAI_FALLBACK_MODELS else ANALYZE_LLM_MODEL
+ANALYZE_LLM_HIGH_MODEL = (os.getenv("ANALYZE_LLM_HIGH_MODEL") or default_high_model).strip() or ANALYZE_LLM_MODEL
 client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 if client is None:
@@ -1795,6 +1808,44 @@ def init_auth_db() -> None:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS analysis_semantic_cache (
+                        id BIGSERIAL PRIMARY KEY,
+                        cache_key TEXT NOT NULL UNIQUE,
+                        industry TEXT,
+                        role TEXT,
+                        role_track TEXT,
+                        payload_json TEXT NOT NULL,
+                        model TEXT,
+                        usage_count INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        last_used_at TEXT
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS analysis_learning_memory (
+                        bucket_key TEXT PRIMARY KEY,
+                        industry TEXT,
+                        role TEXT,
+                        role_track TEXT,
+                        sample_count INTEGER NOT NULL DEFAULT 0,
+                        feedback_count INTEGER NOT NULL DEFAULT 0,
+                        avg_feedback_rating REAL NOT NULL DEFAULT 0,
+                        avg_overall_score REAL NOT NULL DEFAULT 0,
+                        avg_confidence REAL NOT NULL DEFAULT 0,
+                        positive_feedback_count INTEGER NOT NULL DEFAULT 0,
+                        negative_feedback_count INTEGER NOT NULL DEFAULT 0,
+                        quick_win_counts_json TEXT NOT NULL DEFAULT '{}',
+                        missing_skill_counts_json TEXT NOT NULL DEFAULT '{}',
+                        model_success_json TEXT NOT NULL DEFAULT '{}',
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT NOT NULL DEFAULT ''")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_tier TEXT NOT NULL DEFAULT 'free'")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 1")
@@ -1934,6 +1985,44 @@ def init_auth_db() -> None:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS analysis_semantic_cache (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        cache_key TEXT NOT NULL UNIQUE,
+                        industry TEXT,
+                        role TEXT,
+                        role_track TEXT,
+                        payload_json TEXT NOT NULL,
+                        model TEXT,
+                        usage_count INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        last_used_at TEXT
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS analysis_learning_memory (
+                        bucket_key TEXT PRIMARY KEY,
+                        industry TEXT,
+                        role TEXT,
+                        role_track TEXT,
+                        sample_count INTEGER NOT NULL DEFAULT 0,
+                        feedback_count INTEGER NOT NULL DEFAULT 0,
+                        avg_feedback_rating REAL NOT NULL DEFAULT 0,
+                        avg_overall_score REAL NOT NULL DEFAULT 0,
+                        avg_confidence REAL NOT NULL DEFAULT 0,
+                        positive_feedback_count INTEGER NOT NULL DEFAULT 0,
+                        negative_feedback_count INTEGER NOT NULL DEFAULT 0,
+                        quick_win_counts_json TEXT NOT NULL DEFAULT '{}',
+                        missing_skill_counts_json TEXT NOT NULL DEFAULT '{}',
+                        model_success_json TEXT NOT NULL DEFAULT '{}',
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
                 user_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(users)").fetchall()]
                 if "full_name" not in user_columns:
                     cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
@@ -1953,6 +2042,8 @@ def init_auth_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_admin_unread ON user_chat_messages (read_by_admin, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_unread ON user_chat_messages (user_id, read_by_user, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_reports_user_time ON analysis_reports (user_id, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_updated ON analysis_semantic_cache (updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_learning_memory_track_time ON analysis_learning_memory (role_track, updated_at)")
             connection.commit()
         finally:
             connection.close()
@@ -4710,6 +4801,540 @@ def normalize_string_list(value: Any, limit: int = 6, max_item_len: int = 140) -
     return normalized
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except Exception:
+        return int(default)
+
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def normalize_counter_key(value: str) -> str:
+    return re.sub(r"\s+", " ", safe_text(value)).strip()
+
+
+def parse_counter_json(raw_value: Any) -> dict[str, int]:
+    if isinstance(raw_value, dict):
+        parsed = raw_value
+    else:
+        parsed = parse_meta_json(raw_value)
+        if not isinstance(parsed, dict):
+            return {}
+    counters: dict[str, int] = {}
+    for key, value in parsed.items():
+        normalized_key = normalize_counter_key(str(key))
+        if not normalized_key:
+            continue
+        count = max(0, safe_int(value, 0))
+        if count > 0:
+            counters[normalized_key] = count
+    return counters
+
+
+def upsert_counter_phrase(counter: dict[str, int], phrase: str, delta: int = 1) -> None:
+    text = normalize_counter_key(phrase)
+    if not text:
+        return
+    normalized = normalize_search_text(text)
+    if not normalized:
+        return
+    existing_key = next((key for key in counter if normalize_search_text(key) == normalized), None)
+    if existing_key:
+        counter[existing_key] = max(0, safe_int(counter.get(existing_key), 0) + max(1, delta))
+        return
+    counter[text[:120]] = max(1, delta)
+
+
+def top_counter_phrases(counter: dict[str, int], limit: int = 6, max_chars: int = 120) -> list[str]:
+    ordered = sorted(counter.items(), key=lambda item: (-safe_int(item[1], 0), len(item[0]), item[0].lower()))
+    result: list[str] = []
+    for phrase, _count in ordered:
+        cleaned = safe_text(phrase)[:max_chars]
+        if cleaned and cleaned not in result:
+            result.append(cleaned)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def build_learning_bucket(industry: str, role: str, role_track: str) -> dict[str, str]:
+    role_token = normalize_search_text(role)[:96]
+    industry_token = normalize_search_text(industry)[:96]
+    track_token = normalize_search_text(role_track)[:48] or "general"
+    seed = f"{track_token}|{industry_token}|{role_token}"
+    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:20]
+    return {
+        "bucket_key": f"{track_token}:{digest}",
+        "industry": industry_token,
+        "role": role_token,
+        "role_track": track_token,
+    }
+
+
+def build_semantic_cache_key(
+    industry: str,
+    role: str,
+    skills_text: str,
+    experience_years: float | None,
+    age_years: float | None,
+) -> str:
+    normalized_skills = sorted(tokenize_keywords(safe_text(skills_text)))
+    if not normalized_skills:
+        fallback = normalize_search_text(skills_text)
+        normalized_skills = fallback.split(" ")[:120] if fallback else []
+    payload = {
+        "industry": normalize_search_text(industry)[:80],
+        "role": normalize_search_text(role)[:80],
+        "experience_years": None if experience_years is None else round(float(experience_years), 1),
+        "age_years": None if age_years is None else round(float(age_years), 1),
+        "skills": normalized_skills[:120],
+    }
+    return hashlib.sha256(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def default_learning_memory(bucket: dict[str, str]) -> dict[str, Any]:
+    return {
+        "bucket_key": safe_text(bucket.get("bucket_key")),
+        "industry": safe_text(bucket.get("industry")),
+        "role": safe_text(bucket.get("role")),
+        "role_track": safe_text(bucket.get("role_track")),
+        "sample_count": 0,
+        "feedback_count": 0,
+        "avg_feedback_rating": 0.0,
+        "avg_overall_score": 0.0,
+        "avg_confidence": 0.0,
+        "positive_feedback_count": 0,
+        "negative_feedback_count": 0,
+        "quick_win_counts": {},
+        "missing_skill_counts": {},
+        "model_success": {},
+    }
+
+
+def fetch_learning_memory(bucket: dict[str, str]) -> dict[str, Any]:
+    if not ANALYZE_SELF_LEARNING_ENABLED:
+        return default_learning_memory(bucket)
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            row = connection.execute(
+                """
+                SELECT bucket_key, industry, role, role_track, sample_count, feedback_count, avg_feedback_rating,
+                       avg_overall_score, avg_confidence, positive_feedback_count, negative_feedback_count,
+                       quick_win_counts_json, missing_skill_counts_json, model_success_json
+                FROM analysis_learning_memory
+                WHERE bucket_key = ?
+                LIMIT 1
+                """,
+                (safe_text(bucket.get("bucket_key")),),
+            ).fetchone()
+        finally:
+            connection.close()
+
+    memory = default_learning_memory(bucket)
+    if not row:
+        return memory
+
+    memory["sample_count"] = max(0, safe_int(row["sample_count"], 0))
+    memory["feedback_count"] = max(0, safe_int(row["feedback_count"], 0))
+    memory["avg_feedback_rating"] = round(clamp_float(safe_float(row["avg_feedback_rating"], 0.0), 0.0, 5.0), 3)
+    memory["avg_overall_score"] = round(clamp_float(safe_float(row["avg_overall_score"], 0.0), 0.0, 100.0), 3)
+    memory["avg_confidence"] = round(clamp_float(safe_float(row["avg_confidence"], 0.0), 0.0, 100.0), 3)
+    memory["positive_feedback_count"] = max(0, safe_int(row["positive_feedback_count"], 0))
+    memory["negative_feedback_count"] = max(0, safe_int(row["negative_feedback_count"], 0))
+    memory["quick_win_counts"] = parse_counter_json(row["quick_win_counts_json"])
+    memory["missing_skill_counts"] = parse_counter_json(row["missing_skill_counts_json"])
+    parsed_model_success = parse_meta_json(row["model_success_json"])
+    memory["model_success"] = parsed_model_success if isinstance(parsed_model_success, dict) else {}
+    return memory
+
+
+def persist_learning_memory(
+    bucket: dict[str, str],
+    analysis: dict[str, Any] | None = None,
+    semantic_model: str | None = None,
+    ai_used: bool | None = None,
+    cache_hit: bool = False,
+    feedback_rating: int | None = None,
+) -> None:
+    if not ANALYZE_SELF_LEARNING_ENABLED:
+        return
+
+    memory = fetch_learning_memory(bucket)
+    sample_count = max(0, safe_int(memory.get("sample_count"), 0))
+    feedback_count = max(0, safe_int(memory.get("feedback_count"), 0))
+    avg_feedback = clamp_float(safe_float(memory.get("avg_feedback_rating"), 0.0), 0.0, 5.0)
+    avg_overall = clamp_float(safe_float(memory.get("avg_overall_score"), 0.0), 0.0, 100.0)
+    avg_conf = clamp_float(safe_float(memory.get("avg_confidence"), 0.0), 0.0, 100.0)
+    positive_feedback_count = max(0, safe_int(memory.get("positive_feedback_count"), 0))
+    negative_feedback_count = max(0, safe_int(memory.get("negative_feedback_count"), 0))
+    quick_win_counts = parse_counter_json(memory.get("quick_win_counts"))
+    missing_skill_counts = parse_counter_json(memory.get("missing_skill_counts"))
+    model_success = memory.get("model_success")
+    if not isinstance(model_success, dict):
+        model_success = {}
+
+    if analysis is not None:
+        current_overall = clamp_float(safe_float(analysis.get("overall_score"), 0.0), 0.0, 100.0)
+        current_conf = clamp_float(safe_float(analysis.get("confidence"), 0.0), 0.0, 100.0)
+        next_sample_count = sample_count + 1
+        if next_sample_count > 0:
+            avg_overall = ((avg_overall * sample_count) + current_overall) / next_sample_count
+            avg_conf = ((avg_conf * sample_count) + current_conf) / next_sample_count
+        sample_count = next_sample_count
+
+        for quick_win in normalize_string_list((analysis.get("quick_wins") or []), limit=7, max_item_len=120):
+            upsert_counter_phrase(quick_win_counts, quick_win, delta=1)
+        for skill in normalize_string_list((analysis.get("critical_missing_skills") or []), limit=10, max_item_len=80):
+            upsert_counter_phrase(missing_skill_counts, skill, delta=1)
+
+        model_key = safe_text(semantic_model)
+        if ai_used and model_key:
+            existing_entry = model_success.get(model_key)
+            if not isinstance(existing_entry, dict):
+                existing_entry = {}
+            existing_entry["calls"] = max(0, safe_int(existing_entry.get("calls"), 0) + 1)
+            existing_entry["cache_hits"] = max(0, safe_int(existing_entry.get("cache_hits"), 0) + (1 if cache_hit else 0))
+            model_success[model_key] = existing_entry
+
+    if feedback_rating is not None:
+        rating = int(clamp_float(float(feedback_rating), 1.0, 5.0))
+        next_feedback_count = feedback_count + 1
+        if next_feedback_count > 0:
+            avg_feedback = ((avg_feedback * feedback_count) + rating) / next_feedback_count
+        feedback_count = next_feedback_count
+        if rating >= 4:
+            positive_feedback_count += 1
+        elif rating <= 2:
+            negative_feedback_count += 1
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            existing = cursor.execute(
+                "SELECT bucket_key FROM analysis_learning_memory WHERE bucket_key = ? LIMIT 1",
+                (safe_text(bucket.get("bucket_key")),),
+            ).fetchone()
+            payload = (
+                safe_text(bucket.get("industry")),
+                safe_text(bucket.get("role")),
+                safe_text(bucket.get("role_track")),
+                int(sample_count),
+                int(feedback_count),
+                round(avg_feedback, 4),
+                round(avg_overall, 4),
+                round(avg_conf, 4),
+                int(positive_feedback_count),
+                int(negative_feedback_count),
+                json.dumps(quick_win_counts, separators=(",", ":"), sort_keys=True),
+                json.dumps(missing_skill_counts, separators=(",", ":"), sort_keys=True),
+                json.dumps(model_success, separators=(",", ":"), sort_keys=True),
+                now_utc_iso(),
+                safe_text(bucket.get("bucket_key")),
+            )
+            if existing:
+                cursor.execute(
+                    """
+                    UPDATE analysis_learning_memory
+                    SET industry = ?,
+                        role = ?,
+                        role_track = ?,
+                        sample_count = ?,
+                        feedback_count = ?,
+                        avg_feedback_rating = ?,
+                        avg_overall_score = ?,
+                        avg_confidence = ?,
+                        positive_feedback_count = ?,
+                        negative_feedback_count = ?,
+                        quick_win_counts_json = ?,
+                        missing_skill_counts_json = ?,
+                        model_success_json = ?,
+                        updated_at = ?
+                    WHERE bucket_key = ?
+                    """,
+                    payload,
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO analysis_learning_memory (
+                        industry, role, role_track, sample_count, feedback_count, avg_feedback_rating,
+                        avg_overall_score, avg_confidence, positive_feedback_count, negative_feedback_count,
+                        quick_win_counts_json, missing_skill_counts_json, model_success_json, updated_at, bucket_key
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    payload,
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            logger.exception("Failed to persist analysis learning memory for bucket '%s'.", safe_text(bucket.get("bucket_key")))
+        finally:
+            connection.close()
+
+
+def fetch_cached_semantic_overlay(cache_key: str) -> tuple[dict[str, Any] | None, str | None]:
+    if not ANALYZE_CACHE_ENABLED:
+        return None, None
+    cache_token = safe_text(cache_key)
+    if not cache_token:
+        return None, None
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            row = connection.execute(
+                """
+                SELECT cache_key, payload_json, model, updated_at
+                FROM analysis_semantic_cache
+                WHERE cache_key = ?
+                LIMIT 1
+                """,
+                (cache_token,),
+            ).fetchone()
+            if not row:
+                return None, None
+
+            updated_at = parse_iso_datetime(safe_text(row["updated_at"]))
+            age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
+            if age_seconds > (ANALYZE_CACHE_TTL_HOURS * 3600.0):
+                return None, None
+
+            payload = parse_meta_json(row["payload_json"])
+            if not isinstance(payload, dict):
+                return None, None
+
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            cursor.execute(
+                """
+                UPDATE analysis_semantic_cache
+                SET usage_count = COALESCE(usage_count, 0) + 1,
+                    last_used_at = ?,
+                    updated_at = ?
+                WHERE cache_key = ?
+                """,
+                (now_utc_iso(), now_utc_iso(), cache_token),
+            )
+            connection.commit()
+            return payload, safe_text(row["model"]) or None
+        except Exception:
+            connection.rollback()
+            logger.exception("Failed to read semantic cache entry.")
+            return None, None
+        finally:
+            connection.close()
+
+
+def save_cached_semantic_overlay(
+    cache_key: str,
+    industry: str,
+    role: str,
+    role_track: str,
+    semantic_payload: dict[str, Any],
+    model: str | None,
+) -> None:
+    if not ANALYZE_CACHE_ENABLED:
+        return
+    cache_token = safe_text(cache_key)
+    if not cache_token or not isinstance(semantic_payload, dict):
+        return
+
+    serialized = json.dumps(semantic_payload, separators=(",", ":"), ensure_ascii=False, sort_keys=True, default=str)
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            existing = cursor.execute(
+                "SELECT id FROM analysis_semantic_cache WHERE cache_key = ? LIMIT 1",
+                (cache_token,),
+            ).fetchone()
+            if existing:
+                cursor.execute(
+                    """
+                    UPDATE analysis_semantic_cache
+                    SET industry = ?,
+                        role = ?,
+                        role_track = ?,
+                        payload_json = ?,
+                        model = ?,
+                        updated_at = ?
+                    WHERE cache_key = ?
+                    """,
+                    (
+                        normalize_search_text(industry)[:96],
+                        normalize_search_text(role)[:96],
+                        normalize_search_text(role_track)[:48],
+                        serialized,
+                        safe_text(model),
+                        now_utc_iso(),
+                        cache_token,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO analysis_semantic_cache (
+                        cache_key, industry, role, role_track, payload_json, model, usage_count, created_at, updated_at, last_used_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        cache_token,
+                        normalize_search_text(industry)[:96],
+                        normalize_search_text(role)[:96],
+                        normalize_search_text(role_track)[:48],
+                        serialized,
+                        safe_text(model),
+                        0,
+                        now_utc_iso(),
+                        now_utc_iso(),
+                        None,
+                    ),
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            logger.exception("Failed to store semantic cache entry.")
+        finally:
+            connection.close()
+
+
+def build_memory_prompt_context(memory: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "top_quick_wins": top_counter_phrases(parse_counter_json(memory.get("quick_win_counts")), limit=4, max_chars=110),
+        "top_missing_skills": top_counter_phrases(parse_counter_json(memory.get("missing_skill_counts")), limit=5, max_chars=80),
+        "feedback_count": max(0, safe_int(memory.get("feedback_count"), 0)),
+        "avg_feedback_rating": round(clamp_float(safe_float(memory.get("avg_feedback_rating"), 0.0), 0.0, 5.0), 2),
+    }
+
+
+def apply_learning_memory_overlay(base: dict[str, Any], memory: dict[str, Any], max_items: int = 3) -> None:
+    learned_quick_wins = top_counter_phrases(parse_counter_json(memory.get("quick_win_counts")), limit=max_items, max_chars=110)
+    if learned_quick_wins:
+        base["quick_wins"] = dedupe_preserve_order([*learned_quick_wins, *(base.get("quick_wins") or [])])[:7]
+    learned_missing = top_counter_phrases(parse_counter_json(memory.get("missing_skill_counts")), limit=max_items, max_chars=64)
+    if learned_missing:
+        base["critical_missing_skills"] = dedupe_preserve_order([*(base.get("critical_missing_skills") or []), *learned_missing])[:10]
+
+
+def choose_hybrid_routing(base_analysis: dict[str, Any], skills_text: str, memory: dict[str, Any]) -> dict[str, Any]:
+    base_confidence = clamp_float(safe_float(base_analysis.get("confidence"), 0), 0.0, 100.0)
+    base_overall = clamp_float(safe_float(base_analysis.get("overall_score"), 0), 0.0, 100.0)
+    critical_missing_count = len(base_analysis.get("critical_missing_skills") or [])
+    unique_skills = max(0, safe_int((base_analysis.get("precision_diagnostics") or {}).get("unique_skills"), 0))
+    feedback_count = max(0, safe_int(memory.get("feedback_count"), 0))
+    avg_feedback = clamp_float(safe_float(memory.get("avg_feedback_rating"), 0.0), 0.0, 5.0)
+    negative_feedback_count = max(0, safe_int(memory.get("negative_feedback_count"), 0))
+
+    complexity = 38.0
+    if base_confidence < 72:
+        complexity += 16
+    if base_confidence < 58:
+        complexity += 11
+    if base_overall < 58:
+        complexity += 10
+    if critical_missing_count >= 5:
+        complexity += 8
+    if critical_missing_count >= 8:
+        complexity += 8
+    if len(safe_text(skills_text)) > 2200:
+        complexity += 7
+    if unique_skills <= 6:
+        complexity += 7
+    if feedback_count >= ANALYZE_MEMORY_MIN_FEEDBACK and avg_feedback >= 4.3:
+        complexity -= 10
+    if negative_feedback_count >= 2:
+        complexity += 12
+    complexity = clamp_float(complexity, 0.0, 100.0)
+
+    if not ANALYZE_SMART_ROUTING_ENABLED:
+        return {
+            "strategy": "llm",
+            "complexity": int(round(complexity)),
+            "reason": "smart_routing_disabled",
+            "preferred_models": [ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS],
+        }
+
+    memory_only = (
+        ANALYZE_MEMORY_ROUTE_ENABLED
+        and feedback_count >= ANALYZE_MEMORY_MIN_FEEDBACK
+        and avg_feedback >= 4.25
+        and negative_feedback_count <= 1
+        and base_confidence >= 88
+        and base_overall >= 80
+        and complexity <= 30
+    )
+    if memory_only:
+        return {
+            "strategy": "memory_only",
+            "complexity": int(round(complexity)),
+            "reason": "high_confidence_role_memory",
+            "preferred_models": [],
+        }
+
+    preferred: list[str] = []
+    if complexity >= 65:
+        preferred.extend([ANALYZE_LLM_HIGH_MODEL, ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS])
+    elif complexity <= 35:
+        preferred.extend([ANALYZE_LLM_LOW_MODEL, ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS])
+    else:
+        preferred.extend([ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS, ANALYZE_LLM_HIGH_MODEL])
+
+    seen_models: set[str] = set()
+    preferred_models: list[str] = []
+    for model in preferred:
+        candidate = safe_text(model)
+        if candidate and candidate not in seen_models:
+            seen_models.add(candidate)
+            preferred_models.append(candidate)
+
+    return {
+        "strategy": "llm",
+        "complexity": int(round(complexity)),
+        "reason": "dynamic_model_routing",
+        "preferred_models": preferred_models,
+    }
+
+
+def apply_feedback_learning_signal(user_id: int, rating: int) -> None:
+    if not ANALYZE_SELF_LEARNING_ENABLED or user_id <= 0:
+        return
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            row = connection.execute(
+                """
+                SELECT industry, role, report_json
+                FROM analysis_reports
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (int(user_id),),
+            ).fetchone()
+        finally:
+            connection.close()
+    if not row:
+        return
+
+    parsed_payload = parse_meta_json(row["report_json"])
+    role_track = safe_text(str(parsed_payload.get("role_track", ""))) or infer_role_track(safe_text(row["role"]), safe_text(row["industry"]))
+    bucket = build_learning_bucket(safe_text(row["industry"]), safe_text(row["role"]), role_track)
+    persist_learning_memory(bucket=bucket, analysis=None, feedback_rating=int(clamp_float(float(rating), 1.0, 5.0)))
+
+
 def request_semantic_analysis_overlay(
     industry: str,
     role: str,
@@ -4717,15 +5342,27 @@ def request_semantic_analysis_overlay(
     base_analysis: dict[str, Any],
     experience_years: float | None = None,
     age_years: float | None = None,
+    preferred_models: list[str] | None = None,
+    memory_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
     if client is None:
         return None, None, "OPENAI_API_KEY not configured"
 
     models: list[str] = []
-    for model in [ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
+    for model in [*(preferred_models or []), ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
         cleaned = safe_text(model)
         if cleaned and cleaned not in models:
             models.append(cleaned)
+
+    memory_section = ""
+    if memory_context:
+        memory_section = (
+            f"\nHistorical memory (use as weak priors, not absolute rules):\n"
+            f"- Avg feedback rating: {safe_float(memory_context.get('avg_feedback_rating'), 0.0):.2f} "
+            f"from {safe_int(memory_context.get('feedback_count'), 0)} feedback events\n"
+            f"- Frequent quick wins: {json.dumps(memory_context.get('top_quick_wins') or [], ensure_ascii=False)}\n"
+            f"- Frequent missing skills: {json.dumps(memory_context.get('top_missing_skills') or [], ensure_ascii=False)}\n"
+        )
 
     prompt = f"""
 You are a strict hiring analyst. Return only one valid JSON object.
@@ -4747,6 +5384,7 @@ Deterministic baseline:
     "missing_core_skills": base_analysis.get("missing_core_skills", [])[:8],
     "matched_core_skills": base_analysis.get("matched_core_skills", [])[:8],
 }, ensure_ascii=False)}
+{memory_section}
 
 JSON schema (all keys required):
 {{
@@ -4810,23 +5448,72 @@ def analyze_profile_hybrid(
         salary_boost_toggles=salary_boost_toggles,
     )
     base["source"] = source
+    role_track = safe_text(str(base.get("role_track", ""))) or infer_role_track(role, industry)
+    memory_bucket = build_learning_bucket(industry, role, role_track)
+    memory = fetch_learning_memory(memory_bucket)
+    routing = choose_hybrid_routing(base, skills_text, memory)
+    cache_key = build_semantic_cache_key(industry, role, skills_text, experience_years, age_years)
 
     if ANALYZE_MODE == "rules":
+        apply_learning_memory_overlay(base, memory, max_items=2)
         base["analysis_mode"] = "rules"
-        base["analysis_ai"] = {"used": False, "model": None, "reason": "ANALYZE_MODE=rules"}
+        base["analysis_ai"] = {
+            "used": False,
+            "model": None,
+            "reason": "ANALYZE_MODE=rules",
+            "cache_hit": False,
+            "routing": routing,
+        }
+        persist_learning_memory(memory_bucket, analysis=base, semantic_model=None, ai_used=False, cache_hit=False)
         return base
 
-    semantic_payload, semantic_model, semantic_error = request_semantic_analysis_overlay(
-        industry=industry,
-        role=role,
-        skills_text=skills_text,
-        base_analysis=base,
-        experience_years=experience_years,
-        age_years=age_years,
-    )
+    semantic_payload: dict[str, Any] | None = None
+    semantic_model: str | None = None
+    semantic_error: str | None = None
+    cache_hit = False
+
+    if routing["strategy"] != "memory_only":
+        semantic_payload, semantic_model = fetch_cached_semantic_overlay(cache_key)
+        if semantic_payload is not None:
+            cache_hit = True
+
+    if semantic_payload is None and routing["strategy"] != "memory_only":
+        semantic_payload, semantic_model, semantic_error = request_semantic_analysis_overlay(
+            industry=industry,
+            role=role,
+            skills_text=skills_text,
+            base_analysis=base,
+            experience_years=experience_years,
+            age_years=age_years,
+            preferred_models=routing.get("preferred_models") or None,
+            memory_context=build_memory_prompt_context(memory),
+        )
+        if semantic_payload is not None:
+            save_cached_semantic_overlay(
+                cache_key=cache_key,
+                industry=industry,
+                role=role,
+                role_track=role_track,
+                semantic_payload=semantic_payload,
+                model=semantic_model,
+            )
+
     if semantic_payload is None:
-        base["analysis_mode"] = "rules_fallback"
-        base["analysis_ai"] = {"used": False, "model": semantic_model, "reason": semantic_error}
+        apply_learning_memory_overlay(base, memory, max_items=3)
+        if routing["strategy"] == "memory_only":
+            base["analysis_mode"] = "hybrid_memory"
+            fallback_reason = safe_text(routing.get("reason")) or "memory_only_route"
+        else:
+            base["analysis_mode"] = "rules_fallback"
+            fallback_reason = semantic_error or "semantic_overlay_unavailable"
+        base["analysis_ai"] = {
+            "used": False,
+            "model": semantic_model,
+            "reason": fallback_reason,
+            "cache_hit": cache_hit,
+            "routing": routing,
+        }
+        persist_learning_memory(memory_bucket, analysis=base, semantic_model=semantic_model, ai_used=False, cache_hit=cache_hit)
         return base
 
     def safe_float_from_payload(key: str, default_value: float) -> float:
@@ -4884,7 +5571,6 @@ def analyze_profile_hybrid(
     if semantic_summary:
         base["semantic_summary"] = semantic_summary
 
-    role_track = safe_text(str(base.get("role_track", ""))) or infer_role_track(role, industry)
     seniority = safe_text(str(base.get("seniority_assumption", ""))) or infer_seniority(role)
     critical_missing = [safe_text(str(item)) for item in (base.get("critical_missing_skills") or []) if safe_text(str(item))]
     core_missing = [safe_text(str(item)) for item in (base.get("missing_core_skills") or []) if safe_text(str(item))]
@@ -4918,12 +5604,22 @@ def analyze_profile_hybrid(
         applications_used,
         base["ninety_plus_strategy"],
     )
-    base["analysis_mode"] = "hybrid"
+    apply_learning_memory_overlay(base, memory, max_items=2)
+    base["analysis_mode"] = "hybrid_cached" if cache_hit else "hybrid"
     base["analysis_ai"] = {
         "used": True,
         "model": semantic_model or ANALYZE_LLM_MODEL,
         "blend": ANALYZE_LLM_BLEND,
+        "cache_hit": cache_hit,
+        "routing": routing,
     }
+    persist_learning_memory(
+        memory_bucket,
+        analysis=base,
+        semantic_model=semantic_model or ANALYZE_LLM_MODEL,
+        ai_used=True,
+        cache_hit=cache_hit,
+    )
     return base
 
 
@@ -6073,6 +6769,7 @@ def submit_feedback(data: FeedbackSubmitRequest, request: Request) -> dict[str, 
         user_id=int(user["id"]),
         meta={"rating": rating, "source": safe_text(data.source)},
     )
+    apply_feedback_learning_signal(int(user["id"]), rating)
     refreshed = fetch_user_by_id(int(user["id"]))
     if not refreshed:
         raise HTTPException(status_code=500, detail="Unable to refresh account.")
