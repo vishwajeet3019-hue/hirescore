@@ -179,20 +179,6 @@ body::after {
   overflow: hidden;
 }
 
-.stat-live-card::after {
-  content: "" !important;
-  position: absolute;
-  top: -18%;
-  left: -42%;
-  width: 38%;
-  height: 146%;
-  border-radius: 999px;
-  background: linear-gradient(115deg, transparent 0%, rgba(183, 247, 255, 0.28) 52%, transparent 100%);
-  filter: blur(2px);
-  animation: cardFlareSweep 6.8s ease-in-out infinite !important;
-  pointer-events: none;
-}
-
 .stat-live-card::before {
   content: "" !important;
   position: absolute;
@@ -740,17 +726,17 @@ body::after {
 }
 
 @keyframes auroraPulse10 {
-  0%,
-  82% {
+  0% {
     background-position: 0% 50%;
-    opacity: 0.26;
+    opacity: 0.28;
   }
-  92% {
-    opacity: 0.95;
+  50% {
+    background-position: 100% 50%;
+    opacity: 0.42;
   }
   100% {
     background-position: 220% 50%;
-    opacity: 0.3;
+    opacity: 0.28;
   }
 }
 
