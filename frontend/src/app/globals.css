@@ -171,7 +171,35 @@ body::after {
 }
 
 .soft-pulse {
-  animation: none;
+  animation: softPulse 5.8s ease-in-out infinite;
+}
+
+.stat-live-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-live-card::after {
+  content: "" !important;
+  position: absolute;
+  top: -18%;
+  left: -42%;
+  width: 38%;
+  height: 146%;
+  border-radius: 999px;
+  background: linear-gradient(115deg, transparent 0%, rgba(183, 247, 255, 0.28) 52%, transparent 100%);
+  filter: blur(2px);
+  animation: cardFlareSweep 6.8s ease-in-out infinite !important;
+  pointer-events: none;
+}
+
+.stat-live-card::before {
+  content: "" !important;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 82% 18%, rgba(157, 239, 255, 0.14), transparent 38%);
+  pointer-events: none;
 }
 
 .signal-line {

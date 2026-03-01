@@ -3,10 +3,10 @@
 import Link from "next/link";
 
 const proofStats = [
-  { label: "Prediction Layers", value: "12+", showAurora: true },
-  { label: "Jobs We Cover", value: "All Major Domains", showAurora: true },
-  { label: "Premium Resume Templates", value: "6", showAurora: false },
-  { label: "Actionable Suggestions", value: "Deep Strategy", showAurora: false },
+  { label: "Prediction Layers", value: "12+" },
+  { label: "Jobs We Cover", value: "All Major Domains" },
+  { label: "Premium Resume Templates", value: "6" },
+  { label: "Actionable Suggestions", value: "Deep Strategy" },
 ];
 
 const valueCards = [
@@ -130,10 +130,10 @@ export default function Home() {
 
             <div className="space-y-3">
               {proofStats.map((stat) => (
-                <div key={stat.label} className="holo-sheen soft-pulse rounded-2xl border border-cyan-100/18 bg-cyan-100/7 p-4">
+                <div key={stat.label} className="stat-live-card holo-sheen soft-pulse rounded-2xl border border-cyan-100/18 bg-cyan-100/7 p-4">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/62 sm:text-xs sm:tracking-[0.2em]">{stat.label}</p>
                   <p className="mt-1 text-2xl font-semibold text-cyan-50">{stat.value}</p>
-                  {stat.showAurora && <div className="aurora-strip mt-3 h-1 rounded-full" />}
+                  <div className="aurora-strip mt-3 h-1 rounded-full" />
                 </div>
               ))}
             </div>
@@ -144,7 +144,7 @@ export default function Home() {
       <section className="mx-auto mt-10 max-w-7xl">
         <div className="grid gap-5 md:grid-cols-3">
           {valueCards.map((card, index) => (
-            <article key={card.title} className="neon-panel holo-sheen rounded-3xl p-5 sm:p-6 transition-transform duration-200 hover:-translate-y-1">
+            <article key={card.title} className="stat-live-card neon-panel holo-sheen rounded-3xl p-5 sm:p-6 transition-transform duration-200 hover:-translate-y-1">
               <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.2em]">Value {index + 1}</p>
               <h2 className="mt-4 text-xl font-semibold text-cyan-50 sm:text-2xl">{card.title}</h2>
               <p className="mt-3 text-sm leading-relaxed text-cyan-50/70">{card.description}</p>

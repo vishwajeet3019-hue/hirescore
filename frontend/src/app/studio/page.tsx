@@ -42,6 +42,7 @@ type ResumeTemplate = {
   badge: string;
   panelClass: string;
   previewSrc: string;
+  previewScaleClass?: string;
 };
 
 const RESUME_TEMPLATES: ResumeTemplate[] = [
@@ -52,6 +53,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     badge: "Modern",
     panelClass: "border-indigo-100/32 bg-gradient-to-br from-indigo-200/15 via-cyan-100/7 to-slate-100/8",
     previewSrc: "/template-previews/metro-overview.png",
+    previewScaleClass: "scale-[1.42]",
   },
   {
     id: "dublin",
@@ -60,6 +62,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     badge: "Corporate",
     panelClass: "border-emerald-100/36 bg-gradient-to-br from-emerald-200/18 via-cyan-100/10 to-sky-100/8",
     previewSrc: "/template-previews/dublin-overview.png",
+    previewScaleClass: "scale-[1.38]",
   },
   {
     id: "slate",
@@ -68,6 +71,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     badge: "Showcase",
     panelClass: "border-teal-100/40 bg-gradient-to-br from-teal-300/20 via-cyan-200/8 to-slate-100/8",
     previewSrc: "/template-previews/slate-overview.png",
+    previewScaleClass: "scale-[1.34]",
   },
   {
     id: "quantum",
@@ -76,6 +80,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     badge: "Tech",
     panelClass: "border-cyan-100/40 bg-gradient-to-br from-cyan-300/20 via-cyan-200/10 to-sky-200/8",
     previewSrc: "/template-previews/quantum-overview.png",
+    previewScaleClass: "scale-[1.4]",
   },
   {
     id: "executive",
@@ -84,6 +89,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     badge: "Premium",
     panelClass: "border-amber-100/38 bg-gradient-to-br from-amber-100/15 via-amber-50/8 to-cyan-100/8",
     previewSrc: "/template-previews/executive-overview.png",
+    previewScaleClass: "scale-[1.34]",
   },
   {
     id: "minimal",
@@ -92,6 +98,7 @@ const RESUME_TEMPLATES: ResumeTemplate[] = [
     badge: "ATS",
     panelClass: "border-cyan-100/24 bg-cyan-100/6",
     previewSrc: "/template-previews/minimal-overview.png",
+    previewScaleClass: "scale-[1.38]",
   },
 ];
 
@@ -1379,15 +1386,16 @@ export default function StudioPage() {
                         active ? "ring-1 ring-cyan-100/65" : "hover:brightness-110"
                       }`}
                     >
-                      <div className="mb-3 overflow-hidden rounded-xl border border-cyan-100/20 bg-slate-100/95">
-                        <div className="relative aspect-[16/9] w-full">
+                      <div className="mb-3 overflow-hidden rounded-xl border border-cyan-100/20 bg-slate-100/92 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]">
+                        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[10px]">
                           <Image
                             src={template.previewSrc}
                             alt={`${template.name} preview`}
                             fill
-                            className="object-contain p-1"
+                            className={`object-cover object-top transition-transform duration-300 ${template.previewScaleClass || "scale-[1.35]"}`}
                             sizes="(max-width: 768px) 100vw, 33vw"
                           />
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-900/28 via-slate-900/8 to-transparent" />
                         </div>
                       </div>
                       <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/70">{template.badge}</p>

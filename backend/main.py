@@ -8519,6 +8519,12 @@ def analysis_scalar_text(value: Any, max_len: int = 180) -> str:
 
 
 def analysis_list_items(value: Any, limit: int = 8, max_item_len: int = 180) -> list[str]:
+    if isinstance(value, list):
+        if any(isinstance(item, dict) for item in value):
+            dict_lines = analysis_action_lines(value, limit=limit, max_item_len=max_item_len)
+            if dict_lines:
+                return dict_lines[:limit]
+
     items = normalize_string_list(value, limit=limit, max_item_len=max_item_len)
     if items:
         return items
@@ -8554,6 +8560,38 @@ def analysis_dict_lines(value: Any, preferred_keys: list[str], limit: int = 8, m
             scalar = analysis_scalar_text(raw_value, max_len=max_item_len)
             if scalar:
                 lines.append(f"{label}: {scalar}")
+        if len(lines) >= limit:
+            break
+    return lines[:limit]
+
+
+def analysis_action_lines(value: Any, limit: int = 5, max_item_len: int = 180) -> list[str]:
+    if not isinstance(value, list):
+        return analysis_list_items(value, limit=limit, max_item_len=max_item_len)
+    lines: list[str] = []
+    for item in value:
+        if isinstance(item, dict):
+            step = safe_text(str(item.get("step_label") or item.get("priority") or item.get("step") or "")).strip()
+            title = safe_text(str(item.get("title") or item.get("focus") or "")).strip()
+            action = safe_text(str(item.get("action") or item.get("task") or "")).strip()
+            if step:
+                if title:
+                    line = f"{step}: {title}"
+                elif action:
+                    line = f"{step}: {action}"
+                else:
+                    line = step
+                if title and action and normalize_search_text(title) != normalize_search_text(action):
+                    line = f"{line} - {action}"
+            else:
+                line = " - ".join(part for part in [title, action] if part).strip(" -")
+        else:
+            line = safe_text(str(item)).strip()
+        if not line:
+            continue
+        clipped = line[:max_item_len]
+        if clipped not in lines:
+            lines.append(clipped)
         if len(lines) >= limit:
             break
     return lines[:limit]
@@ -8643,13 +8681,10 @@ def render_analysis_report_pdf_bytes(report_payload: dict[str, Any], report_row:
     created_at = safe_text(str((report_row["created_at"] if report_row else "") or report_payload.get("created_at") or now_utc_iso()))
     shortlist = safe_text(str(report_payload.get("shortlist_prediction", "")))
     source = safe_text(str(report_payload.get("source", ""))) or (safe_text(str(report_row["source"])) if report_row else "manual_input")
-    mode = safe_text(str(report_payload.get("analysis_mode", ""))) or "hybrid"
-
     overall_score = clamp_float(safe_float(report_payload.get("overall_score"), 0), 0.0, 100.0)
     confidence = clamp_float(safe_float(report_payload.get("confidence"), 0), 0.0, 100.0)
     skill_match = clamp_float(safe_float(report_payload.get("skill_match"), 0), 0.0, 100.0)
     ats_friendliness = clamp_float(safe_float(report_payload.get("ats_friendliness"), 0), 0.0, 100.0)
-    prediction_range = safe_text(str(report_payload.get("prediction_range", "")))
 
     story: list[Any] = []
     story.append(Paragraph("HireScore Analysis Report", title_style))
@@ -8666,8 +8701,6 @@ def render_analysis_report_pdf_bytes(report_payload: dict[str, Any], report_row:
         ("ATS Friendliness", f"{int(round(ats_friendliness))}%"),
         ("Confidence", f"{int(round(confidence))}%"),
         ("Shortlist Prediction", shortlist or "Not available"),
-        ("Prediction Range", prediction_range or "Not available"),
-        ("Analysis Mode", mode),
         ("Source", source.replace("_", " ").title()),
     ]
     metrics_table = Table(
@@ -8712,12 +8745,27 @@ def render_analysis_report_pdf_bytes(report_payload: dict[str, Any], report_row:
     add_section("Critical Missing Skills", analysis_list_items(report_payload.get("critical_missing_skills"), limit=10, max_item_len=80))
     add_section("Strength Signals", analysis_list_items(report_payload.get("matched_core_skills") or report_payload.get("matched_keywords"), limit=10, max_item_len=80))
 
+    strategy_payload = report_payload.get("ninety_plus_strategy")
     strategy_lines = analysis_dict_lines(
-        report_payload.get("ninety_plus_strategy"),
-        preferred_keys=["target_score", "focus", "timeline", "priority", "actions", "week_plan", "risk"],
+        strategy_payload,
+        preferred_keys=[
+            "target_score",
+            "current_score",
+            "gap_to_90",
+            "focus",
+            "timeline",
+            "projected_score_after_execution",
+            "execution_window_weeks",
+            "week_plan",
+            "risk",
+            "plan_status",
+        ],
         limit=8,
         max_item_len=200,
     )
+    if isinstance(strategy_payload, dict):
+        strategy_lines.extend(analysis_action_lines(strategy_payload.get("actions"), limit=4, max_item_len=200))
+        strategy_lines = strategy_lines[:12]
     add_section("90+ Strategy", strategy_lines)
 
     salary_lines = analysis_dict_lines(
