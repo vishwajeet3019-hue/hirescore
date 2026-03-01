@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import Image from "next/image";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
 
@@ -105,6 +106,13 @@ const STUDIO_AI_LOADING_STEPS = [
   "Finalizing polished recruiter-ready draft",
 ] as const;
 const MIN_STUDIO_AI_LOADING_MS = 6000;
+const PLACEHOLDER_CANDIDATE_NAMES = new Set([
+  "candidate",
+  "candidate name",
+  "optimized-resume",
+  "optimized resume",
+  "resume",
+]);
 
 export default function StudioPage() {
   const [mode, setMode] = useState<"build" | "polish" | "compose">("build");
@@ -214,6 +222,36 @@ export default function StudioPage() {
   const remainingGeneration = wallet ? Math.floor(wallet.credits / Math.max(1, wallet.pricing.ai_resume_generation)) : 0;
   const canUseAiGeneration = (wallet?.credits || 0) >= (wallet?.pricing.ai_resume_generation || 15);
   const canUsePdfTemplate = (wallet?.credits || 0) >= (wallet?.pricing.template_pdf_download || 20);
+
+  const inferNameFromResumeText = (text: string) => {
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/[*_`]+/g, "").trim())
+      .filter(Boolean);
+    for (const line of lines.slice(0, 12)) {
+      const lowered = line.toLowerCase();
+      if (line.length < 2 || line.length > 64) continue;
+      if (lowered.includes("@") || lowered.includes("linkedin") || lowered.includes("github")) continue;
+      if (/\d{3,}/.test(line)) continue;
+      if (/(professional summary|work experience|key skills|education|projects|resume)/i.test(line)) continue;
+      if (line.split(/\s+/).length > 6) continue;
+      return line;
+    }
+    return "";
+  };
+
+  const resolveCandidateName = (resumeText?: string) => {
+    const typedName = name.trim();
+    if (typedName && !PLACEHOLDER_CANDIDATE_NAMES.has(typedName.toLowerCase())) {
+      return typedName;
+    }
+    if (resumeText) {
+      const inferred = inferNameFromResumeText(resumeText);
+      if (inferred) return inferred;
+    }
+    const emailName = authUserEmail.trim().split("@")[0]?.replace(/[._-]+/g, " ").trim();
+    return emailName || "";
+  };
 
   const parseApiError = async (response: Response) => {
     const payload = (await response.json().catch(() => null)) as
@@ -555,7 +593,7 @@ export default function StudioPage() {
               ...authHeader,
             },
             body: JSON.stringify({
-              name: name || "Candidate",
+              name: resolveCandidateName(),
               industry,
               role,
               experience_years: inferExperienceYears(),
@@ -618,7 +656,7 @@ export default function StudioPage() {
               ...authHeader,
             },
             body: JSON.stringify({
-              name: name || "Candidate",
+              name: resolveCandidateName(polishText),
               industry: industry || "General",
               role: role || "General Role",
               experience_years: inferExperienceYears(),
@@ -656,7 +694,7 @@ export default function StudioPage() {
   const buildDraftLocally = () => {
     const blocks: string[] = [];
 
-    blocks.push((name.trim() || "Candidate Name").toUpperCase());
+    blocks.push((resolveCandidateName() || "Candidate Name").toUpperCase());
 
     if (role.trim() || industry.trim()) {
       blocks.push([role.trim(), industry.trim()].filter(Boolean).join(" | "));
@@ -713,7 +751,7 @@ export default function StudioPage() {
             ...authHeader,
           },
           body: JSON.stringify({
-            name: name || "Candidate",
+            name: resolveCandidateName(),
             industry,
             role,
             experience_years: inferExperienceYears(),
@@ -806,7 +844,7 @@ export default function StudioPage() {
           ...authHeader,
         },
         body: JSON.stringify({
-          name: name || "optimized-resume",
+          name: resolveCandidateName(content),
           template: selectedTemplate,
           resume_text: content,
         }),
@@ -817,10 +855,10 @@ export default function StudioPage() {
 
       const blob = await response.blob();
       const safeName =
-        (name || "optimized-resume")
+        (resolveCandidateName(content) || "resume")
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "") || "optimized-resume";
+          .replace(/^-+|-+$/g, "") || "resume";
 
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
@@ -1341,13 +1379,16 @@ export default function StudioPage() {
                         active ? "ring-1 ring-cyan-100/65" : "hover:brightness-110"
                       }`}
                     >
-                      <div className="mb-3 overflow-hidden rounded-xl border border-cyan-100/20 bg-[#071a33]">
-                        <img
-                          src={template.previewSrc}
-                          alt={`${template.name} preview`}
-                          className="h-32 w-full object-cover object-top"
-                          loading="lazy"
-                        />
+                      <div className="mb-3 overflow-hidden rounded-xl border border-cyan-100/20 bg-slate-100/95">
+                        <div className="relative aspect-[16/9] w-full">
+                          <Image
+                            src={template.previewSrc}
+                            alt={`${template.name} preview`}
+                            fill
+                            className="object-contain p-1"
+                            sizes="(max-width: 768px) 100vw, 33vw"
+                          />
+                        </div>
                       </div>
                       <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/70">{template.badge}</p>
                       <p className="mt-2 text-base font-semibold text-cyan-50">{template.name}</p>

@@ -123,7 +123,7 @@ export default function DashboardPage() {
       const objectUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = objectUrl;
-      link.download = downloadFilename(response, `analysis-report-${reportId}.json`);
+      link.download = downloadFilename(response, `analysis-report-${reportId}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -208,7 +208,7 @@ export default function DashboardPage() {
                       disabled={downloadingReportId === report.id}
                       className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {downloadingReportId === report.id ? "Downloading..." : "Download JSON"}
+                      {downloadingReportId === report.id ? "Downloading..." : "Download PDF"}
                     </button>
                   </article>
                 ))}

@@ -5902,6 +5902,17 @@ RESUME_SECTION_TITLES = {
     "interests": "Interests",
 }
 
+RESUME_PLACEHOLDER_NAMES = {
+    "candidate",
+    "candidate name",
+    "resume",
+    "resume candidate",
+    "optimized resume",
+    "optimised resume",
+    "optimized-resume",
+    "optimised-resume",
+}
+
 
 def normalize_resume_section_key(value: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", " ", safe_text(value).lower()).strip()
@@ -5934,6 +5945,42 @@ def looks_like_contact_line(line: str) -> bool:
         or "|" in text
         or re.search(r"\+?\d[\d\-\s]{7,}", text)
     )
+
+
+def is_placeholder_candidate_name(value: str) -> bool:
+    normalized = normalize_resume_drop_text(value)
+    if not normalized:
+        return True
+    if normalized in RESUME_PLACEHOLDER_NAMES:
+        return True
+    if normalized.startswith("candidate "):
+        return True
+    return False
+
+
+def infer_candidate_name_from_resume_lines(lines: list[str]) -> str:
+    for raw_line in lines[:10]:
+        line = clean_resume_line(re.sub(r"[*_`]+", "", safe_text(raw_line)))
+        if not line:
+            continue
+        if should_drop_resume_line(line):
+            continue
+        if looks_like_resume_heading(line):
+            continue
+        if looks_like_contact_line(line):
+            continue
+        if is_bullet_line(line):
+            continue
+        if len(line) > 64 or len(line) < 2:
+            continue
+        if len(line.split()) > 6:
+            continue
+        if re.search(r"\b(resume|curriculum vitae|professional summary|profile)\b", line.lower()):
+            continue
+        if re.search(r"\d{3,}", line):
+            continue
+        return line
+    return ""
 
 
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*•]\s+|\d{1,2}[\).]\s+)")
@@ -5999,12 +6046,10 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
     lines = [line for line in raw_lines if line]
 
     guessed_name = safe_text(name)
-    if not guessed_name and lines:
-        first_line = lines[0]
-        if len(first_line) <= 64 and not looks_like_resume_heading(first_line):
-            guessed_name = first_line
-    if guessed_name and should_drop_resume_line(guessed_name):
+    if is_placeholder_candidate_name(guessed_name) or should_drop_resume_line(guessed_name):
         guessed_name = ""
+    if not guessed_name:
+        guessed_name = infer_candidate_name_from_resume_lines(lines)
 
     sections: dict[str, list[str]] = {}
     contact_lines: list[str] = []
@@ -6063,6 +6108,146 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
         "headline": headline,
         "sections": [(key, cleaned_sections[key]) for key in ordered_keys],
     }
+
+
+def coerce_resume_layout_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+
+    sections_raw = payload.get("sections")
+    collected: dict[str, list[str]] = {}
+
+    if isinstance(sections_raw, dict):
+        iterator = [{"key": key, "lines": value} for key, value in sections_raw.items()]
+    elif isinstance(sections_raw, list):
+        iterator = sections_raw
+    else:
+        iterator = []
+
+    for item in iterator:
+        if not isinstance(item, dict):
+            continue
+        key = normalize_resume_section_key(safe_text(item.get("key") or item.get("section") or item.get("title")))
+        if not key or key == "meta_ignore":
+            continue
+        if key not in RESUME_SECTION_TITLES:
+            key = "summary"
+
+        lines_value = item.get("lines")
+        lines: list[str] = []
+        if isinstance(lines_value, str):
+            lines = [clean_resume_line(part) for part in lines_value.split("\n")]
+        elif isinstance(lines_value, list):
+            lines = [clean_resume_line(str(part)) for part in lines_value]
+        elif isinstance(item.get("content"), str):
+            lines = [clean_resume_line(part) for part in safe_text(item.get("content")).split("\n")]
+
+        cleaned = [line for line in lines if line and not should_drop_resume_line(line)]
+        if cleaned:
+            collected.setdefault(key, []).extend(cleaned[:32])
+
+    if not collected:
+        return None
+
+    ordered_keys = [key for key in RESUME_SECTION_ORDER if key in collected]
+    ordered_keys += [key for key in collected if key not in ordered_keys]
+    sections = [(key, collected[key][:40]) for key in ordered_keys]
+
+    parsed_name = clean_resume_line(safe_text(payload.get("name")))
+    if is_placeholder_candidate_name(parsed_name):
+        parsed_name = ""
+    parsed_contact = clean_resume_line(safe_text(payload.get("contact_line")))
+    parsed_headline = clean_resume_line(safe_text(payload.get("headline")))
+
+    return {
+        "name": parsed_name,
+        "contact_line": parsed_contact,
+        "headline": parsed_headline,
+        "sections": sections,
+    }
+
+
+def parse_resume_sections_smart(name: str, resume_text: str) -> dict[str, Any]:
+    deterministic = parse_resume_sections(name, resume_text)
+    if client is None:
+        return deterministic
+    if len(safe_text(resume_text)) < 120:
+        return deterministic
+
+    prompt = f"""
+You are a resume layout parser for PDF generation.
+Return ONLY one valid JSON object. No markdown, no explanation.
+
+Allowed section keys: {json.dumps(RESUME_SECTION_ORDER)}
+Rules:
+- Preserve factual content from input.
+- Never invent companies, dates, metrics, or skills.
+- Keep section lines concise and readable.
+- Use key \"summary\" for unmatched content.
+- If candidate name is unavailable, return empty string for \"name\".
+
+Input resume text:
+{safe_text(resume_text)[:8200]}
+
+Output schema:
+{{
+  "name": "string",
+  "contact_line": "string",
+  "headline": "string",
+  "sections": [
+    {{"key": "summary", "lines": ["line 1", "line 2"]}}
+  ]
+}}
+"""
+
+    models: list[str] = []
+    for model in [OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
+        cleaned = safe_text(model)
+        if cleaned and cleaned not in models:
+            models.append(cleaned)
+
+    for model in models:
+        for attempt in range(2):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "Return strict JSON only. No markdown."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.05,
+                )
+                content = extract_llm_text(response.choices[0].message.content if response.choices else "")
+                parsed_json = parse_llm_json_payload(content)
+                if not parsed_json:
+                    continue
+                smart = coerce_resume_layout_payload(parsed_json)
+                if not smart:
+                    continue
+
+                if not smart["name"]:
+                    smart["name"] = deterministic["name"]
+                if is_placeholder_candidate_name(smart["name"]):
+                    smart["name"] = deterministic["name"]
+                if not smart["contact_line"]:
+                    smart["contact_line"] = deterministic["contact_line"]
+                if not smart["headline"]:
+                    smart["headline"] = deterministic["headline"]
+                if not smart["sections"]:
+                    smart["sections"] = deterministic["sections"]
+                return smart
+            except Exception as exc:
+                logger.exception(
+                    "Resume smart parsing failed for model '%s' (attempt %s).",
+                    model,
+                    attempt + 1,
+                )
+                if attempt == 0 and is_transient_openai_error(exc):
+                    time.sleep(0.2)
+                    continue
+                break
+
+    return deterministic
 
 
 def template_palette(template_key: str) -> dict[str, colors.Color]:
@@ -6652,7 +6837,12 @@ def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes
     if template_key not in {"minimal", "executive", "quantum", "dublin", "slate", "metro"}:
         template_key = "minimal"
 
-    parsed = parse_resume_sections(name, sanitize_resume_output(resume_text))
+    sanitized_resume = sanitize_resume_output(resume_text)
+    parsed = parse_resume_sections_smart(name, sanitized_resume)
+    if is_placeholder_candidate_name(safe_text(parsed.get("name"))):
+        fallback_name = infer_candidate_name_from_resume_lines(sanitized_resume.split("\n"))
+        if fallback_name:
+            parsed["name"] = fallback_name
     styles = build_pdf_styles(template_key)
     palette = template_palette(template_key)
 
