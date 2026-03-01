@@ -1771,6 +1771,21 @@ def init_auth_db() -> None:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS analysis_reports (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL REFERENCES users (id),
+                        source TEXT NOT NULL,
+                        industry TEXT,
+                        role TEXT,
+                        overall_score INTEGER,
+                        shortlist_prediction TEXT,
+                        report_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT NOT NULL DEFAULT ''")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_tier TEXT NOT NULL DEFAULT 'free'")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 1")
@@ -1894,6 +1909,22 @@ def init_auth_db() -> None:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS analysis_reports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        source TEXT NOT NULL,
+                        industry TEXT,
+                        role TEXT,
+                        overall_score INTEGER,
+                        shortlist_prediction TEXT,
+                        report_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
                 user_columns = [row["name"] for row in cursor.execute("PRAGMA table_info(users)").fetchall()]
                 if "full_name" not in user_columns:
                     cursor.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
@@ -1912,6 +1943,7 @@ def init_auth_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_time ON user_chat_messages (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_admin_unread ON user_chat_messages (read_by_admin, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_unread ON user_chat_messages (user_id, read_by_user, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_reports_user_time ON analysis_reports (user_id, created_at)")
             connection.commit()
         finally:
             connection.close()
@@ -4646,6 +4678,42 @@ def fallback_build_resume(data: ResumeBuildRequest) -> str:
     return sanitize_resume_output("\n\n".join(sections))
 
 
+RESUME_DROP_EXACT_LINES = {
+    "references available upon request",
+    "optimized resume",
+    "optimised resume",
+    "resume",
+    "resume draft",
+}
+
+RESUME_DROP_PREFIX_LINES = {
+    "references available upon request",
+    "optimized resume",
+    "optimised resume",
+    "resume draft",
+}
+
+
+def normalize_resume_drop_text(value: str) -> str:
+    cleaned = safe_text(value)
+    cleaned = re.sub(r"[\[\]\(\)\{\}]+", " ", cleaned)
+    cleaned = re.sub(r"[^a-zA-Z0-9]+", " ", cleaned).strip().lower()
+    return cleaned
+
+
+def should_drop_resume_line(value: str) -> bool:
+    normalized = normalize_resume_drop_text(value)
+    if not normalized:
+        return False
+    if normalized in RESUME_DROP_EXACT_LINES:
+        return True
+    words_count = len(normalized.split())
+    for blocked_prefix in RESUME_DROP_PREFIX_LINES:
+        if normalized.startswith(f"{blocked_prefix} ") and words_count <= 7:
+            return True
+    return False
+
+
 def sanitize_resume_output(text: str) -> str:
     normalized_text = safe_text(text)
     if not normalized_text:
@@ -4653,17 +4721,8 @@ def sanitize_resume_output(text: str) -> str:
 
     lines = normalized_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     filtered_lines: list[str] = []
-    blocked_headings = {
-        "references available upon request",
-        "optimized resume",
-        "optimised resume",
-        "resume",
-        "resume draft",
-    }
     for raw_line in lines:
-        line = raw_line.strip()
-        normalized_line = re.sub(r"[\[\]\(\)\{\}\.\,\:\;\-\_\s]+", " ", line).strip().lower()
-        if normalized_line in blocked_headings:
+        if should_drop_resume_line(raw_line):
             continue
         filtered_lines.append(raw_line)
 
@@ -4906,13 +4965,6 @@ def looks_like_contact_line(line: str) -> bool:
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*•]\s+|\d{1,2}[\).]\s+)")
 INLINE_BOLD_RE = re.compile(r"(\*\*|__)(.+?)\1")
 INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
-RESUME_RENDER_DROP_LINES = {
-    "optimized resume",
-    "optimised resume",
-    "resume",
-    "resume draft",
-    "references available upon request",
-}
 
 
 def clean_resume_line(line: str) -> str:
@@ -4987,8 +5039,7 @@ def parse_resume_sections(name: str, resume_text: str) -> dict[str, Any]:
         normalized_line = clean_resume_line(line)
         if not normalized_line:
             continue
-        dropped = re.sub(r"[^a-z0-9]+", " ", normalized_line.lower()).strip()
-        if dropped in RESUME_RENDER_DROP_LINES:
+        if should_drop_resume_line(normalized_line):
             continue
         if index == 0 and guessed_name and normalized_line.lower() == guessed_name.lower():
             continue
@@ -5644,6 +5695,43 @@ def auth_me(request: Request, auth_token: str | None = None) -> dict[str, Any]:
     return auth_response_payload(user)
 
 
+@app.get("/analysis/reports")
+def user_analysis_reports(request: Request, auth_token: str | None = None, limit: int = 40) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    safe_limit = int(clamp_float(float(limit), 1, 120))
+    connection = auth_db_connection()
+    try:
+        reports = collect_analysis_reports_for_user(connection, int(user["id"]), safe_limit)
+    finally:
+        connection.close()
+    return {"reports": reports}
+
+
+@app.get("/analysis/reports/{report_id}/download")
+def download_user_analysis_report(report_id: int, request: Request, auth_token: str | None = None) -> StreamingResponse:
+    if report_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid report id.")
+    user = require_authenticated_user(request, auth_token)
+    user_id = int(user["id"])
+    connection = auth_db_connection()
+    try:
+        row = fetch_analysis_report_for_user(connection, user_id, report_id)
+    finally:
+        connection.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Analysis report not found.")
+
+    parsed_payload = parse_meta_json(row["report_json"])
+    if not isinstance(parsed_payload, dict):
+        parsed_payload = {"analysis": parsed_payload}
+    parsed_payload["report_meta"] = serialize_analysis_report_row(row)
+
+    filename_base = sanitize_download_name(
+        f"{safe_text(row['role']) or 'analysis'}-{safe_text(row['created_at'])[:10] or 'report'}-{report_id}"
+    )
+    return json_download_response(f"{filename_base}.json", parsed_payload)
+
+
 @app.post("/security/leak-trace")
 def security_leak_trace(data: SecurityLeakTraceRequest, request: Request) -> dict[str, Any]:
     action = re.sub(r"[^a-z0-9_:-]", "", safe_text(data.action).lower())[:64] or "unknown"
@@ -6245,6 +6333,108 @@ def parse_meta_json(meta_json: Any) -> dict[str, Any]:
         return json.loads(meta_json or "{}")
     except Exception:
         return {}
+
+
+def serialize_analysis_report_row(row: Any) -> dict[str, Any]:
+    try:
+        raw_score = row["overall_score"]
+    except Exception:
+        raw_score = None
+    overall_score = int(raw_score) if raw_score is not None else None
+    return {
+        "id": int(row["id"]),
+        "source": safe_text(row["source"]) or "manual_input",
+        "industry": safe_text(row["industry"]),
+        "role": safe_text(row["role"]),
+        "overall_score": overall_score,
+        "shortlist_prediction": safe_text(row["shortlist_prediction"]),
+        "created_at": safe_text(row["created_at"]),
+    }
+
+
+def save_analysis_report(
+    user_id: int,
+    source: str,
+    industry: str,
+    role: str,
+    report_payload: dict[str, Any],
+) -> int | None:
+    overall_score: int | None = None
+    raw_score = report_payload.get("overall_score")
+    if raw_score is not None:
+        try:
+            overall_score = int(clamp_float(float(raw_score), 0, 100))
+        except Exception:
+            overall_score = None
+
+    shortlist_prediction = safe_text(str(report_payload.get("shortlist_prediction", "")))[:120]
+    report_json = json.dumps(report_payload, ensure_ascii=False, separators=(",", ":"), default=str)
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            cursor.execute(
+                """
+                INSERT INTO analysis_reports (
+                    user_id,
+                    source,
+                    industry,
+                    role,
+                    overall_score,
+                    shortlist_prediction,
+                    report_json,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    safe_text(source) or "manual_input",
+                    safe_text(industry),
+                    safe_text(role),
+                    overall_score,
+                    shortlist_prediction,
+                    report_json,
+                    now_utc_iso(),
+                ),
+            )
+            report_id = inserted_row_id(connection, cursor)
+            connection.commit()
+            return report_id
+        except Exception:
+            connection.rollback()
+            logger.exception("Failed to save analysis report for user %s", user_id)
+            return None
+        finally:
+            connection.close()
+
+
+def collect_analysis_reports_for_user(connection: AuthDBConnection, user_id: int, limit: int) -> list[dict[str, Any]]:
+    rows = connection.execute(
+        """
+        SELECT id, user_id, source, industry, role, overall_score, shortlist_prediction, created_at
+        FROM analysis_reports
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+    return [serialize_analysis_report_row(row) for row in rows]
+
+
+def fetch_analysis_report_for_user(connection: AuthDBConnection, user_id: int, report_id: int) -> Any:
+    return connection.execute(
+        """
+        SELECT id, user_id, source, industry, role, overall_score, shortlist_prediction, report_json, created_at
+        FROM analysis_reports
+        WHERE id = ? AND user_id = ?
+        LIMIT 1
+        """,
+        (report_id, user_id),
+    ).fetchone()
 
 
 def normalize_chat_message_body(message: str) -> str:
@@ -6980,6 +7170,7 @@ def admin_delete_user(user_id: int, request: Request) -> dict[str, Any]:
             cursor.execute("DELETE FROM user_feedback WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM analytics_events WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM user_chat_messages WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM analysis_reports WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM password_reset_otps WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
             connection.commit()
@@ -7110,7 +7301,17 @@ def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:
         )
         analysis["wallet"] = debit["wallet"]
         analysis["credit_transaction_id"] = debit["transaction_id"]
+        analysis["source"] = "manual_input"
         analysis["feedback_required"] = feedback_required_for_user(int(user["id"]))
+        report_id = save_analysis_report(
+            user_id=int(user["id"]),
+            source="manual_input",
+            industry=safe_text(data.industry),
+            role=safe_text(data.role),
+            report_payload=analysis,
+        )
+        if report_id is not None:
+            analysis["report_id"] = report_id
         log_analytics_event(
             "analysis",
             "analyze_success",
@@ -7178,6 +7379,15 @@ async def analyze_resume_file(
         analysis["source"] = "resume_upload"
         analysis["extracted_chars"] = len(extracted_text)
         analysis["feedback_required"] = feedback_required_for_user(int(user["id"]))
+        report_id = save_analysis_report(
+            user_id=int(user["id"]),
+            source="resume_upload",
+            industry=safe_text(industry),
+            role=safe_text(role),
+            report_payload=analysis,
+        )
+        if report_id is not None:
+            analysis["report_id"] = report_id
         log_analytics_event(
             "analysis",
             "analyze_resume_file_success",

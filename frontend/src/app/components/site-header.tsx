@@ -35,7 +35,7 @@ const isLinkActive = (pathname: string, hash: string, link: NavLink) => {
     return pathname === "/" && hash === "#workflow";
   }
   if (link.href === "/") {
-    return pathname === "/";
+    return pathname === "/" && hash !== "#workflow";
   }
   return pathname === link.href || pathname.startsWith(`${link.href}/`);
 };
