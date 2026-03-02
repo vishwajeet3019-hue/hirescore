@@ -586,7 +586,7 @@ export default function UploadPage() {
   useEffect(() => {
     const container = googleButtonRef.current;
     if (!container) return;
-    if (authToken || signupOtpRequired || forgotPasswordMode || authLiveLoading) {
+    if (!showAuthModal || authToken || signupOtpRequired || forgotPasswordMode || authLiveLoading) {
       container.innerHTML = "";
       return;
     }
@@ -637,7 +637,7 @@ export default function UploadPage() {
     void renderGoogleSignInButton({
       container,
       clientId: GOOGLE_CLIENT_ID,
-      width: 320,
+      width: Math.min(360, Math.max(220, Math.round(container.getBoundingClientRect().width || 360))),
       text: authMode === "signup" ? "signup_with" : "continue_with",
       onCredential: (credential) => {
         if (cancelled) return;
@@ -653,7 +653,7 @@ export default function UploadPage() {
       cancelled = true;
       container.innerHTML = "";
     };
-  }, [authToken, signupOtpRequired, forgotPasswordMode, authMode, authLiveLoading, router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showAuthModal, authToken, signupOtpRequired, forgotPasswordMode, authMode, authLiveLoading, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAnalyzeSuccess = (data: AnalysisResult) => {
     if (data.wallet) {
@@ -1117,28 +1117,7 @@ export default function UploadPage() {
 
                 <div className="mt-4 rounded-2xl border border-amber-100/24 bg-[#24162a]/58 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap gap-2 text-xs text-amber-50/86">
-                      <span className="rounded-xl border border-amber-100/24 bg-amber-100/8 px-2.5 py-1.5">
-                        1. Fill details
-                      </span>
-                      <span className="rounded-xl border border-amber-100/24 bg-amber-100/8 px-2.5 py-1.5">
-                        2. Click Analyze
-                      </span>
-                      <span className="rounded-xl border border-amber-100/24 bg-amber-100/8 px-2.5 py-1.5">
-                        3. Read report
-                      </span>
-                    </div>
-
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">
-                        {authToken ? "Signed In" : "Guest"}
-                      </span>
-                      {authToken && wallet && (
-                        <>
-                          <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Credits: {wallet.credits}</span>
-                          <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Reports: {remainingAnalyze}</span>
-                        </>
-                      )}
                       {!authToken ? (
                         <button
                           type="button"
@@ -1156,6 +1135,18 @@ export default function UploadPage() {
                           Sign Out
                         </button>
                       )}
+                      {authToken && (
+                        <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Signed In</span>
+                      )}
+                      {authToken && wallet && (
+                        <>
+                          <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Credits: {wallet.credits}</span>
+                          <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Reports: {remainingAnalyze}</span>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
                       <Link
                         href="/pricing"
                         className="rounded-xl border border-rose-100/34 bg-rose-100/12 px-3 py-1.5 text-center font-semibold text-rose-50 transition hover:bg-rose-100/18"
@@ -1173,6 +1164,7 @@ export default function UploadPage() {
                       )}
                     </div>
                   </div>
+                  <p className="mt-3 text-xs text-amber-100/82">Flow: Fill details, click Analyze, then read your report.</p>
                   {!authToken && <p className="mt-3 text-xs text-amber-100/82">New users get 5 free credits on signup (one full analysis).</p>}
                   {authToken && authUserEmail && <p className="mt-2 text-xs text-amber-50/74">Signed in as: {authUserEmail}</p>}
                 </div>
@@ -1406,8 +1398,9 @@ export default function UploadPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="fixed inset-0 z-[190] flex items-center justify-center bg-[#020915]/90 px-4 backdrop-blur-xl"
-            onClick={() => {
+            className="fixed inset-0 z-[190] flex items-start justify-center overflow-y-auto bg-[#020915]/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-xl sm:items-center"
+            onClick={(event) => {
+              if (event.target !== event.currentTarget) return;
               if (authLoading || googleAuthLoading) return;
               setShowAuthModal(false);
               setQueuedAnalyzeMode(null);
@@ -1417,7 +1410,7 @@ export default function UploadPage() {
               initial={{ opacity: 0, y: 14, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="w-full max-w-xl rounded-[1.7rem] border border-cyan-100/26 bg-[#04172e]/96 p-6 shadow-[0_35px_100px_rgba(0,0,0,0.6)]"
+              className="my-auto w-full max-w-xl overflow-y-auto rounded-[1.7rem] border border-cyan-100/26 bg-[#04172e]/96 p-6 shadow-[0_35px_100px_rgba(0,0,0,0.6)] max-h-[calc(100dvh-2rem)]"
             >
               <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Login Required</p>
               <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Unlock Your Analysis Report</h3>
@@ -1481,18 +1474,18 @@ export default function UploadPage() {
                 {!forgotPasswordMode && !signupOtpRequired && (
                   <div className="pt-1">
                     <p className="text-center text-[11px] uppercase tracking-[0.16em] text-cyan-100/62">or continue with</p>
-                    <div className="mt-2 flex justify-center">
-                      <div ref={googleButtonRef} className="min-h-[42px] rounded-full" />
+                    <div className="mt-2 flex w-full justify-center">
+                      <div ref={googleButtonRef} className="min-h-[44px] w-full max-w-[360px] rounded-full" />
                     </div>
                     {googleAuthLoading && <p className="mt-2 text-center text-xs text-cyan-100/78">Completing Google sign-in...</p>}
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-2 pt-1">
+                <div className="flex flex-col gap-2 pt-1 sm:flex-row">
                   <button
                     type="submit"
                     disabled={authLoading || googleAuthLoading}
-                    className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+                    className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-center text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60 sm:min-w-[120px] sm:flex-1"
                   >
                     {authLoading || googleAuthLoading
                       ? "Please wait..."
@@ -1516,7 +1509,7 @@ export default function UploadPage() {
                         setAuthInfo("");
                         setAuthError("");
                       }}
-                      className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                      className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-center text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10 sm:min-w-[120px] sm:flex-1"
                     >
                       {authMode === "signup" ? "Use Login" : "Use Signup"}
                     </button>
@@ -1533,7 +1526,7 @@ export default function UploadPage() {
                       setAuthInfo("");
                       setAuthError("");
                     }}
-                    className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                    className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-center text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10 sm:min-w-[120px] sm:flex-1"
                   >
                     {forgotPasswordMode ? "Back To Login" : "Forgot Password"}
                   </button>
