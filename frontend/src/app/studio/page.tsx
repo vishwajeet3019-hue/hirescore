@@ -29,6 +29,8 @@ type AuthPayload = {
   auth_token?: string;
   user?: AuthUser;
   wallet?: CreditWallet;
+  analysis_count?: number;
+  studio_unlocked?: boolean;
   feedback_required?: boolean;
   otp_required?: boolean;
   message?: string;
@@ -156,6 +158,8 @@ export default function StudioPage() {
   const [authToken, setAuthToken] = useState("");
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
+  const [analysisCount, setAnalysisCount] = useState(0);
+  const [studioUnlocked, setStudioUnlocked] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -176,6 +180,12 @@ export default function StudioPage() {
   const applyAuthPayload = (payload: AuthPayload | null | undefined) => {
     if (payload?.wallet) {
       setWallet(payload.wallet);
+    }
+    if (typeof payload?.analysis_count === "number") {
+      setAnalysisCount(Math.max(0, Math.floor(payload.analysis_count)));
+    }
+    if (typeof payload?.studio_unlocked === "boolean") {
+      setStudioUnlocked(payload.studio_unlocked);
     }
     if (payload?.user?.email) {
       setAuthUserEmail(payload.user.email);
@@ -209,6 +219,8 @@ export default function StudioPage() {
         setAuthToken("");
         setWallet(null);
         setAuthUserEmail("");
+        setAnalysisCount(0);
+        setStudioUnlocked(false);
         window.localStorage.removeItem("hirescore_auth_token");
       });
   }, []);
@@ -229,6 +241,8 @@ export default function StudioPage() {
   const remainingGeneration = wallet ? Math.floor(wallet.credits / Math.max(1, wallet.pricing.ai_resume_generation)) : 0;
   const canUseAiGeneration = (wallet?.credits || 0) >= (wallet?.pricing.ai_resume_generation || 15);
   const canUsePdfTemplate = (wallet?.credits || 0) >= (wallet?.pricing.template_pdf_download || 20);
+  const studioLockedByFirstAnalysis = Boolean(authToken && !studioUnlocked);
+  const studioLockMessage = "Run at least 1 analysis on /upload to unlock Resume Studio.";
 
   const inferNameFromResumeText = (text: string) => {
     const lines = text
@@ -262,11 +276,24 @@ export default function StudioPage() {
 
   const parseApiError = async (response: Response) => {
     const payload = (await response.json().catch(() => null)) as
-      | { detail?: string | { message?: string; wallet?: CreditWallet }; wallet?: CreditWallet; auth_token?: string; user?: AuthUser }
+      | {
+          detail?: string | { message?: string; wallet?: CreditWallet; analysis_count?: number; studio_unlocked?: boolean; studio_locked?: boolean };
+          wallet?: CreditWallet;
+          auth_token?: string;
+          user?: AuthUser;
+          analysis_count?: number;
+          studio_unlocked?: boolean;
+        }
       | null;
 
     if (payload?.wallet) {
       setWallet(payload.wallet);
+    }
+    if (typeof payload?.analysis_count === "number") {
+      setAnalysisCount(Math.max(0, Math.floor(payload.analysis_count)));
+    }
+    if (typeof payload?.studio_unlocked === "boolean") {
+      setStudioUnlocked(payload.studio_unlocked);
     }
     if (payload?.auth_token || payload?.user) {
       applyAuthPayload(payload);
@@ -275,6 +302,14 @@ export default function StudioPage() {
     if (payload?.detail && typeof payload.detail === "object") {
       if (payload.detail.wallet) {
         setWallet(payload.detail.wallet);
+      }
+      if (typeof payload.detail.analysis_count === "number") {
+        setAnalysisCount(Math.max(0, Math.floor(payload.detail.analysis_count)));
+      }
+      if (typeof payload.detail.studio_unlocked === "boolean") {
+        setStudioUnlocked(payload.detail.studio_unlocked);
+      } else if (payload.detail.studio_locked) {
+        setStudioUnlocked(false);
       }
       return payload.detail.message || `Request failed (${response.status})`;
     }
@@ -413,7 +448,7 @@ export default function StudioPage() {
     void renderGoogleSignInButton({
       container,
       clientId: GOOGLE_CLIENT_ID,
-      width: 300,
+      width: Math.min(360, Math.max(220, Math.round(container.getBoundingClientRect().width || 360))),
       text: authMode === "signup" ? "signup_with" : "continue_with",
       onCredential: (credential) => {
         if (cancelled) return;
@@ -493,6 +528,8 @@ export default function StudioPage() {
     setAuthToken("");
     setAuthUserEmail("");
     setWallet(null);
+    setAnalysisCount(0);
+    setStudioUnlocked(false);
     setGenerationError("");
     setTemplateError("");
     setAuthInfo("");
@@ -577,11 +614,24 @@ export default function StudioPage() {
     }
   };
 
+  const ensureStudioUnlockedForGeneration = () => {
+    if (!studioLockedByFirstAnalysis) return true;
+    setGenerationError(studioLockMessage);
+    return false;
+  };
+
+  const ensureStudioUnlockedForTemplate = () => {
+    if (!studioLockedByFirstAnalysis) return true;
+    setTemplateError(studioLockMessage);
+    return false;
+  };
+
   const handleBuildResume = async () => {
     if (!authToken || !authHeader) {
       setGenerationError("Login required to use Resume Studio paid features.");
       return;
     }
+    if (!ensureStudioUnlockedForGeneration()) return;
     if (!canUseAiGeneration) {
       setGenerationError(`Need ${wallet?.pricing.ai_resume_generation || 15} credits for AI resume generation.`);
       return;
@@ -741,6 +791,7 @@ export default function StudioPage() {
       setGenerationError("Login required to use AI enhancement.");
       return;
     }
+    if (!ensureStudioUnlockedForGeneration()) return;
     if (!canUseAiGeneration) {
       setGenerationError(`Need ${wallet?.pricing.ai_resume_generation || 15} credits for AI enhancement.`);
       return;
@@ -826,6 +877,7 @@ export default function StudioPage() {
       setTemplateError("Login required to download PDF templates.");
       return;
     }
+    if (!ensureStudioUnlockedForTemplate()) return;
     if (!selectedTemplate) {
       setTemplateError("Select a template before downloading PDF.");
       return;
@@ -933,6 +985,19 @@ export default function StudioPage() {
                       PDF Template: {wallet.pricing.template_pdf_download} credits
                     </span>
                   </div>
+                  {studioLockedByFirstAnalysis && (
+                    <div className="mt-3 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-50">Studio Locked</p>
+                      <p className="mt-1 text-xs text-amber-50/86">{studioLockMessage}</p>
+                      <p className="mt-1 text-[11px] text-amber-50/78">Completed analyses: {analysisCount}</p>
+                      <a
+                        href="/upload"
+                        className="mt-2 inline-flex rounded-lg border border-amber-100/36 bg-amber-100/16 px-2.5 py-1.5 text-[11px] font-semibold text-amber-50 transition hover:bg-amber-100/24"
+                      >
+                        Run First Analysis
+                      </a>
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <a
                       href="/pricing"
@@ -1016,18 +1081,18 @@ export default function StudioPage() {
                   {!forgotPasswordMode && !signupOtpRequired && (
                     <div className="mt-3">
                       <p className="text-center text-[11px] uppercase tracking-[0.16em] text-cyan-100/62">or continue with</p>
-                      <div className="mt-2 flex justify-center">
-                        <div ref={googleButtonRef} className="min-h-[42px] rounded-full" />
+                      <div className="mt-2 flex w-full justify-center">
+                        <div ref={googleButtonRef} className="min-h-[44px] w-full max-w-[360px] rounded-full" />
                       </div>
                       {googleAuthLoading && <p className="mt-2 text-center text-xs text-cyan-100/78">Completing Google sign-in...</p>}
                     </div>
                   )}
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                     <button
                       type="button"
                       onClick={() => void handleAuthSubmit()}
                       disabled={authLoading || googleAuthLoading}
-                      className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+                      className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60 sm:flex-1"
                     >
                       {authLoading || googleAuthLoading
                         ? "Please wait..."
@@ -1051,7 +1116,7 @@ export default function StudioPage() {
                           setAuthError("");
                           setAuthInfo("");
                         }}
-                        className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                        className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10 sm:flex-1"
                       >
                         {authMode === "signup" ? "Use Login" : "Use Signup"}
                       </button>
@@ -1068,7 +1133,7 @@ export default function StudioPage() {
                         setAuthError("");
                         setAuthInfo("");
                       }}
-                      className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                      className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10 sm:flex-1"
                     >
                       {forgotPasswordMode ? "Back To Login" : "Forgot Password"}
                     </button>
@@ -1082,7 +1147,20 @@ export default function StudioPage() {
         </motion.section>
 
         <section className="studio-soft-card rounded-[2rem] p-6 sm:p-8">
-          <div className="grid gap-3 md:grid-cols-3">
+          {studioLockedByFirstAnalysis && (
+            <div className="mb-5 rounded-2xl border border-amber-100/34 bg-amber-100/12 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-50">Studio Unlock Required</p>
+              <p className="mt-2 text-sm text-amber-50/86">{studioLockMessage}</p>
+              <a
+                href="/upload"
+                className="mt-3 inline-flex rounded-xl border border-amber-100/40 bg-amber-100/16 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/24"
+              >
+                Go To First Analysis
+              </a>
+            </div>
+          )}
+          <fieldset disabled={studioLockedByFirstAnalysis} className={studioLockedByFirstAnalysis ? "pointer-events-none opacity-55" : ""}>
+            <div className="grid gap-3 md:grid-cols-3">
             {[
               { id: "build", title: "Build With AI", text: "Generate from structured details." },
               { id: "polish", title: "Polish Existing Resume", text: "Paste text or upload a PDF." },
@@ -1283,6 +1361,7 @@ export default function StudioPage() {
               )}
             </div>
           )}
+          </fieldset>
         </section>
 
         {studioAiLoading && (
@@ -1346,7 +1425,7 @@ export default function StudioPage() {
           </motion.div>
         )}
 
-        {optimizedResume && (
+        {optimizedResume && !studioLockedByFirstAnalysis && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="studio-soft-card rounded-[2rem] p-6 sm:p-8">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-xl font-semibold text-cyan-50">Resume Output Editor</h3>

@@ -2836,6 +2836,11 @@ def get_analyze_count(user_id: int) -> int:
         connection.close()
 
 
+def studio_unlocked_for_user(user_id: int, analyze_count: int | None = None) -> bool:
+    effective_count = max(0, int(analyze_count)) if analyze_count is not None else get_analyze_count(user_id)
+    return effective_count >= 1
+
+
 def has_feedback_submission(user_id: int) -> bool:
     connection = auth_db_connection()
     try:
@@ -2848,8 +2853,25 @@ def has_feedback_submission(user_id: int) -> bool:
         connection.close()
 
 
-def feedback_required_for_user(user_id: int) -> bool:
-    return get_analyze_count(user_id) >= 1 and not has_feedback_submission(user_id)
+def feedback_required_for_user(user_id: int, analyze_count: int | None = None) -> bool:
+    effective_count = max(0, int(analyze_count)) if analyze_count is not None else get_analyze_count(user_id)
+    return effective_count >= 1 and not has_feedback_submission(user_id)
+
+
+def require_studio_access(user_id: int) -> None:
+    analyze_count = get_analyze_count(user_id)
+    if studio_unlocked_for_user(user_id, analyze_count):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "message": "Resume Studio unlocks after your first analysis. Run one analysis on /upload first.",
+            "studio_locked": True,
+            "studio_unlocked": False,
+            "analysis_count": analyze_count,
+            "required_analysis_count": 1,
+        },
+    )
 
 
 def require_feedback_completion(user_id: int) -> None:
@@ -2896,6 +2918,8 @@ def wallet_payload(credits: int) -> dict[str, Any]:
 
 def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> dict[str, Any]:
     user_id = int(user_row["id"])
+    analyze_count = get_analyze_count(user_id)
+    studio_unlocked = studio_unlocked_for_user(user_id, analyze_count)
     email_verified = is_email_verified(user_row)
     payload: dict[str, Any] = {
         "user": {
@@ -2906,7 +2930,9 @@ def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> di
             "created_at": str(user_row["created_at"]),
         },
         "wallet": wallet_payload(int(user_row["credits"])),
-        "feedback_required": feedback_required_for_user(user_id),
+        "analysis_count": analyze_count,
+        "studio_unlocked": studio_unlocked,
+        "feedback_required": feedback_required_for_user(user_id, analyze_count),
         "email_verified": email_verified,
     }
     if token:
@@ -9506,8 +9532,10 @@ def suggest_actions(data: ResumeRequest, request: Request) -> dict[str, Any]:
 @app.post("/build-resume")
 def build_resume(data: ResumeBuildRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
+    user_id = int(user["id"])
+    require_studio_access(user_id)
     debit = debit_credits(
-        int(user["id"]),
+        user_id,
         "ai_resume_generation",
         CREDIT_COSTS["ai_resume_generation"],
         meta={"route": "/build-resume", "role": safe_text(data.role), "industry": safe_text(data.industry)},
@@ -9587,7 +9615,7 @@ Return only the final resume text.
     effective_wallet = debit["wallet"]
     if not ai_generated and ai_error:
         refund = credit_credits(
-            int(user["id"]),
+            user_id,
             "refund_ai_resume_generation",
             CREDIT_COSTS["ai_resume_generation"],
             meta={"reason": ai_error, "route": "/build-resume"},
@@ -9608,8 +9636,10 @@ Return only the final resume text.
 @app.post("/improvise-resume")
 def improvise_resume(data: ResumeImproviseRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
+    user_id = int(user["id"])
+    require_studio_access(user_id)
     debit = debit_credits(
-        int(user["id"]),
+        user_id,
         "ai_resume_generation",
         CREDIT_COSTS["ai_resume_generation"],
         meta={"route": "/improvise-resume", "role": safe_text(data.role), "industry": safe_text(data.industry)},
@@ -9619,7 +9649,7 @@ def improvise_resume(data: ResumeImproviseRequest, request: Request) -> dict[str
     effective_wallet = debit["wallet"]
     if not payload.get("ai_generated") and ai_error:
         refund = credit_credits(
-            int(user["id"]),
+            user_id,
             "refund_ai_resume_generation",
             CREDIT_COSTS["ai_resume_generation"],
             meta={"reason": ai_error, "route": "/improvise-resume"},
@@ -9640,8 +9670,10 @@ async def polish_resume_pdf(
     auth_token: str | None = Form(None),
 ) -> dict[str, Any]:
     user = require_authenticated_user(request, auth_token)
+    user_id = int(user["id"])
+    require_studio_access(user_id)
     debit = debit_credits(
-        int(user["id"]),
+        user_id,
         "ai_resume_generation",
         CREDIT_COSTS["ai_resume_generation"],
         meta={"route": "/polish-resume-pdf", "role": safe_text(role), "industry": safe_text(industry)},
@@ -9671,7 +9703,7 @@ async def polish_resume_pdf(
         effective_wallet = debit["wallet"]
         if not improved.get("ai_generated") and ai_error:
             refund = credit_credits(
-                int(user["id"]),
+                user_id,
                 "refund_ai_resume_generation",
                 CREDIT_COSTS["ai_resume_generation"],
                 meta={"reason": str(ai_error), "route": "/polish-resume-pdf"},
@@ -9689,7 +9721,7 @@ async def polish_resume_pdf(
         }
     except HTTPException:
         credit_credits(
-            int(user["id"]),
+            user_id,
             "refund_ai_resume_generation",
             CREDIT_COSTS["ai_resume_generation"],
             meta={"reason": "polish_failed"},
@@ -9697,7 +9729,7 @@ async def polish_resume_pdf(
         raise
     except Exception as exc:
         credit_credits(
-            int(user["id"]),
+            user_id,
             "refund_ai_resume_generation",
             CREDIT_COSTS["ai_resume_generation"],
             meta={"reason": "polish_failed_unhandled"},
@@ -9708,13 +9740,15 @@ async def polish_resume_pdf(
 @app.post("/export-resume-pdf")
 def export_resume_pdf(data: ResumeExportRequest, request: Request) -> StreamingResponse:
     user = require_authenticated_user(request, data.auth_token)
+    user_id = int(user["id"])
+    require_studio_access(user_id)
     resume_text = safe_text(data.resume_text)
     if not resume_text:
         raise HTTPException(status_code=400, detail="Resume text is required for PDF export.")
 
     template_name = safe_text(data.template).lower() or "minimal"
     debit = debit_credits(
-        int(user["id"]),
+        user_id,
         "template_pdf_download",
         CREDIT_COSTS["template_pdf_download"],
         meta={"route": "/export-resume-pdf", "template": template_name},
