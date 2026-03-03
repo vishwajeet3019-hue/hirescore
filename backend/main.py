@@ -386,6 +386,28 @@ class ResumeImproviseRequest(BaseModel):
     auth_token: str | None = None
 
 
+class GoalRoadmapMilestoneRequest(BaseModel):
+    id: str | None = None
+    title: str
+    detail: str | None = None
+
+
+class GoalRoadmapUpsertRequest(BaseModel):
+    goal_title: str
+    goal_context: str | None = None
+    target_role: str | None = None
+    target_industry: str | None = None
+    target_score: int | None = None
+    current_score: int | None = None
+    milestones: list[GoalRoadmapMilestoneRequest]
+    auth_token: str | None = None
+
+
+class GoalRoadmapMilestoneToggleRequest(BaseModel):
+    completed: bool
+    auth_token: str | None = None
+
+
 PLAN_RULES: dict[str, dict[str, Any]] = {
     "free": {
         "analyze_limit": 8,
@@ -1818,6 +1840,23 @@ def init_auth_db() -> None:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS user_goal_roadmaps (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL REFERENCES users (id),
+                        goal_title TEXT NOT NULL,
+                        goal_context TEXT,
+                        target_role TEXT,
+                        target_industry TEXT,
+                        target_score INTEGER,
+                        current_score INTEGER,
+                        milestones_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS analysis_semantic_cache (
                         id BIGSERIAL PRIMARY KEY,
                         cache_key TEXT NOT NULL UNIQUE,
@@ -1995,6 +2034,24 @@ def init_auth_db() -> None:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS user_goal_roadmaps (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        goal_title TEXT NOT NULL,
+                        goal_context TEXT,
+                        target_role TEXT,
+                        target_industry TEXT,
+                        target_score INTEGER,
+                        current_score INTEGER,
+                        milestones_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS analysis_semantic_cache (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         cache_key TEXT NOT NULL UNIQUE,
@@ -2050,6 +2107,8 @@ def init_auth_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_admin_unread ON user_chat_messages (read_by_admin, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_unread ON user_chat_messages (user_id, read_by_user, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_reports_user_time ON analysis_reports (user_id, created_at)")
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_goal_roadmap_user_unique ON user_goal_roadmaps (user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_roadmap_updated ON user_goal_roadmaps (updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_updated ON analysis_semantic_cache (updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_learning_memory_track_time ON analysis_learning_memory (role_track, updated_at)")
             connection.commit()
@@ -7379,6 +7438,93 @@ def auth_me(request: Request, auth_token: str | None = None) -> dict[str, Any]:
     return auth_response_payload(user)
 
 
+@app.get("/roadmap/current")
+def user_goal_roadmap(request: Request, auth_token: str | None = None) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    connection = auth_db_connection()
+    try:
+        roadmap = fetch_goal_roadmap_for_user(connection, int(user["id"]))
+    finally:
+        connection.close()
+    return {"roadmap": roadmap}
+
+
+@app.post("/roadmap/upsert")
+def user_goal_roadmap_upsert(data: GoalRoadmapUpsertRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    milestones_count = len(data.milestones or [])
+    if milestones_count > 24:
+        raise HTTPException(status_code=400, detail="Roadmap supports up to 24 milestones.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            roadmap = upsert_goal_roadmap_for_user(connection, int(user["id"]), data)
+            connection.commit()
+        except HTTPException:
+            connection.rollback()
+            raise
+        except Exception as exc:
+            connection.rollback()
+            logger.exception("Failed to upsert roadmap for user %s", int(user["id"]))
+            raise HTTPException(status_code=500, detail="Unable to update roadmap right now.") from exc
+        finally:
+            connection.close()
+
+    log_analytics_event(
+        "roadmap",
+        "roadmap_upserted",
+        user_id=int(user["id"]),
+        meta={
+            "milestones": int(roadmap.get("total_milestones") or 0),
+            "progress_percent": int(roadmap.get("progress_percent") or 0),
+        },
+    )
+    return {"roadmap": roadmap, "message": "Roadmap updated."}
+
+
+@app.post("/roadmap/milestones/{milestone_id}/toggle")
+def user_goal_roadmap_toggle_milestone(
+    milestone_id: str,
+    data: GoalRoadmapMilestoneToggleRequest,
+    request: Request,
+) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    if not safe_text(milestone_id):
+        raise HTTPException(status_code=400, detail="Invalid milestone id.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            roadmap = toggle_goal_roadmap_milestone_for_user(connection, int(user["id"]), milestone_id, bool(data.completed))
+            connection.commit()
+        except HTTPException:
+            connection.rollback()
+            raise
+        except Exception as exc:
+            connection.rollback()
+            logger.exception("Failed to toggle roadmap milestone for user %s", int(user["id"]))
+            raise HTTPException(status_code=500, detail="Unable to update milestone right now.") from exc
+        finally:
+            connection.close()
+
+    log_analytics_event(
+        "roadmap",
+        "roadmap_milestone_toggled",
+        user_id=int(user["id"]),
+        meta={
+            "milestone_id": sanitize_goal_roadmap_milestone_id(milestone_id, 1),
+            "completed": bool(data.completed),
+            "progress_percent": int(roadmap.get("progress_percent") or 0),
+        },
+    )
+    return {"roadmap": roadmap}
+
+
 @app.get("/analysis/reports")
 def user_analysis_reports(request: Request, auth_token: str | None = None, limit: int = 40) -> dict[str, Any]:
     user = require_authenticated_user(request, auth_token)
@@ -8048,6 +8194,336 @@ def serialize_analysis_report_row(row: Any) -> dict[str, Any]:
         "shortlist_prediction": safe_text(row["shortlist_prediction"]),
         "created_at": safe_text(row["created_at"]),
     }
+
+
+def normalize_goal_roadmap_score(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(clamp_float(float(value), 0.0, 100.0))
+    except Exception:
+        return None
+
+
+def sanitize_goal_roadmap_milestone_id(value: str, fallback_index: int) -> str:
+    token = re.sub(r"[^a-z0-9]+", "-", safe_text(value).lower()).strip("-")
+    if not token:
+        token = f"{max(1, int(fallback_index))}"
+    if not token.startswith("milestone-"):
+        token = f"milestone-{token}"
+    return token[:72]
+
+
+def sanitize_goal_roadmap_milestone_title(value: Any, fallback_index: int) -> str:
+    title = re.sub(r"\s+", " ", safe_text(str(value or "")).strip())
+    if not title:
+        title = f"Milestone {max(1, int(fallback_index))}"
+    return title[:140]
+
+
+def sanitize_goal_roadmap_milestone_detail(value: Any, fallback_title: str) -> str:
+    detail = re.sub(r"\s+", " ", safe_text(str(value or "")).strip())
+    if detail:
+        return detail[:520]
+    return f"Complete {fallback_title.lower()} and update progress in your dashboard."
+
+
+def default_goal_roadmap_milestones() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "milestone-role-fit-baseline",
+            "title": "Establish your role-fit baseline",
+            "detail": "Run one focused analysis and review score drivers before editing your profile.",
+            "completed": False,
+            "completed_at": None,
+        },
+        {
+            "id": "milestone-priority-gap-closure",
+            "title": "Close top skill and evidence gaps",
+            "detail": "Address the highest-impact missing skills and add quantified proof bullets.",
+            "completed": False,
+            "completed_at": None,
+        },
+        {
+            "id": "milestone-validate-improved-score",
+            "title": "Validate improved shortlist score",
+            "detail": "Run analysis again after updates and confirm progress against your target role.",
+            "completed": False,
+            "completed_at": None,
+        },
+    ]
+
+
+def roadmap_progress_from_milestones(milestones: list[dict[str, Any]]) -> tuple[int, int, int]:
+    total = len(milestones)
+    completed = sum(1 for milestone in milestones if bool(milestone.get("completed")))
+    if total <= 0:
+        return 0, 0, 0
+    progress = int(round((completed / total) * 100))
+    return total, completed, int(clamp_float(float(progress), 0.0, 100.0))
+
+
+def normalize_goal_roadmap_milestones(
+    raw_milestones: Any,
+    existing_completion: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    items = raw_milestones if isinstance(raw_milestones, list) else []
+    completion_state = existing_completion or {}
+    normalized: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    for index, item in enumerate(items, start=1):
+        if isinstance(item, dict):
+            raw_id = item.get("id")
+            raw_title = item.get("title")
+            raw_detail = item.get("detail")
+            raw_completed = item.get("completed")
+            raw_completed_at = item.get("completed_at")
+        else:
+            raw_id = getattr(item, "id", None)
+            raw_title = getattr(item, "title", None)
+            raw_detail = getattr(item, "detail", None)
+            raw_completed = getattr(item, "completed", None)
+            raw_completed_at = getattr(item, "completed_at", None)
+
+        title = sanitize_goal_roadmap_milestone_title(raw_title, index)
+        detail = sanitize_goal_roadmap_milestone_detail(raw_detail, title)
+        milestone_id = sanitize_goal_roadmap_milestone_id(safe_text(str(raw_id or title)), index)
+
+        if milestone_id in seen_ids:
+            suffix = 2
+            candidate = milestone_id
+            while candidate in seen_ids:
+                candidate = f"{milestone_id}-{suffix}"
+                suffix += 1
+            milestone_id = candidate[:72]
+
+        seen_ids.add(milestone_id)
+        preserved_state = completion_state.get(milestone_id)
+        completed = bool(preserved_state.get("completed")) if preserved_state else bool(raw_completed)
+        completed_at = safe_text(str((preserved_state or {}).get("completed_at") or raw_completed_at or ""))
+        if not completed:
+            completed_at = ""
+
+        normalized.append(
+            {
+                "id": milestone_id,
+                "title": title,
+                "detail": detail,
+                "completed": completed,
+                "completed_at": completed_at or None,
+            }
+        )
+
+    if not normalized:
+        normalized = default_goal_roadmap_milestones()
+
+    return normalized[:12]
+
+
+def serialize_goal_roadmap_row(row: Any) -> dict[str, Any]:
+    raw_milestones: Any = []
+    try:
+        parsed = json.loads(safe_text(row["milestones_json"]) or "[]")
+        raw_milestones = parsed if isinstance(parsed, list) else []
+    except Exception:
+        raw_milestones = []
+
+    milestones = normalize_goal_roadmap_milestones(raw_milestones)
+    total_milestones, completed_milestones, progress_percent = roadmap_progress_from_milestones(milestones)
+
+    try:
+        raw_target_score = row["target_score"]
+    except Exception:
+        raw_target_score = None
+    try:
+        raw_current_score = row["current_score"]
+    except Exception:
+        raw_current_score = None
+    target_score = int(raw_target_score) if raw_target_score is not None else None
+    current_score = int(raw_current_score) if raw_current_score is not None else None
+
+    return {
+        "id": int(row["id"]),
+        "goal_title": safe_text(row["goal_title"]) or "Reach your target role",
+        "goal_context": safe_text(row["goal_context"]),
+        "target_role": safe_text(row["target_role"]),
+        "target_industry": safe_text(row["target_industry"]),
+        "target_score": target_score,
+        "current_score": current_score,
+        "milestones": milestones,
+        "total_milestones": total_milestones,
+        "completed_milestones": completed_milestones,
+        "progress_percent": progress_percent,
+        "created_at": safe_text(row["created_at"]),
+        "updated_at": safe_text(row["updated_at"]),
+    }
+
+
+def fetch_goal_roadmap_row_for_user(connection: AuthDBConnection, user_id: int) -> Any:
+    return connection.execute(
+        """
+        SELECT
+            id,
+            user_id,
+            goal_title,
+            goal_context,
+            target_role,
+            target_industry,
+            target_score,
+            current_score,
+            milestones_json,
+            created_at,
+            updated_at
+        FROM user_goal_roadmaps
+        WHERE user_id = ?
+        LIMIT 1
+        """,
+        (int(user_id),),
+    ).fetchone()
+
+
+def fetch_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int) -> dict[str, Any] | None:
+    row = fetch_goal_roadmap_row_for_user(connection, user_id)
+    if not row:
+        return None
+    return serialize_goal_roadmap_row(row)
+
+
+def upsert_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int, data: GoalRoadmapUpsertRequest) -> dict[str, Any]:
+    existing_row = fetch_goal_roadmap_row_for_user(connection, user_id)
+    existing_completion: dict[str, dict[str, Any]] = {}
+    if existing_row:
+        existing_payload = serialize_goal_roadmap_row(existing_row)
+        for milestone in existing_payload["milestones"]:
+            existing_completion[safe_text(milestone.get("id"))] = {
+                "completed": bool(milestone.get("completed")),
+                "completed_at": safe_text(milestone.get("completed_at")),
+            }
+
+    milestones = normalize_goal_roadmap_milestones(data.milestones, existing_completion)
+    goal_title = safe_text(data.goal_title).strip() or "Reach your target role"
+    goal_context = safe_text(data.goal_context).strip()
+    target_role = safe_text(data.target_role).strip()
+    target_industry = safe_text(data.target_industry).strip()
+    target_score = normalize_goal_roadmap_score(data.target_score)
+    current_score = normalize_goal_roadmap_score(data.current_score)
+    now = now_utc_iso()
+    milestones_json = json.dumps(milestones, ensure_ascii=False, separators=(",", ":"), default=str)
+    cursor = connection.cursor()
+
+    if existing_row:
+        cursor.execute(
+            """
+            UPDATE user_goal_roadmaps
+            SET
+                goal_title = ?,
+                goal_context = ?,
+                target_role = ?,
+                target_industry = ?,
+                target_score = ?,
+                current_score = ?,
+                milestones_json = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (
+                goal_title,
+                goal_context,
+                target_role,
+                target_industry,
+                target_score,
+                current_score,
+                milestones_json,
+                now,
+                int(user_id),
+            ),
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT INTO user_goal_roadmaps (
+                user_id,
+                goal_title,
+                goal_context,
+                target_role,
+                target_industry,
+                target_score,
+                current_score,
+                milestones_json,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(user_id),
+                goal_title,
+                goal_context,
+                target_role,
+                target_industry,
+                target_score,
+                current_score,
+                milestones_json,
+                now,
+                now,
+            ),
+        )
+
+    roadmap = fetch_goal_roadmap_for_user(connection, int(user_id))
+    if not roadmap:
+        raise HTTPException(status_code=500, detail="Unable to persist roadmap right now.")
+    return roadmap
+
+
+def toggle_goal_roadmap_milestone_for_user(
+    connection: AuthDBConnection,
+    user_id: int,
+    milestone_id: str,
+    completed: bool,
+) -> dict[str, Any]:
+    existing_row = fetch_goal_roadmap_row_for_user(connection, user_id)
+    if not existing_row:
+        raise HTTPException(status_code=404, detail="Roadmap not found for this account.")
+
+    roadmap = serialize_goal_roadmap_row(existing_row)
+    target_id = sanitize_goal_roadmap_milestone_id(milestone_id, 1)
+    found = False
+    now = now_utc_iso()
+
+    for milestone in roadmap["milestones"]:
+        if safe_text(milestone.get("id")) != target_id:
+            continue
+        milestone["completed"] = bool(completed)
+        if completed:
+            existing_completed_at = safe_text(milestone.get("completed_at"))
+            milestone["completed_at"] = existing_completed_at or now
+        else:
+            milestone["completed_at"] = None
+        found = True
+        break
+
+    if not found:
+        raise HTTPException(status_code=404, detail="Milestone not found in roadmap.")
+
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        UPDATE user_goal_roadmaps
+        SET milestones_json = ?, updated_at = ?
+        WHERE user_id = ?
+        """,
+        (
+            json.dumps(roadmap["milestones"], ensure_ascii=False, separators=(",", ":"), default=str),
+            now,
+            int(user_id),
+        ),
+    )
+
+    refreshed = fetch_goal_roadmap_for_user(connection, int(user_id))
+    if not refreshed:
+        raise HTTPException(status_code=500, detail="Unable to refresh roadmap right now.")
+    return refreshed
 
 
 def save_analysis_report(
@@ -9249,6 +9725,7 @@ def admin_delete_user(user_id: int, request: Request) -> dict[str, Any]:
             cursor.execute("DELETE FROM analytics_events WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM user_chat_messages WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM analysis_reports WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM user_goal_roadmaps WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM password_reset_otps WHERE user_id = ?", (user_id,))
             cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
             connection.commit()

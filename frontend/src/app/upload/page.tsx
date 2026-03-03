@@ -181,6 +181,35 @@ type AnalysisResult = {
   feedback_required?: boolean;
 };
 
+type GoalRoadmapMilestone = {
+  id: string;
+  title: string;
+  detail: string;
+  completed: boolean;
+  completed_at?: string | null;
+};
+
+type GoalRoadmap = {
+  id: number;
+  goal_title: string;
+  goal_context: string;
+  target_role: string;
+  target_industry: string;
+  target_score?: number | null;
+  current_score?: number | null;
+  total_milestones: number;
+  completed_milestones: number;
+  progress_percent: number;
+  milestones: GoalRoadmapMilestone[];
+  created_at: string;
+  updated_at: string;
+};
+
+type GoalRoadmapPayload = {
+  roadmap?: GoalRoadmap | null;
+  message?: string;
+};
+
 type ApiErrorDetail = {
   message?: string;
   wallet?: CreditWallet;
@@ -244,6 +273,14 @@ const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
 type ResultTabId = "summary" | "strategy" | "salary" | "market" | "improvements";
 
+const RESULT_STEPS: { id: ResultTabId; label: string; description: string }[] = [
+  { id: "summary", label: "Summary", description: "Start with your score and immediate wins." },
+  { id: "strategy", label: "90% Strategy", description: "Follow this execution plan to increase shortlist odds." },
+  { id: "salary", label: "Salary + Callback", description: "See salary lift and callback simulation clearly." },
+  { id: "market", label: "Hiring Timing", description: "Apply at the right windows and reduce market risk." },
+  { id: "improvements", label: "Improvements", description: "Track final fix list and turn weak areas into strengths." },
+];
+
 export default function UploadPage() {
   const router = useRouter();
   const [analysisMode, setAnalysisMode] = useState<"manual" | "upload">("manual");
@@ -263,6 +300,10 @@ export default function UploadPage() {
   const [loadingProgress, setLoadingProgress] = useState(12);
   const [showResultModal, setShowResultModal] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState<ResultTabId>("summary");
+  const [showRoadmapModal, setShowRoadmapModal] = useState(false);
+  const [roadmapLoading, setRoadmapLoading] = useState(false);
+  const [roadmapError, setRoadmapError] = useState("");
+  const [roadmapPreview, setRoadmapPreview] = useState<GoalRoadmap | null>(null);
 
   const [selectedSalaryBoosters, setSelectedSalaryBoosters] = useState<string[]>([]);
   const [callbackSimulationApps, setCallbackSimulationApps] = useState("60");
@@ -383,19 +424,20 @@ export default function UploadPage() {
   }, [loading]);
 
   useEffect(() => {
-    if (!loading && !showResultModal && !showFeedbackModal && !showAuthModal) return;
+    if (!loading && !showResultModal && !showRoadmapModal && !showFeedbackModal && !showAuthModal) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [loading, showResultModal, showFeedbackModal, showAuthModal]);
+  }, [loading, showResultModal, showRoadmapModal, showFeedbackModal, showAuthModal]);
 
   useEffect(() => {
     if (!showResultModal) return;
     const onEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setShowResultModal(false);
+        setActiveResultTab("summary");
       }
     };
     window.addEventListener("keydown", onEscape);
@@ -666,6 +708,10 @@ export default function UploadPage() {
     setResult(data);
     setActiveResultTab("summary");
     setShowResultModal(true);
+    setShowRoadmapModal(false);
+    setRoadmapLoading(false);
+    setRoadmapError("");
+    setRoadmapPreview(null);
     setSelectedSalaryBoosters(data.salary_insight?.selected_boosters || []);
     if (data.callback_forecast?.applications_input) {
       setCallbackSimulationApps(String(data.callback_forecast.applications_input));
@@ -845,6 +891,10 @@ export default function UploadPage() {
     setAuthUserEmail("");
     setWallet(null);
     setResult(null);
+    setShowRoadmapModal(false);
+    setRoadmapLoading(false);
+    setRoadmapError("");
+    setRoadmapPreview(null);
     setFeedbackRequired(false);
     setShowFeedbackModal(false);
     setFeedbackComment("");
@@ -1060,6 +1110,136 @@ export default function UploadPage() {
       improvedPerWeek,
     };
   }, [result, callbackSimulationApps]);
+
+  const resultStepIndex = useMemo(() => {
+    const foundIndex = RESULT_STEPS.findIndex((step) => step.id === activeResultTab);
+    return foundIndex >= 0 ? foundIndex : 0;
+  }, [activeResultTab]);
+
+  const resultProgress = Math.round(((resultStepIndex + 1) / RESULT_STEPS.length) * 100);
+  const activeResultStep = RESULT_STEPS[resultStepIndex] || RESULT_STEPS[0];
+  const nextResultStep = RESULT_STEPS[Math.min(RESULT_STEPS.length - 1, resultStepIndex + 1)] || RESULT_STEPS[RESULT_STEPS.length - 1];
+
+  const navigateResultStep = (direction: "next" | "back") => {
+    const delta = direction === "next" ? 1 : -1;
+    const nextIndex = Math.min(RESULT_STEPS.length - 1, Math.max(0, resultStepIndex + delta));
+    setActiveResultTab(RESULT_STEPS[nextIndex].id);
+  };
+
+  const buildRoadmapMilestones = (analysisResult: AnalysisResult) => {
+    const milestoneMap = new Map<string, { id: string; title: string; detail: string }>();
+    const registerMilestone = (titleRaw: string, detailRaw: string, fallbackIndex: number) => {
+      const title = titleRaw.trim();
+      const detail = detailRaw.trim();
+      if (!title || !detail) return;
+      const idBase = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 44);
+      const id = idBase ? `milestone-${idBase}` : `milestone-${fallbackIndex}`;
+      if (!milestoneMap.has(id)) {
+        milestoneMap.set(id, { id, title, detail });
+      }
+    };
+
+    analysisResult.ninety_plus_strategy?.actions?.slice(0, 4).forEach((action, index) => {
+      registerMilestone(
+        action.title || action.step_label || `Action ${index + 1}`,
+        action.action || action.why_it_matters || "Complete this action to improve shortlist score.",
+        index + 1
+      );
+    });
+
+    analysisResult.learning_roadmap?.phases?.slice(0, 4).forEach((phase, index) => {
+      registerMilestone(
+        `${phase.phase} (${phase.duration_weeks})`,
+        phase.outcome || phase.focus.join(", "),
+        index + 11
+      );
+    });
+
+    (analysisResult.quick_wins || []).slice(0, 3).forEach((win, index) => {
+      registerMilestone(`Quick Win ${index + 1}`, win, index + 21);
+    });
+
+    (analysisResult.areas_to_improve || []).slice(0, 3).forEach((area, index) => {
+      const topDetail = area.details?.[0] || "Address this area to improve profile quality.";
+      registerMilestone(area.category || `Improvement ${index + 1}`, topDetail, index + 31);
+    });
+
+    if (milestoneMap.size === 0) {
+      registerMilestone("Improve role-fit alignment", "Refine your resume bullets around role-specific outcomes and metrics.", 41);
+      registerMilestone("Strengthen keyword precision", "Add target-role keywords naturally across summary, skills, and project lines.", 42);
+      registerMilestone("Quantify impact", "Convert responsibilities into measurable achievements with numbers and outcomes.", 43);
+    }
+
+    return Array.from(milestoneMap.values()).slice(0, 8);
+  };
+
+  const upsertRoadmapFromResult = async (analysisResult: AnalysisResult) => {
+    if (!authToken || !authHeader) return null;
+    const milestones = buildRoadmapMilestones(analysisResult);
+    const targetRole =
+      analysisResult.positioning_strategy?.target_role ||
+      analysisResult.learning_roadmap?.target_role ||
+      analysisResult.salary_insight?.target_role ||
+      role.trim() ||
+      "your target role";
+    const targetIndustry =
+      analysisResult.learning_roadmap?.target_industry || analysisResult.salary_insight?.target_industry || industry.trim() || "your target industry";
+    const targetScore = analysisResult.ninety_plus_strategy?.target_score || 90;
+
+    const payload = await fetchJsonWithWakeAndRetry<GoalRoadmapPayload>({
+      apiUrl,
+      path: "/roadmap/upsert",
+      init: {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader,
+        },
+        body: JSON.stringify({
+          goal_title: `Reach ${targetScore}% shortlist probability`,
+          goal_context: analysisResult.shortlist_prediction || "Improve your profile for stronger interview conversion.",
+          target_role: targetRole,
+          target_industry: targetIndustry,
+          target_score: targetScore,
+          current_score: analysisResult.overall_score,
+          milestones,
+          auth_token: authToken,
+        }),
+      },
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: parseApiError,
+      abortErrorMessage: "Roadmap creation is taking longer than expected. Please try again.",
+    });
+
+    return payload.roadmap || null;
+  };
+
+  const handleCloseResultModal = () => {
+    setShowResultModal(false);
+    setActiveResultTab("summary");
+    if (!result || !authToken) return;
+    setShowRoadmapModal(true);
+    setRoadmapLoading(true);
+    setRoadmapError("");
+    void (async () => {
+      try {
+        const roadmap = await upsertRoadmapFromResult(result);
+        if (!roadmap) {
+          throw new Error("Unable to prepare roadmap right now.");
+        }
+        setRoadmapPreview(roadmap);
+      } catch (error) {
+        setRoadmapPreview(null);
+        setRoadmapError(error instanceof Error ? error.message : "Unable to prepare roadmap right now.");
+      } finally {
+        setRoadmapLoading(false);
+      }
+    })();
+  };
 
   const analysisFieldClass =
     "w-full rounded-2xl border border-amber-100/28 bg-[#1a1020]/78 px-4 py-3.5 text-amber-50 placeholder:text-amber-100/40 outline-none transition focus:border-rose-100/70 focus:shadow-[0_0_0_3px_rgba(255,186,138,0.2)]";
@@ -1674,7 +1854,7 @@ export default function UploadPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[260] overflow-y-auto bg-[#020915]/88 px-2 pb-2 pt-14 backdrop-blur-xl sm:px-6 sm:pb-6 sm:pt-24"
-            onClick={() => setShowResultModal(false)}
+            onClick={handleCloseResultModal}
           >
             <motion.section
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
@@ -1685,7 +1865,7 @@ export default function UploadPage() {
               <div className="sticky top-0 z-20 flex justify-end border-b border-cyan-100/14 bg-[#041427]/96 px-3 py-2.5 sm:px-6 sm:py-3">
                 <button
                   type="button"
-                  onClick={() => setShowResultModal(false)}
+                  onClick={handleCloseResultModal}
                   className="rounded-xl border border-cyan-100/28 bg-[#082640]/78 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50/90 transition hover:bg-[#0d3358]"
                 >
                   Close
@@ -1700,38 +1880,61 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                <div className="-mx-1 mt-3 flex gap-2 overflow-x-auto whitespace-nowrap px-1 pb-1">
-                  {[
-                    { id: "summary", label: "Summary" },
-                    { id: "strategy", label: "90% Strategy" },
-                    { id: "salary", label: "Salary + Callback" },
-                    { id: "market", label: "Hiring Timing" },
-                    { id: "improvements", label: "Improvements" },
-                  ].map((tab) => (
+                <div className="mt-4 rounded-2xl border border-cyan-100/20 bg-cyan-100/7 p-3 sm:p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">
+                      Step {resultStepIndex + 1} of {RESULT_STEPS.length}
+                    </p>
+                    <p className="text-sm font-semibold text-cyan-50">{activeResultStep.label}</p>
+                  </div>
+                  <p className="mt-2 text-xs text-cyan-50/74 sm:text-sm">{activeResultStep.description}</p>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/8">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${resultProgress}%` }}
+                      transition={{ duration: 0.35, ease: "easeOut" }}
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
-                      key={tab.id}
                       type="button"
-                      onClick={() => setActiveResultTab(tab.id as ResultTabId)}
-                      className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold tracking-[0.06em] transition sm:text-xs sm:tracking-[0.1em] ${
-                        activeResultTab === tab.id
-                          ? "border-cyan-100/56 bg-cyan-200/24 text-cyan-50"
-                          : "border-cyan-100/20 bg-cyan-100/8 text-cyan-50/72 hover:text-cyan-50"
-                      }`}
+                      onClick={() => navigateResultStep("back")}
+                      disabled={resultStepIndex === 0}
+                      className="rounded-xl border border-cyan-100/26 bg-cyan-100/7 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      {tab.label}
+                      Back
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => navigateResultStep("next")}
+                      disabled={resultStepIndex >= RESULT_STEPS.length - 1}
+                      className="rounded-xl border border-cyan-100/36 bg-cyan-200/18 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      Next
+                    </button>
+                    <span className="text-[11px] text-cyan-100/68">
+                      {resultStepIndex >= RESULT_STEPS.length - 1 ? "Final section" : `Up next: ${nextResultStep.label}`}
+                    </span>
+                  </div>
                 </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-3 sm:p-6">
+                <div className="mb-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/5 p-3 sm:mb-5 sm:p-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Now Reading</p>
+                  <p className="mt-1 text-lg font-semibold text-cyan-50">{activeResultStep.label}</p>
+                  <p className="mt-1 text-sm text-cyan-50/76">{activeResultStep.description}</p>
+                </div>
+
+                <motion.div key={activeResultTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
                 {activeResultTab === "summary" && (
                   <div className="space-y-4 sm:space-y-6">
                     <div className="rounded-2xl border border-cyan-100/22 bg-cyan-100/8 p-3 sm:p-4">
                       <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Read This First</p>
                       <p className="mt-2 text-[13px] leading-relaxed text-cyan-50/78 sm:text-sm">
                         Start with your shortlist score, then follow the plan in this order:
-                        <span className="font-semibold text-cyan-100"> Summary, then Strategy, then Salary, then Hiring Timing.</span>
+                        <span className="font-semibold text-cyan-100"> Summary → Strategy → Salary + Callback → Hiring Timing → Improvements.</span>
                       </p>
                     </div>
                     <div className="grid gap-6 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
@@ -2019,7 +2222,122 @@ export default function UploadPage() {
                     </div>
                   </div>
                 )}
+                </motion.div>
+
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
+                  <button
+                    type="button"
+                    onClick={() => navigateResultStep("back")}
+                    disabled={resultStepIndex === 0}
+                    className="rounded-xl border border-cyan-100/26 bg-cyan-100/7 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Back
+                  </button>
+                  <p className="text-xs text-cyan-100/68">
+                    Step {resultStepIndex + 1}/{RESULT_STEPS.length}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigateResultStep("next")}
+                    disabled={resultStepIndex >= RESULT_STEPS.length - 1}
+                    className="rounded-xl border border-cyan-100/36 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {resultStepIndex >= RESULT_STEPS.length - 1 ? "Complete" : "Next"}
+                  </button>
+                </div>
               </div>
+            </motion.section>
+          </motion.div>
+        )}
+
+        {showRoadmapModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[265] flex items-center justify-center bg-[#020915]/88 px-4 backdrop-blur-xl"
+            onClick={() => {
+              if (roadmapLoading) return;
+              setShowRoadmapModal(false);
+            }}
+          >
+            <motion.section
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              onClick={(event) => event.stopPropagation()}
+              className="w-full max-w-3xl rounded-[1.8rem] border border-cyan-100/22 bg-[#041427]/96 p-5 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:p-7"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Goal Roadmap</p>
+                  <h3 className="mt-1 text-2xl font-semibold text-cyan-50">Your Next Milestones Are Ready</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRoadmapModal(false)}
+                  disabled={roadmapLoading}
+                  className="rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/14 disabled:opacity-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              {roadmapLoading && <p className="mt-4 text-sm text-cyan-100/78">Preparing your milestone roadmap...</p>}
+              {!roadmapLoading && roadmapError && (
+                <p className="mt-4 rounded-xl border border-amber-100/34 bg-amber-100/12 px-3 py-2 text-sm text-amber-50">{roadmapError}</p>
+              )}
+
+              {!roadmapLoading && roadmapPreview && (
+                <>
+                  <div className="mt-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/7 p-4">
+                    <p className="text-sm font-semibold text-cyan-50">{roadmapPreview.goal_title}</p>
+                    {roadmapPreview.goal_context && <p className="mt-1 text-sm text-cyan-50/72">{roadmapPreview.goal_context}</p>}
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-cyan-100/72">
+                      {roadmapPreview.target_role && <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Role: {roadmapPreview.target_role}</span>}
+                      {roadmapPreview.target_industry && (
+                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Industry: {roadmapPreview.target_industry}</span>
+                      )}
+                      <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">
+                        Progress: {roadmapPreview.completed_milestones}/{roadmapPreview.total_milestones}
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/8">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
+                        style={{ width: `${roadmapPreview.progress_percent}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <ol className="mt-4 space-y-2">
+                    {roadmapPreview.milestones.map((milestone, index) => (
+                      <li key={milestone.id} className="rounded-xl border border-cyan-100/16 bg-cyan-100/6 p-3">
+                        <p className="text-sm font-semibold text-cyan-50">
+                          {index + 1}. {milestone.title}
+                        </p>
+                        <p className="mt-1 text-xs text-cyan-50/72">{milestone.detail}</p>
+                      </li>
+                    ))}
+                  </ol>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <Link
+                      href="/dashboard"
+                      onClick={() => setShowRoadmapModal(false)}
+                      className="rounded-xl border border-cyan-100/38 bg-cyan-200/18 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
+                    >
+                      Track Milestones In Dashboard
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setShowRoadmapModal(false)}
+                      className="rounded-xl border border-cyan-100/24 bg-transparent px-4 py-2 text-sm font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                    >
+                      I&apos;ll Do This Later
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.section>
           </motion.div>
         )}
