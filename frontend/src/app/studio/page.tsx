@@ -272,6 +272,15 @@ export default function StudioPage() {
     };
   }, [studioAiLoading]);
 
+  useEffect(() => {
+    if (!showStudioGateModal) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showStudioGateModal]);
+
   const remainingGeneration = wallet ? Math.floor(wallet.credits / Math.max(1, wallet.pricing.ai_resume_generation)) : 0;
   const canUseAiGeneration = (wallet?.credits || 0) >= (wallet?.pricing.ai_resume_generation || 15);
   const canUsePdfTemplate = (wallet?.credits || 0) >= (wallet?.pricing.template_pdf_download || 20);
@@ -1506,7 +1515,7 @@ export default function StudioPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[220] flex items-center justify-center bg-[#020915]/86 px-4 backdrop-blur-2xl"
+              className="fixed inset-0 z-[240] grid place-items-center bg-[#020915]/62 px-4 backdrop-blur-2xl"
               onClick={(event) => {
                 if (event.target !== event.currentTarget) return;
                 setShowStudioGateModal(false);
@@ -1517,12 +1526,12 @@ export default function StudioPage() {
                 initial={{ opacity: 0, y: 24, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 12, scale: 0.96 }}
-                className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/30 bg-[#031426]/96 p-6 shadow-[0_36px_110px_rgba(0,0,0,0.62)] sm:p-8"
+                className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_30px_90px_rgba(2,8,20,0.58)] sm:p-8"
               >
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(34,211,238,0.3),rgba(34,211,238,0)_38%),radial-gradient(circle_at_82%_78%,rgba(251,191,36,0.24),rgba(251,191,36,0)_40%)]" />
+                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_44%,rgba(253,230,138,0.08))]" />
 
                 <div className="relative z-10">
-                  <p className="text-center text-xs uppercase tracking-[0.22em] text-cyan-100/72">Live Studio Lock</p>
+                  <p className="text-center text-xs uppercase tracking-[0.22em] text-cyan-100/72">Resume Studio Access</p>
                   <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">Let&apos;s Start With Your First Analysis</h3>
                   <p className="mx-auto mt-3 max-w-xl text-center text-sm text-cyan-50/78 sm:text-base">
                     Resume Studio unlocks after your first analysis result. Finish one run on Analyze and return instantly.

@@ -57,6 +57,15 @@ export default function SiteHeader() {
   const [showStudioLockModal, setShowStudioLockModal] = useState(false);
 
   useEffect(() => {
+    if (!showStudioLockModal) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showStudioLockModal]);
+
+  useEffect(() => {
     const syncHash = () => setHash(window.location.hash || "");
     syncHash();
     window.addEventListener("hashchange", syncHash);
@@ -236,7 +245,7 @@ export default function SiteHeader() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[240] flex items-center justify-center bg-[#020915]/86 px-4 backdrop-blur-lg"
+            className="fixed inset-0 z-[260] grid place-items-center bg-[#020915]/62 px-4 backdrop-blur-2xl"
             onClick={(event) => {
               if (event.target !== event.currentTarget) return;
               setShowStudioLockModal(false);
@@ -246,9 +255,9 @@ export default function SiteHeader() {
               initial={{ opacity: 0, y: 18, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.97 }}
-              className="relative w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/28 bg-[#051728]/96 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.58)]"
+              className="relative w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_24px_70px_rgba(2,8,20,0.55)]"
             >
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(34,211,238,0.28),rgba(34,211,238,0)_40%),radial-gradient(circle_at_82%_82%,rgba(251,191,36,0.2),rgba(251,191,36,0)_40%)]" />
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_42%,rgba(253,230,138,0.08))]" />
 
               <div className="relative">
                 <StudioLockVisual compact />
