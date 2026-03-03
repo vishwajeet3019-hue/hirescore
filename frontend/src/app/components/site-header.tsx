@@ -253,7 +253,7 @@ export default function SiteHeader() {
               <div className="relative">
                 <StudioLockVisual compact />
                 <p className="text-center text-xs uppercase tracking-[0.18em] text-cyan-100/72">Resume Studio Gate</p>
-                <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">First, Let&apos;s Analyze Your Profile</h3>
+                <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Let&apos;s Start With Your First Analysis</h3>
                 <p className="mt-3 text-center text-sm text-cyan-50/80">
                   Complete your first analysis on Analyze page to unlock Build Resume.
                 </p>

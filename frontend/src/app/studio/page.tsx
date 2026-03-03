@@ -1523,7 +1523,7 @@ export default function StudioPage() {
 
                 <div className="relative z-10">
                   <p className="text-center text-xs uppercase tracking-[0.22em] text-cyan-100/72">Live Studio Lock</p>
-                  <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">First, Let&apos;s Analyze Your Profile</h3>
+                  <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">Let&apos;s Start With Your First Analysis</h3>
                   <p className="mx-auto mt-3 max-w-xl text-center text-sm text-cyan-50/78 sm:text-base">
                     Resume Studio unlocks after your first analysis result. Finish one run on Analyze and return instantly.
                   </p>
