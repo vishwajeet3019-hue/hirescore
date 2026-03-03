@@ -89,7 +89,7 @@ export default function SiteHeader() {
         } else if (typeof payload.analysis_count === "number") {
           setStudioUnlocked(nextAnalysisCount >= 1);
         } else {
-          setStudioUnlocked(true);
+          setStudioUnlocked(false);
         }
       } catch {
         setAuthToken("");
@@ -171,6 +171,8 @@ export default function SiteHeader() {
                 onClick={() => {
                   setAuthToken("");
                   setWallet(null);
+                  setAnalysisCount(0);
+                  setStudioUnlocked(false);
                   window.localStorage.removeItem("hirescore_auth_token");
                 }}
                 className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 sm:inline"
@@ -245,21 +247,56 @@ export default function SiteHeader() {
               exit={{ opacity: 0, y: 10, scale: 0.97 }}
               className="relative w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/28 bg-[#051728]/96 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.58)]"
             >
-              <div className="pointer-events-none absolute -left-10 -top-10 h-36 w-36 rounded-full bg-cyan-300/24 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-12 -right-10 h-40 w-40 rounded-full bg-amber-200/20 blur-3xl" />
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.6 }}
+                className="pointer-events-none absolute inset-0"
+              >
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(34,211,238,0.3),rgba(34,211,238,0)_38%),radial-gradient(circle_at_84%_82%,rgba(251,191,36,0.22),rgba(251,191,36,0)_42%)]" />
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 13, ease: "linear" }}
+                  className="absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-100/24"
+                />
+                <motion.div
+                  animate={{ rotate: -360 }}
+                  transition={{ repeat: Infinity, duration: 16, ease: "linear" }}
+                  className="absolute left-1/2 top-1/2 h-60 w-60 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-100/20"
+                />
+                {Array.from({ length: 10 }).map((_, index) => {
+                  const left = 10 + index * 8;
+                  const duration = 3 + (index % 4) * 0.5;
+                  const delay = (index % 5) * 0.2;
+                  return (
+                    <motion.span
+                      key={`spark-${index}`}
+                      className="absolute h-1.5 w-1.5 rounded-full bg-cyan-100/70"
+                      style={{ left: `${left}%`, bottom: "-8%" }}
+                      animate={{ y: [-4, -220], opacity: [0, 1, 0], scale: [0.6, 1, 0.8] }}
+                      transition={{ repeat: Infinity, duration, delay, ease: "easeOut" }}
+                    />
+                  );
+                })}
+              </motion.div>
 
               <div className="relative">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-cyan-100/36 bg-cyan-100/8">
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border border-cyan-100/36 bg-cyan-100/8 shadow-[0_0_40px_rgba(34,211,238,0.3)]">
                   <motion.div
                     animate={{ rotate: 360 }}
-                    transition={{ repeat: Infinity, duration: 2.6, ease: "linear" }}
-                    className="h-9 w-9 rounded-full border-2 border-cyan-100/65 border-t-transparent"
+                    transition={{ repeat: Infinity, duration: 2.2, ease: "linear" }}
+                    className="h-12 w-12 rounded-full border-2 border-cyan-100/75 border-t-transparent"
+                  />
+                  <motion.div
+                    animate={{ scale: [1, 1.18, 1], opacity: [0.5, 1, 0.5] }}
+                    transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
+                    className="absolute h-4 w-4 rounded-full bg-amber-200/85 shadow-[0_0_22px_rgba(251,191,36,0.7)]"
                   />
                 </div>
-                <p className="text-center text-xs uppercase tracking-[0.16em] text-cyan-100/72">Resume Studio Gate</p>
-                <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50">Complete 1 Analysis First</h3>
+                <p className="text-center text-xs uppercase tracking-[0.18em] text-cyan-100/72">Resume Studio Gate</p>
+                <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Unlock Sequence Required</h3>
                 <p className="mt-3 text-center text-sm text-cyan-50/80">
-                  Build Resume unlocks after your first analysis on the Analyze page.
+                  Complete your first analysis on Analyze page to unlock Build Resume.
                 </p>
                 <p className="mt-2 text-center text-xs text-cyan-100/72">
                   Analyses completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
@@ -270,11 +307,15 @@ export default function SiteHeader() {
                     type="button"
                     onClick={() => {
                       setShowStudioLockModal(false);
+                      trackEvent("studio_nav_locked_popup_analyze_click", {
+                        source: "header_nav",
+                        analysis_count: analysisCount,
+                      });
                       router.push("/upload");
                     }}
                     className="rounded-xl border border-cyan-100/35 bg-cyan-200/18 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
                   >
-                    Go To Analyze
+                    Take Me To Analyze
                   </button>
                   <button
                     type="button"

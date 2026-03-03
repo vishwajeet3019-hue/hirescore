@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
@@ -172,6 +172,9 @@ export default function StudioPage() {
   const [forgotOtpRequested, setForgotOtpRequested] = useState(false);
   const [forgotOtp, setForgotOtp] = useState("");
   const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [authSyncReady, setAuthSyncReady] = useState(false);
+  const [showStudioGateModal, setShowStudioGateModal] = useState(false);
+  const [studioGateDismissed, setStudioGateDismissed] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   const authHeader = useMemo(
@@ -201,8 +204,14 @@ export default function StudioPage() {
   };
 
   useEffect(() => {
+    let cancelled = false;
     const token = window.localStorage.getItem("hirescore_auth_token");
-    if (!token) return;
+    if (!token) {
+      setAuthSyncReady(true);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     setAuthToken(token);
     fetch(apiUrl("/auth/me"), {
@@ -215,17 +224,39 @@ export default function StudioPage() {
           throw new Error("Session expired");
         }
         const payload = (await response.json()) as AuthPayload;
+        if (cancelled) return;
         applyAuthPayload(payload);
       })
       .catch(() => {
+        if (cancelled) return;
         setAuthToken("");
         setWallet(null);
         setAuthUserEmail("");
         setAnalysisCount(0);
         setStudioUnlocked(false);
         window.localStorage.removeItem("hirescore_auth_token");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setAuthSyncReady(true);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!authSyncReady) return;
+    if (!authToken || studioUnlocked) {
+      setShowStudioGateModal(false);
+      setStudioGateDismissed(false);
+      return;
+    }
+    if (!studioGateDismissed) {
+      setShowStudioGateModal(true);
+    }
+  }, [authSyncReady, authToken, studioUnlocked, studioGateDismissed]);
 
   useEffect(() => {
     void warmBackend(apiUrl);
@@ -559,6 +590,8 @@ export default function StudioPage() {
     setWallet(null);
     setAnalysisCount(0);
     setStudioUnlocked(false);
+    setShowStudioGateModal(false);
+    setStudioGateDismissed(false);
     setGenerationError("");
     setTemplateError("");
     setAuthInfo("");
@@ -1465,6 +1498,87 @@ export default function StudioPage() {
             </div>
           </motion.div>
         )}
+
+        <AnimatePresence>
+          {showStudioGateModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[220] flex items-center justify-center bg-[#020915]/86 px-4 backdrop-blur-2xl"
+              onClick={(event) => {
+                if (event.target !== event.currentTarget) return;
+                setShowStudioGateModal(false);
+                setStudioGateDismissed(true);
+              }}
+            >
+              <motion.section
+                initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.96 }}
+                className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/30 bg-[#031426]/96 p-6 shadow-[0_36px_110px_rgba(0,0,0,0.62)] sm:p-8"
+              >
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(34,211,238,0.3),rgba(34,211,238,0)_38%),radial-gradient(circle_at_82%_78%,rgba(251,191,36,0.24),rgba(251,191,36,0)_40%)]" />
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 14, ease: "linear" }}
+                  className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-100/20"
+                />
+                <motion.div
+                  animate={{ rotate: -360 }}
+                  transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
+                  className="pointer-events-none absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-100/14"
+                />
+
+                <div className="relative z-10">
+                  <p className="text-center text-xs uppercase tracking-[0.22em] text-cyan-100/72">Live Studio Lock</p>
+                  <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">Run 1 Analysis To Activate Studio</h3>
+                  <p className="mx-auto mt-3 max-w-xl text-center text-sm text-cyan-50/78 sm:text-base">
+                    Resume Studio unlocks after your first analysis result. Finish one run on Analyze and return instantly.
+                  </p>
+                  <p className="mt-2 text-center text-xs text-cyan-100/72">
+                    Analyses completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
+                  </p>
+
+                  <div className="mx-auto mt-6 flex max-w-xl items-end justify-center gap-1.5 rounded-2xl border border-cyan-100/20 bg-cyan-100/6 p-4">
+                    {Array.from({ length: 20 }).map((_, index) => (
+                      <motion.span
+                        key={`studio-wave-${index}`}
+                        className="w-1.5 rounded-full bg-gradient-to-t from-cyan-300/80 to-amber-200/90"
+                        animate={{ height: [8, 18 + ((index * 7) % 42), 8], opacity: [0.45, 1, 0.45] }}
+                        transition={{ repeat: Infinity, duration: 1.3 + (index % 5) * 0.16, delay: index * 0.05, ease: "easeInOut" }}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-6 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowStudioGateModal(false);
+                        setStudioGateDismissed(true);
+                        router.push("/upload");
+                      }}
+                      className="rounded-xl border border-cyan-100/38 bg-cyan-200/18 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
+                    >
+                      Go To Analyze
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowStudioGateModal(false);
+                        setStudioGateDismissed(true);
+                      }}
+                      className="rounded-xl border border-cyan-100/22 bg-transparent px-4 py-3 text-sm font-semibold text-cyan-50/88 transition hover:bg-cyan-100/10"
+                    >
+                      Stay Here
+                    </button>
+                  </div>
+                </div>
+              </motion.section>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {optimizedResume && !studioLockedByFirstAnalysis && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="studio-soft-card rounded-[2rem] p-6 sm:p-8">
