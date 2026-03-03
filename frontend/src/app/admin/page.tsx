@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 
 type AdminAnalytics = {
@@ -101,6 +101,8 @@ type RowEditorState = {
   reason: string;
 };
 
+type AdminLoadScope = "users" | "support" | "activity" | "all";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
@@ -160,6 +162,9 @@ export default function AdminPage() {
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
   const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
   const [exportingKey, setExportingKey] = useState<string | null>(null);
+  const [hasLoadedSupport, setHasLoadedSupport] = useState(false);
+  const [hasLoadedActivity, setHasLoadedActivity] = useState(false);
+  const restoredTokenRef = useRef("");
 
   const canLoad = useMemo(() => adminToken.trim().length > 0, [adminToken]);
 
@@ -190,88 +195,158 @@ export default function AdminPage() {
     });
   };
 
-  const adminFetch = async <T,>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> => {
-    const effectiveToken = (tokenOverride ?? adminToken).trim();
-    return fetchJsonWithWakeAndRetry<T>({
-      apiUrl,
-      path,
-      init: {
-        ...init,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${effectiveToken}`,
-          ...(init?.headers || {}),
+  const adminFetch = useCallback(
+    async <T,>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> => {
+      const effectiveToken = (tokenOverride ?? adminToken).trim();
+      return fetchJsonWithWakeAndRetry<T>({
+        apiUrl,
+        path,
+        init: {
+          ...init,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${effectiveToken}`,
+            ...(init?.headers || {}),
+          },
         },
-      },
-      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
-      parseError: async (response) => {
-        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-        return payload?.detail || `Request failed (${response.status})`;
-      },
-      abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
-    });
-  };
-
-  const loadAdminData = async (tokenOverride?: string) => {
-    const effectiveToken = (tokenOverride ?? adminToken).trim();
-    if (!effectiveToken) return;
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const query = new URLSearchParams();
-      query.set("limit", "120");
-      if (search.trim()) query.set("q", search.trim());
-      if (planFilter !== "all") query.set("plan", planFilter);
-      const chatQuery = new URLSearchParams();
-      chatQuery.set("limit", "120");
-      if (search.trim()) chatQuery.set("q", search.trim());
-
-      const [analyticsData, usersData, eventsData, feedbackData, txData, chatsData] = await Promise.all([
-        adminFetch<AdminAnalytics>("/admin/analytics", undefined, effectiveToken),
-        adminFetch<{ users: AdminUser[] }>(`/admin/users?${query.toString()}`, undefined, effectiveToken),
-        adminFetch<{ events: AdminEvent[] }>("/admin/events?limit=120", undefined, effectiveToken),
-        adminFetch<{ feedback: AdminFeedback[] }>("/admin/feedback?limit=120", undefined, effectiveToken),
-        adminFetch<{ transactions: AdminCreditTx[] }>("/admin/credit-transactions?limit=120", undefined, effectiveToken),
-        adminFetch<{ threads: AdminChatThread[] }>(`/admin/chats?${chatQuery.toString()}`, undefined, effectiveToken),
-      ]);
-
-      setAnalytics(analyticsData);
-      setUsers(usersData.users || []);
-      setEvents(eventsData.events || []);
-      setFeedbackRows(feedbackData.feedback || []);
-      setTransactions(txData.transactions || []);
-      const nextThreads = chatsData.threads || [];
-      setChatThreads(nextThreads);
-      setActiveChatUser((prev) => {
-        if (!prev) return null;
-        const matching = nextThreads.find((item) => item.user_id === prev.id);
-        if (!matching) return null;
-        return {
-          id: matching.user_id,
-          name: matching.name,
-          email: matching.email,
-          plan: matching.plan,
-          credits: matching.credits,
-        };
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: async (response) => {
+          const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+          return payload?.detail || `Request failed (${response.status})`;
+        },
+        abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
       });
-      setConnected(true);
-      window.localStorage.setItem("hirescore_admin_token", effectiveToken);
-      if (adminLoginId.trim()) {
-        window.localStorage.setItem("hirescore_admin_login_id", adminLoginId.trim());
+    },
+    [adminToken],
+  );
+
+  const loadAdminData = useCallback(
+    async (tokenOverride?: string, scope?: AdminLoadScope) => {
+      const effectiveToken = (tokenOverride ?? adminToken).trim();
+      if (!effectiveToken) return;
+
+      const effectiveScope = scope ?? workspaceTab;
+      const shouldLoadUsers = effectiveScope === "users" || effectiveScope === "all";
+      const shouldLoadSupport = effectiveScope === "support" || effectiveScope === "all";
+      const shouldLoadActivity = effectiveScope === "activity" || effectiveScope === "all";
+
+      setLoading(true);
+      setError("");
+      setSuccess("");
+
+      try {
+        const query = new URLSearchParams();
+        query.set("limit", "120");
+        if (search.trim()) query.set("q", search.trim());
+        if (planFilter !== "all") query.set("plan", planFilter);
+
+        const chatQuery = new URLSearchParams();
+        chatQuery.set("limit", "120");
+        if (search.trim()) chatQuery.set("q", search.trim());
+
+        const usersPromise: Promise<{ users: AdminUser[] } | null> = shouldLoadUsers
+          ? adminFetch<{ users: AdminUser[] }>(`/admin/users?${query.toString()}`, undefined, effectiveToken)
+          : Promise.resolve(null);
+
+        const chatsPromise: Promise<{ threads: AdminChatThread[] } | null> = shouldLoadSupport
+          ? adminFetch<{ threads: AdminChatThread[] }>(`/admin/chats?${chatQuery.toString()}`, undefined, effectiveToken)
+          : Promise.resolve(null);
+
+        const activityPromise: Promise<
+          | {
+              events: AdminEvent[];
+              feedback: AdminFeedback[];
+              transactions: AdminCreditTx[];
+            }
+          | null
+        > = shouldLoadActivity
+          ? Promise.all([
+              adminFetch<{ events: AdminEvent[] }>("/admin/events?limit=120", undefined, effectiveToken),
+              adminFetch<{ feedback: AdminFeedback[] }>("/admin/feedback?limit=120", undefined, effectiveToken),
+              adminFetch<{ transactions: AdminCreditTx[] }>("/admin/credit-transactions?limit=120", undefined, effectiveToken),
+            ]).then(([eventsData, feedbackData, txData]) => ({
+              events: eventsData.events || [],
+              feedback: feedbackData.feedback || [],
+              transactions: txData.transactions || [],
+            }))
+          : Promise.resolve(null);
+
+        const [analyticsData, usersData, chatsData, activityData] = await Promise.all([
+          adminFetch<AdminAnalytics>("/admin/analytics", undefined, effectiveToken),
+          usersPromise,
+          chatsPromise,
+          activityPromise,
+        ]);
+
+        setAnalytics(analyticsData);
+        if (usersData) {
+          setUsers(usersData.users || []);
+        }
+        if (activityData) {
+          setEvents(activityData.events);
+          setFeedbackRows(activityData.feedback);
+          setTransactions(activityData.transactions);
+          setHasLoadedActivity(true);
+        }
+        if (chatsData) {
+          const nextThreads = chatsData.threads || [];
+          setChatThreads(nextThreads);
+          setActiveChatUser((prev) => {
+            if (!prev) return null;
+            const matching = nextThreads.find((item) => item.user_id === prev.id);
+            if (!matching) return null;
+            return {
+              id: matching.user_id,
+              name: matching.name,
+              email: matching.email,
+              plan: matching.plan,
+              credits: matching.credits,
+            };
+          });
+          setHasLoadedSupport(true);
+        }
+
+        setConnected(true);
+        window.localStorage.setItem("hirescore_admin_token", effectiveToken);
+        if (adminLoginId.trim()) {
+          window.localStorage.setItem("hirescore_admin_login_id", adminLoginId.trim());
+        }
+      } catch (err) {
+        setConnected(false);
+        setError(err instanceof Error ? err.message : "Unable to load admin data.");
+        if (err instanceof Error && err.message.toLowerCase().includes("authentication")) {
+          setAdminToken("");
+          window.localStorage.removeItem("hirescore_admin_token");
+        }
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setConnected(false);
-      setError(err instanceof Error ? err.message : "Unable to load admin data.");
-      if (err instanceof Error && err.message.toLowerCase().includes("authentication")) {
-        setAdminToken("");
-        window.localStorage.removeItem("hirescore_admin_token");
-      }
-    } finally {
-      setLoading(false);
+    },
+    [adminToken, workspaceTab, search, planFilter, adminFetch, adminLoginId],
+  );
+
+  useEffect(() => {
+    const token = adminToken.trim();
+    if (!token) {
+      restoredTokenRef.current = "";
+      return;
     }
-  };
+    if (connected || loading) return;
+    if (restoredTokenRef.current === token) return;
+    restoredTokenRef.current = token;
+    void loadAdminData(token, "users");
+  }, [adminToken, connected, loading, loadAdminData]);
+
+  useEffect(() => {
+    if (!connected || loading) return;
+    if (workspaceTab === "support" && !hasLoadedSupport) {
+      void loadAdminData(undefined, "support");
+      return;
+    }
+    if (workspaceTab === "activity" && !hasLoadedActivity) {
+      void loadAdminData(undefined, "activity");
+    }
+  }, [connected, loading, workspaceTab, hasLoadedSupport, hasLoadedActivity, loadAdminData]);
 
   const handleAdminLogin = async () => {
     const loginId = adminLoginId.trim();
@@ -303,9 +378,11 @@ export default function AdminPage() {
       setAdminToken(payload.admin_token);
       setAdminPassword("");
       setSuccess("Admin login successful.");
+      setHasLoadedSupport(false);
+      setHasLoadedActivity(false);
       window.localStorage.setItem("hirescore_admin_token", payload.admin_token);
       window.localStorage.setItem("hirescore_admin_login_id", loginId);
-      await loadAdminData(payload.admin_token);
+      await loadAdminData(payload.admin_token, "users");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to login.");
     } finally {
@@ -342,7 +419,7 @@ export default function AdminPage() {
       credits: thread.credits,
     });
     await loadChatConversation(thread.user_id);
-    await loadAdminData();
+    await loadAdminData(undefined, "support");
   };
 
   const sendChatReply = async () => {
@@ -363,7 +440,7 @@ export default function AdminPage() {
       });
       setChatReplyText("");
       await loadChatConversation(targetUser.id);
-      await loadAdminData();
+      await loadAdminData(undefined, "support");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to send reply.");
     } finally {
@@ -386,7 +463,7 @@ export default function AdminPage() {
       });
       setSuccess(`Message #${messageId} deleted.`);
       await loadChatConversation(targetUser.id);
-      await loadAdminData();
+      await loadAdminData(undefined, "support");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to delete chat message.");
     } finally {
@@ -411,7 +488,7 @@ export default function AdminPage() {
         setChatMessages([]);
         setChatReplyText("");
       }
-      await loadAdminData();
+      await loadAdminData(undefined, "support");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to clear chat thread.");
     } finally {
@@ -451,7 +528,7 @@ export default function AdminPage() {
       });
       setSuccess(`User ${userId} updated.`);
       setRowEditor(userId, () => defaultRowEditor());
-      await loadAdminData();
+      await loadAdminData(undefined, "users");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to update user.");
     } finally {
@@ -480,7 +557,7 @@ export default function AdminPage() {
       });
       setSuccess(`Credits updated for user ${userId}.`);
       setRowEditor(userId, (prev) => ({ ...prev, delta: "", reason: "" }));
-      await loadAdminData();
+      await loadAdminData(undefined, "users");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to adjust credits.");
     } finally {
@@ -496,7 +573,7 @@ export default function AdminPage() {
     try {
       await adminFetch(`/admin/users/${userId}`, { method: "DELETE" });
       setSuccess(`User ${userId} deleted.`);
-      await loadAdminData();
+      await loadAdminData(undefined, "users");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to delete user.");
     } finally {
@@ -610,6 +687,8 @@ export default function AdminPage() {
                   setActiveChatUser(null);
                   setChatMessages([]);
                   setChatReplyText("");
+                  setHasLoadedSupport(false);
+                  setHasLoadedActivity(false);
                   window.localStorage.removeItem("hirescore_admin_token");
                 }}
                 className="rounded-xl border border-rose-200/28 bg-rose-300/10 px-3 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-300/16"
@@ -679,6 +758,8 @@ export default function AdminPage() {
                   setActiveChatUser(null);
                   setChatMessages([]);
                   setChatReplyText("");
+                  setHasLoadedSupport(false);
+                  setHasLoadedActivity(false);
                   setError("");
                   setSuccess("");
                   window.localStorage.removeItem("hirescore_admin_token");
@@ -706,7 +787,7 @@ export default function AdminPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void loadAdminData()}
+                  onClick={() => void loadAdminData(undefined, workspaceTab)}
                   disabled={!canLoad || loading}
                   className="ml-auto rounded-xl border border-sky-300/30 bg-sky-400/14 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
                 >
@@ -839,7 +920,7 @@ export default function AdminPage() {
                   </select>
                   <button
                     type="button"
-                    onClick={() => void loadAdminData()}
+                    onClick={() => void loadAdminData(undefined, "users")}
                     disabled={!connected || loading}
                     className="rounded-xl border border-sky-300/28 bg-sky-400/14 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
                   >
@@ -977,7 +1058,7 @@ export default function AdminPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void loadAdminData()}
+                  onClick={() => void loadAdminData(undefined, "support")}
                   disabled={!connected || loading}
                   className="ml-auto rounded-xl border border-sky-300/28 bg-sky-400/14 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
                 >
