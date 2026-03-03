@@ -740,6 +740,33 @@ export default function UploadPage() {
     return true;
   };
 
+  const handleResendSignupOtp = async () => {
+    const email = authEmail.trim();
+    const password = authPassword.trim();
+    if (!email || !password) {
+      setAuthError("Enter email and password to resend signup OTP.");
+      return;
+    }
+
+    setAuthError("");
+    setAuthInfo("");
+    setAuthLoading(true);
+    const loadingGuard = window.setTimeout(() => {
+      setAuthLoading(false);
+      setAuthError((prev) => prev || "OTP resend timed out. Please try again.");
+    }, AUTH_REQUEST_TIMEOUT_MS + 2500);
+    try {
+      const payload = await runWithMinimumAuthLiveLoading(() => submitAuthRequest("signup", email, password));
+      setSignupOtpRequired(Boolean(payload.otp_required ?? true));
+      setAuthInfo(payload.message || "Signup OTP sent again.");
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Unable to resend signup OTP.");
+    } finally {
+      window.clearTimeout(loadingGuard);
+      setAuthLoading(false);
+    }
+  };
+
   const handleAuthSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     const email = authEmail.trim();
@@ -787,7 +814,7 @@ export default function UploadPage() {
         setAuthPassword("");
         setAuthInfo("Signup complete. Welcome to HireScore.");
         const consumed = await runQueuedAnalyzeAfterAuth(payload.auth_token);
-        if (!consumed) router.push("/dashboard");
+        if (!consumed) router.push("/upload");
       } else {
         if (!email || !password) {
           throw new Error("Enter email and password.");
@@ -1329,21 +1356,14 @@ export default function UploadPage() {
                   {analysisError && (
                     <div className="mt-3 rounded-xl border border-amber-100/42 bg-amber-100/14 px-3 py-2 text-sm text-amber-50">{analysisError}</div>
                   )}
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="mt-3">
                     <button
                       type="submit"
                       disabled={loading}
-                      className="rounded-2xl border border-amber-100/45 bg-gradient-to-r from-rose-500/34 via-amber-300/28 to-orange-300/28 px-5 py-3.5 text-sm font-semibold tracking-wide text-amber-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-75"
+                      className="w-full rounded-2xl border border-amber-100/45 bg-gradient-to-r from-rose-500/34 via-amber-300/28 to-orange-300/28 px-5 py-3.5 text-sm font-semibold tracking-wide text-amber-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-75"
                     >
                       {loading ? "Analyzing..." : analysisMode === "manual" ? "Analyze My Profile" : "Analyze Uploaded Resume"}
                     </button>
-
-                    <Link
-                      href="/studio"
-                      className="rounded-2xl border border-rose-100/36 bg-rose-100/12 px-5 py-3.5 text-center text-sm font-semibold text-rose-50 transition hover:bg-rose-100/20"
-                    >
-                      Improve Resume Next
-                    </Link>
                   </div>
                 </div>
 
@@ -1469,6 +1489,18 @@ export default function UploadPage() {
                     placeholder="New password"
                     className={fieldClass}
                   />
+                )}
+                {signupOtpRequired && !forgotPasswordMode && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleResendSignupOtp()}
+                      disabled={authLoading || googleAuthLoading || authLiveLoading}
+                      className="rounded-lg border border-cyan-100/28 bg-cyan-100/8 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-100 transition hover:bg-cyan-100/14 disabled:opacity-55"
+                    >
+                      {authLoading || authLiveLoading ? "Resending..." : "Resend Signup OTP"}
+                    </button>
+                  </div>
                 )}
 
                 {!forgotPasswordMode && !signupOtpRequired && (
@@ -1660,19 +1692,11 @@ export default function UploadPage() {
                 </button>
               </div>
               <div className="border-b border-cyan-100/14 px-3 py-3 sm:px-6 sm:py-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Analysis Complete</p>
                     <h3 className="mt-1 text-lg font-semibold text-cyan-50 sm:text-2xl">{result.shortlist_prediction || "Shortlist Analysis Report"}</h3>
                     <p className="text-[13px] text-cyan-50/72 sm:text-sm">{scoreInsight}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href="/studio"
-                      className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:text-sm"
-                    >
-                      Improve Resume Next
-                    </Link>
                   </div>
                 </div>
 

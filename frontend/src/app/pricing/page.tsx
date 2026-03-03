@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
@@ -8,7 +9,10 @@ import { renderGoogleSignInButton } from "@/lib/google-sso";
 
 declare global {
   interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
+    Razorpay?: new (options: Record<string, unknown>) => {
+      open: () => void;
+      on?: (event: string, callback: (payload: unknown) => void) => void;
+    };
   }
 }
 
@@ -116,6 +120,7 @@ const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.rep
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
 export default function PricingPage() {
+  const router = useRouter();
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -142,6 +147,8 @@ export default function PricingPage() {
   const [razorpayKeyId, setRazorpayKeyId] = useState("");
   const [checkoutLoadingId, setCheckoutLoadingId] = useState<string | null>(null);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const preparedCheckoutRef = useRef<Partial<Record<string, CheckoutPayload>>>({});
+  const checkoutPrefetchInFlightRef = useRef<Partial<Record<string, Promise<void>>>>({});
 
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
@@ -285,6 +292,13 @@ export default function PricingPage() {
   }, []);
 
   useEffect(() => {
+    if (!razorpayEnabled || paymentGateway !== "razorpay") return;
+    void ensureRazorpayScript().catch(() => {
+      // Surface on explicit checkout action.
+    });
+  }, [razorpayEnabled, paymentGateway]);
+
+  useEffect(() => {
     const token = window.localStorage.getItem("hirescore_auth_token");
     if (!token) return;
     setAuthToken(token);
@@ -356,7 +370,7 @@ export default function PricingPage() {
     void renderGoogleSignInButton({
       container,
       clientId: GOOGLE_CLIENT_ID,
-      width: 300,
+      width: Math.min(360, Math.max(220, Math.round(container.getBoundingClientRect().width || 360))),
       text: authMode === "signup" ? "signup_with" : "continue_with",
       onCredential: (credential) => {
         if (cancelled) return;
@@ -412,6 +426,7 @@ export default function PricingPage() {
         setSignupOtp("");
         setAuthPassword("");
         setAuthInfo("Signup complete. Welcome to HireScore.");
+        router.push("/upload");
       } else {
         if (!email || !password) throw new Error("Enter email and password.");
         const payload = await submitAuthRequest(authMode, email, password);
@@ -426,6 +441,32 @@ export default function PricingPage() {
       setAuthError("");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to authenticate.");
+    } finally {
+      window.clearTimeout(loadingGuard);
+      setAuthLoading(false);
+    }
+  };
+
+  const handleResendSignupOtp = async () => {
+    const email = authEmail.trim();
+    const password = authPassword.trim();
+    if (!email || !password) {
+      setAuthError("Enter email and password to resend signup OTP.");
+      return;
+    }
+    setAuthError("");
+    setAuthInfo("");
+    setAuthLoading(true);
+    const loadingGuard = window.setTimeout(() => {
+      setAuthLoading(false);
+      setAuthError((prev) => prev || "OTP resend timed out. Please try again.");
+    }, AUTH_REQUEST_TIMEOUT_MS + 2500);
+    try {
+      const payload = await submitAuthRequest("signup", email, password);
+      setSignupOtpRequired(Boolean(payload.otp_required ?? true));
+      setAuthInfo(payload.message || "Signup OTP sent again.");
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Unable to resend signup OTP.");
     } finally {
       window.clearTimeout(loadingGuard);
       setAuthLoading(false);
@@ -471,6 +512,21 @@ export default function PricingPage() {
     }
 
     await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let blockedGuardTimer = 0;
+      const finalize = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        if (blockedGuardTimer) {
+          window.clearTimeout(blockedGuardTimer);
+        }
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      };
+
       const rz = new RazorpayCheckout({
         key: keyId,
         amount: Math.floor(amountPaise),
@@ -503,17 +559,72 @@ export default function PricingPage() {
             const verifyPayload = (await verifyResponse.json()) as { wallet?: CreditWallet; message?: string };
             if (verifyPayload.wallet) setWallet(verifyPayload.wallet);
             setAuthInfo(verifyPayload.message || "Payment successful. Credits added.");
-            resolve();
+            finalize();
           } catch (error) {
-            reject(error instanceof Error ? error : new Error("Unable to verify payment."));
+            finalize(error instanceof Error ? error : new Error("Unable to verify payment."));
           }
         },
         modal: {
-          ondismiss: () => reject(new Error("Payment cancelled.")),
+          ondismiss: () => finalize(new Error("Payment cancelled.")),
         },
       });
-      rz.open();
+
+      if (typeof rz.on === "function") {
+        rz.on("payment.failed", () => finalize(new Error("Payment failed. Please retry.")));
+      }
+
+      blockedGuardTimer = window.setTimeout(() => {
+        const checkoutVisible = Boolean(
+          document.querySelector(".razorpay-container, .razorpay-backdrop, iframe[src*='razorpay']")
+        );
+        if (!checkoutVisible && document.visibilityState === "visible") {
+          finalize(new Error("Razorpay did not open. Tap Pay Now once again."));
+        }
+      }, 1700);
+
+      try {
+        rz.open();
+      } catch (error) {
+        finalize(error instanceof Error ? error : new Error("Unable to open Razorpay checkout."));
+      }
     });
+  };
+
+  const requestCheckoutPayload = async (packageId: string) => {
+    const response = await fetch(apiUrl("/payments/checkout"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeader,
+      },
+      body: JSON.stringify({
+        package_id: packageId,
+        auth_token: authToken,
+      }),
+    });
+    if (!response.ok) throw new Error(await parseApiError(response));
+    return (await response.json()) as CheckoutPayload;
+  };
+
+  const prefetchRazorpayCheckout = (packageId: string) => {
+    if (!authToken || !authHeader) return;
+    if (!paymentEnabled || paymentGateway !== "razorpay") return;
+    if (preparedCheckoutRef.current[packageId]) return;
+    if (checkoutPrefetchInFlightRef.current[packageId]) return;
+
+    checkoutPrefetchInFlightRef.current[packageId] = (async () => {
+      try {
+        await ensureRazorpayScript();
+        const payload = await requestCheckoutPayload(packageId);
+        if (payload.provider === "razorpay") {
+          preparedCheckoutRef.current[packageId] = payload;
+        }
+      } catch {
+        // Warmup failures are non-fatal; explicit click flow will show errors.
+      } finally {
+        delete checkoutPrefetchInFlightRef.current[packageId];
+      }
+    })();
   };
 
   const handleCheckout = async (packageId: string) => {
@@ -525,21 +636,11 @@ export default function PricingPage() {
     setCheckoutLoadingId(packageId);
     setAuthError("");
     try {
-      const response = await fetch(apiUrl("/payments/checkout"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeader,
-        },
-        body: JSON.stringify({
-          package_id: packageId,
-          auth_token: authToken,
-        }),
-      });
-      if (!response.ok) throw new Error(await parseApiError(response));
-      const payload = (await response.json()) as CheckoutPayload;
+      const payload = preparedCheckoutRef.current[packageId] || (await requestCheckoutPayload(packageId));
       if (payload.provider === "razorpay") {
+        preparedCheckoutRef.current[packageId] = payload;
         await openRazorpayCheckout(payload);
+        delete preparedCheckoutRef.current[packageId];
       } else {
         if (!payload.checkout_url) throw new Error("Payment link was not returned.");
         window.location.href = payload.checkout_url;
@@ -553,6 +654,8 @@ export default function PricingPage() {
   };
 
   const handleSignOut = () => {
+    preparedCheckoutRef.current = {};
+    checkoutPrefetchInFlightRef.current = {};
     setAuthToken("");
     setAuthUserEmail("");
     setWallet(null);
@@ -639,12 +742,12 @@ export default function PricingPage() {
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/70">{tierTitle}</p>
-                      <h4 className="mt-1 text-xl font-semibold text-cyan-50">{item.label}</h4>
+                      <h4 className="mt-1 text-xl font-semibold leading-tight text-cyan-50">{item.label}</h4>
                     </div>
                     {isFeatured && (
-                      <span className="rounded-full border border-cyan-100/40 bg-cyan-100/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-50">
+                      <span className="shrink-0 rounded-full border border-cyan-100/40 bg-cyan-100/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-50">
                         Most Popular
                       </span>
                     )}
@@ -665,6 +768,8 @@ export default function PricingPage() {
                   <button
                     type="button"
                     disabled={!paymentEnabled || checkoutLoadingId === item.id}
+                    onTouchStart={() => prefetchRazorpayCheckout(item.id)}
+                    onMouseEnter={() => prefetchRazorpayCheckout(item.id)}
                     onClick={() => void handleCheckout(item.id)}
                     className="mt-4 w-full rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
                   >
@@ -767,21 +872,33 @@ export default function PricingPage() {
                   />
                 </div>
               )}
+              {signupOtpRequired && !forgotPasswordMode && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void handleResendSignupOtp()}
+                    disabled={authLoading || googleAuthLoading}
+                    className="rounded-lg border border-cyan-100/28 bg-cyan-100/8 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-100 transition hover:bg-cyan-100/14 disabled:opacity-55"
+                  >
+                    {authLoading ? "Resending..." : "Resend Signup OTP"}
+                  </button>
+                </div>
+              )}
               {!forgotPasswordMode && !signupOtpRequired && (
                 <div className="mt-3">
                   <p className="text-center text-[11px] uppercase tracking-[0.16em] text-cyan-100/62">or continue with</p>
-                  <div className="mt-2 flex justify-center">
-                    <div ref={googleButtonRef} className="min-h-[42px] rounded-full" />
+                  <div className="mt-2 flex w-full justify-center">
+                    <div ref={googleButtonRef} className="min-h-[44px] w-full max-w-[360px] rounded-full" />
                   </div>
                   {googleAuthLoading && <p className="mt-2 text-center text-xs text-cyan-100/78">Completing Google sign-in...</p>}
                 </div>
               )}
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
                   onClick={() => void handleAuthSubmit()}
                   disabled={authLoading || googleAuthLoading}
-                  className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+                  className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-center text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60 sm:min-w-[120px] sm:flex-1"
                 >
                   {authLoading || googleAuthLoading
                     ? "Please wait..."
@@ -805,7 +922,7 @@ export default function PricingPage() {
                       setAuthError("");
                       setAuthInfo("");
                     }}
-                    className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                    className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-center text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10 sm:min-w-[120px] sm:flex-1"
                   >
                     {authMode === "signup" ? "Use Login" : "Use Signup"}
                   </button>
@@ -822,7 +939,7 @@ export default function PricingPage() {
                     setAuthError("");
                     setAuthInfo("");
                   }}
-                  className="rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10"
+                  className="w-full min-h-[44px] touch-manipulation rounded-xl border border-cyan-100/24 bg-transparent px-3 py-2 text-center text-xs font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10 sm:min-w-[120px] sm:flex-1"
                 >
                   {forgotPasswordMode ? "Back To Login" : "Forgot Password"}
                 </button>

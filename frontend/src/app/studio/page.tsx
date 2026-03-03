@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
 
@@ -124,6 +125,7 @@ const PLACEHOLDER_CANDIDATE_NAMES = new Set([
 ]);
 
 export default function StudioPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<"build" | "polish" | "compose">("build");
   const [polishMode, setPolishMode] = useState<"paste" | "upload">("paste");
 
@@ -504,6 +506,7 @@ export default function StudioPage() {
         setSignupOtp("");
         setAuthPassword("");
         setAuthInfo("Signup complete. Welcome to HireScore.");
+        router.push("/upload");
       } else {
         if (!email || !password) throw new Error("Enter email and password.");
         const payload = await submitAuthRequest(authMode, email, password);
@@ -518,6 +521,32 @@ export default function StudioPage() {
       setAuthError("");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to authenticate.");
+    } finally {
+      window.clearTimeout(loadingGuard);
+      setAuthLoading(false);
+    }
+  };
+
+  const handleResendSignupOtp = async () => {
+    const email = authEmail.trim();
+    const password = authPassword.trim();
+    if (!email || !password) {
+      setAuthError("Enter email and password to resend signup OTP.");
+      return;
+    }
+    setAuthError("");
+    setAuthInfo("");
+    setAuthLoading(true);
+    const loadingGuard = window.setTimeout(() => {
+      setAuthLoading(false);
+      setAuthError((prev) => prev || "OTP resend timed out. Please try again.");
+    }, AUTH_REQUEST_TIMEOUT_MS + 2500);
+    try {
+      const payload = await submitAuthRequest("signup", email, password);
+      setSignupOtpRequired(Boolean(payload.otp_required ?? true));
+      setAuthInfo(payload.message || "Signup OTP sent again.");
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Unable to resend signup OTP.");
     } finally {
       window.clearTimeout(loadingGuard);
       setAuthLoading(false);
@@ -1076,6 +1105,18 @@ export default function StudioPage() {
                         placeholder="New password"
                         className="w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
                       />
+                    </div>
+                  )}
+                  {signupOtpRequired && !forgotPasswordMode && (
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleResendSignupOtp()}
+                        disabled={authLoading || googleAuthLoading}
+                        className="rounded-lg border border-cyan-100/28 bg-cyan-100/8 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-100 transition hover:bg-cyan-100/14 disabled:opacity-55"
+                      >
+                        {authLoading ? "Resending..." : "Resend Signup OTP"}
+                      </button>
                     </div>
                   )}
                   {!forgotPasswordMode && !signupOtpRequired && (
