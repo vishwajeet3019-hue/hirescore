@@ -1,101 +1,124 @@
 "use client";
 
+import { useId } from "react";
 import { motion } from "framer-motion";
 
 type StudioLockVisualProps = {
   compact?: boolean;
 };
 
-const SATELLITES = Array.from({ length: 6 }, (_, index) => index);
+const LATITUDE_RY = [8, 14, 20, 26, 31];
+const LONGITUDE_RX = [7, 14, 21, 28];
+const ORBITS = [
+  { inset: 6, duration: 20, delay: 0 },
+  { inset: 14, duration: 14, delay: 0.1 },
+  { inset: 22, duration: 10.5, delay: 0.2 },
+];
 
 export default function StudioLockVisual({ compact = false }: StudioLockVisualProps) {
-  const frameSize = compact ? "h-44 w-44 sm:h-48 sm:w-48" : "h-56 w-56 sm:h-64 sm:w-64";
-  const coreSize = compact ? "h-20 w-20" : "h-24 w-24";
-  const scannerWidth = compact ? "w-24" : "w-32";
+  const uniqueId = useId().replace(/[:]/g, "");
+  const size = compact ? 190 : 250;
+  const coreSize = compact ? 88 : 104;
+  const gradientId = `studio-core-${uniqueId}`;
+  const lineId = `studio-line-${uniqueId}`;
 
   return (
-    <div className={`relative mx-auto ${frameSize}`}>
+    <div className="relative mx-auto flex items-center justify-center" style={{ width: size, height: size }}>
       <motion.div
         animate={{ opacity: [0.35, 0.62, 0.35], scale: [0.96, 1.03, 0.96] }}
         transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }}
-        className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_36%,rgba(125,211,252,0.24),rgba(125,211,252,0.07)_42%,rgba(3,12,27,0)_76%)]"
+        className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_42%,rgba(125,211,252,0.26),rgba(125,211,252,0.08)_42%,rgba(3,12,27,0)_76%)]"
       />
-      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" aria-hidden="true">
-        <motion.circle
-          cx="50"
-          cy="50"
-          r="44"
-          fill="none"
-          stroke="rgba(125,211,252,0.25)"
-          strokeWidth="0.5"
-          strokeDasharray="2 5"
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
-          style={{ transformOrigin: "50% 50%" }}
-        />
-        <motion.circle
-          cx="50"
-          cy="50"
-          r="33"
-          fill="none"
-          stroke="rgba(253,230,138,0.28)"
-          strokeWidth="0.5"
-          strokeDasharray="3 6"
-          animate={{ rotate: -360 }}
-          transition={{ repeat: Infinity, duration: 16, ease: "linear" }}
-          style={{ transformOrigin: "50% 50%" }}
-        />
-        <motion.path
-          d="M14 50 Q50 24 86 50"
-          fill="none"
-          stroke="rgba(56,189,248,0.54)"
-          strokeWidth="1"
-          strokeLinecap="round"
-          animate={{ pathLength: [0, 1, 0], opacity: [0.2, 0.86, 0.2] }}
-          transition={{ repeat: Infinity, duration: 3.4, ease: "easeInOut" }}
-        />
-        <motion.path
-          d="M14 50 Q50 76 86 50"
-          fill="none"
-          stroke="rgba(250,204,21,0.46)"
-          strokeWidth="1"
-          strokeLinecap="round"
-          animate={{ pathLength: [0, 1, 0], opacity: [0.2, 0.86, 0.2] }}
-          transition={{ repeat: Infinity, duration: 3.4, ease: "easeInOut", delay: 0.45 }}
-        />
-      </svg>
 
-      {SATELLITES.map((satellite, index) => (
+      {ORBITS.map((orbit, index) => (
         <motion.div
-          key={`satellite-${index}`}
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 8 + index * 1.4, ease: "linear", delay: index * 0.18 }}
-          className="absolute inset-0"
+          key={`orbit-${orbit.inset}`}
+          animate={{ rotate: index % 2 === 0 ? 360 : -360 }}
+          transition={{ repeat: Infinity, duration: orbit.duration, ease: "linear", delay: orbit.delay }}
+          className="absolute rounded-full border border-cyan-100/24"
+          style={{ inset: `${orbit.inset}%` }}
         >
-          <span
-            className="absolute left-1/2 top-1/2 block h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-100/70 shadow-[0_0_12px_rgba(125,211,252,0.65)]"
-            style={{ transform: `translate(-50%, -50%) rotate(${satellite * 60}deg) translateY(-${compact ? 76 : 94}px)` }}
-          />
+          <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-100/80 shadow-[0_0_12px_rgba(125,211,252,0.7)]" />
         </motion.div>
       ))}
 
+      <svg className="pointer-events-none absolute inset-[17%] h-[66%] w-[66%]" viewBox="0 0 120 120" aria-hidden="true">
+        <defs>
+          <radialGradient id={gradientId} cx="50%" cy="50%" r="58%">
+            <stop offset="0%" stopColor="rgba(125,211,252,0.22)" />
+            <stop offset="68%" stopColor="rgba(7,30,52,0.86)" />
+            <stop offset="100%" stopColor="rgba(6,18,31,0.96)" />
+          </radialGradient>
+          <linearGradient id={lineId} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="rgba(125,211,252,0.72)" />
+            <stop offset="100%" stopColor="rgba(253,230,138,0.5)" />
+          </linearGradient>
+        </defs>
+
+        <circle cx="60" cy="60" r="38" fill={`url(#${gradientId})`} stroke="rgba(125,211,252,0.34)" strokeWidth="1" />
+
+        <motion.g
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 26, ease: "linear" }}
+          style={{ transformOrigin: "60px 60px" }}
+        >
+          {LATITUDE_RY.map((ry) => (
+            <ellipse key={`lat-${ry}`} cx="60" cy="60" rx="34" ry={ry} fill="none" stroke={`url(#${lineId})`} strokeWidth="0.8" opacity="0.65" />
+          ))}
+        </motion.g>
+
+        <motion.g
+          animate={{ rotate: -360 }}
+          transition={{ repeat: Infinity, duration: 24, ease: "linear" }}
+          style={{ transformOrigin: "60px 60px" }}
+        >
+          {LONGITUDE_RX.map((rx) => (
+            <ellipse key={`lon-${rx}`} cx="60" cy="60" rx={rx} ry="34" fill="none" stroke="rgba(147,197,253,0.52)" strokeWidth="0.8" />
+          ))}
+        </motion.g>
+
+        <motion.path
+          d="M23 60 C42 42 78 42 97 60"
+          fill="none"
+          stroke="rgba(125,211,252,0.75)"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          animate={{ pathLength: [0, 1, 0], opacity: [0.18, 0.9, 0.18] }}
+          transition={{ repeat: Infinity, duration: 3.8, ease: "easeInOut" }}
+        />
+        <motion.path
+          d="M23 60 C42 78 78 78 97 60"
+          fill="none"
+          stroke="rgba(250,204,21,0.62)"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          animate={{ pathLength: [0, 1, 0], opacity: [0.18, 0.82, 0.18] }}
+          transition={{ repeat: Infinity, duration: 3.8, ease: "easeInOut", delay: 0.55 }}
+        />
+      </svg>
+
       <div className="absolute inset-0 flex items-center justify-center">
         <motion.div
-          animate={{ scale: [1, 1.05, 1], boxShadow: ["0 0 20px rgba(56,189,248,0.2)", "0 0 34px rgba(56,189,248,0.42)", "0 0 20px rgba(56,189,248,0.2)"] }}
+          animate={{
+            scale: [1, 1.05, 1],
+            boxShadow: ["0 0 20px rgba(56,189,248,0.18)", "0 0 34px rgba(56,189,248,0.4)", "0 0 20px rgba(56,189,248,0.18)"],
+          }}
           transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
-          className={`${coreSize} rounded-[1.4rem] border border-cyan-100/36 bg-[linear-gradient(155deg,rgba(10,25,41,0.95),rgba(6,18,31,0.9))]`}
+          className={`rounded-[1.2rem] border border-cyan-100/36 bg-[linear-gradient(155deg,rgba(10,25,41,0.95),rgba(6,18,31,0.9))]`}
+          style={{ width: coreSize, height: coreSize }}
         />
         <motion.div
           animate={{ y: [-14, 14, -14], opacity: [0.15, 0.75, 0.15] }}
           transition={{ repeat: Infinity, duration: 2.1, ease: "easeInOut" }}
-          className={`absolute h-[1px] ${scannerWidth} rounded-full bg-gradient-to-r from-transparent via-cyan-100 to-transparent`}
+          className="absolute h-[1px] rounded-full bg-gradient-to-r from-transparent via-cyan-100 to-transparent"
+          style={{ width: compact ? 96 : 128 }}
         />
         <motion.span
           animate={{ opacity: [0.45, 0.95, 0.45] }}
           transition={{ repeat: Infinity, duration: 2.1, ease: "easeInOut" }}
-          className="absolute text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-50/88"
+          className="absolute text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-50/88"
         >
-          STUDIO
+          ANALYSIS GATE
         </motion.span>
       </div>
     </div>

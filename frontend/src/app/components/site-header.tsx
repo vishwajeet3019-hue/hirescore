@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type MouseEvent, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { trackEvent } from "@/lib/analytics";
 import BrandLogo from "./brand-logo";
@@ -55,6 +56,7 @@ export default function SiteHeader() {
   const [analysisCount, setAnalysisCount] = useState(0);
   const [studioUnlocked, setStudioUnlocked] = useState(false);
   const [showStudioLockModal, setShowStudioLockModal] = useState(false);
+  const [portalReady, setPortalReady] = useState(false);
 
   useEffect(() => {
     if (!showStudioLockModal) return;
@@ -71,6 +73,10 @@ export default function SiteHeader() {
     window.addEventListener("hashchange", syncHash);
     return () => window.removeEventListener("hashchange", syncHash);
   }, [pathname]);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     const syncAuth = async () => {
@@ -239,65 +245,70 @@ export default function SiteHeader() {
         </nav>
       </div>
 
-      <AnimatePresence>
-        {showStudioLockModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[260] grid place-items-center bg-[#020915]/62 px-4 backdrop-blur-2xl"
-            onClick={(event) => {
-              if (event.target !== event.currentTarget) return;
-              setShowStudioLockModal(false);
-            }}
-          >
-            <motion.section
-              initial={{ opacity: 0, y: 18, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.97 }}
-              className="relative w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_24px_70px_rgba(2,8,20,0.55)]"
-            >
-              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_42%,rgba(253,230,138,0.08))]" />
-
-              <div className="relative">
-                <StudioLockVisual compact />
-                <p className="text-center text-xs uppercase tracking-[0.18em] text-cyan-100/72">Resume Studio Gate</p>
-                <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Let&apos;s Start With Your First Analysis</h3>
-                <p className="mt-3 text-center text-sm text-cyan-50/80">
-                  Complete your first analysis on Analyze page to unlock Build Resume.
-                </p>
-                <p className="mt-2 text-center text-xs text-cyan-100/72">
-                  Analyses completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
-                </p>
-
-                <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowStudioLockModal(false);
-                      trackEvent("studio_nav_locked_popup_analyze_click", {
-                        source: "header_nav",
-                        analysis_count: analysisCount,
-                      });
-                      router.push("/upload");
-                    }}
-                    className="rounded-xl border border-cyan-100/35 bg-cyan-200/18 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
+      {portalReady
+        ? createPortal(
+            <AnimatePresence>
+              {showStudioLockModal && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[14px]"
+                  onClick={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    setShowStudioLockModal(false);
+                  }}
+                >
+                  <motion.section
+                    initial={{ opacity: 0, y: 18, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.97 }}
+                    className="relative my-auto w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_24px_70px_rgba(2,8,20,0.55)]"
                   >
-                    Go To Analyze
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowStudioLockModal(false)}
-                    className="rounded-xl border border-cyan-100/22 bg-transparent px-4 py-2.5 text-sm font-semibold text-cyan-50/86 transition hover:bg-cyan-100/8"
-                  >
-                    Not Now
-                  </button>
-                </div>
-              </div>
-            </motion.section>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_42%,rgba(253,230,138,0.08))]" />
+
+                    <div className="relative">
+                      <StudioLockVisual compact />
+                      <p className="text-center text-xs uppercase tracking-[0.18em] text-cyan-100/72">Resume Studio Gate</p>
+                      <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Let&apos;s Start With Your First Analysis</h3>
+                      <p className="mt-3 text-center text-sm text-cyan-50/80">
+                        Complete your first analysis on Analyze page to unlock Build Resume.
+                      </p>
+                      <p className="mt-2 text-center text-xs text-cyan-100/72">
+                        Analyses completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
+                      </p>
+
+                      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowStudioLockModal(false);
+                            trackEvent("studio_nav_locked_popup_analyze_click", {
+                              source: "header_nav",
+                              analysis_count: analysisCount,
+                            });
+                            router.push("/upload");
+                          }}
+                          className="rounded-xl border border-cyan-100/35 bg-cyan-200/18 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
+                        >
+                          Go To Analyze
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowStudioLockModal(false)}
+                          className="rounded-xl border border-cyan-100/22 bg-transparent px-4 py-2.5 text-sm font-semibold text-cyan-50/86 transition hover:bg-cyan-100/8"
+                        >
+                          Not Now
+                        </button>
+                      </div>
+                    </div>
+                  </motion.section>
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body
+          )
+        : null}
     </header>
   );
 }

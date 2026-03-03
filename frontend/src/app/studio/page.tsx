@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import StudioLockVisual from "@/app/components/studio-lock-visual";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
@@ -176,6 +177,7 @@ export default function StudioPage() {
   const [authSyncReady, setAuthSyncReady] = useState(false);
   const [showStudioGateModal, setShowStudioGateModal] = useState(false);
   const [studioGateDismissed, setStudioGateDismissed] = useState(false);
+  const [portalReady, setPortalReady] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
 
   const authHeader = useMemo(
@@ -280,6 +282,10 @@ export default function StudioPage() {
       document.body.style.overflow = previousOverflow;
     };
   }, [showStudioGateModal]);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   const remainingGeneration = wallet ? Math.floor(wallet.credits / Math.max(1, wallet.pricing.ai_resume_generation)) : 0;
   const canUseAiGeneration = (wallet?.credits || 0) >= (wallet?.pricing.ai_resume_generation || 15);
@@ -1509,69 +1515,74 @@ export default function StudioPage() {
           </motion.div>
         )}
 
-        <AnimatePresence>
-          {showStudioGateModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[240] grid place-items-center bg-[#020915]/62 px-4 backdrop-blur-2xl"
-              onClick={(event) => {
-                if (event.target !== event.currentTarget) return;
-                setShowStudioGateModal(false);
-                setStudioGateDismissed(true);
-              }}
-            >
-              <motion.section
-                initial={{ opacity: 0, y: 24, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 12, scale: 0.96 }}
-                className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_30px_90px_rgba(2,8,20,0.58)] sm:p-8"
-              >
-                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_44%,rgba(253,230,138,0.08))]" />
-
-                <div className="relative z-10">
-                  <p className="text-center text-xs uppercase tracking-[0.22em] text-cyan-100/72">Resume Studio Access</p>
-                  <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">Let&apos;s Start With Your First Analysis</h3>
-                  <p className="mx-auto mt-3 max-w-xl text-center text-sm text-cyan-50/78 sm:text-base">
-                    Resume Studio unlocks after your first analysis result. Finish one run on Analyze and return instantly.
-                  </p>
-                  <p className="mt-2 text-center text-xs text-cyan-100/72">
-                    Analyses completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
-                  </p>
-
-                  <div className="mt-2">
-                    <StudioLockVisual />
-                  </div>
-
-                  <div className="mt-6 grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowStudioGateModal(false);
-                        setStudioGateDismissed(true);
-                        router.push("/upload");
-                      }}
-                      className="rounded-xl border border-cyan-100/38 bg-cyan-200/18 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
+        {portalReady
+          ? createPortal(
+              <AnimatePresence>
+                {showStudioGateModal && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[14px]"
+                    onClick={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      setShowStudioGateModal(false);
+                      setStudioGateDismissed(true);
+                    }}
+                  >
+                    <motion.section
+                      initial={{ opacity: 0, y: 24, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 12, scale: 0.96 }}
+                      className="relative my-auto w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_30px_90px_rgba(2,8,20,0.58)] sm:p-8"
                     >
-                      Go To Analyze
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowStudioGateModal(false);
-                        setStudioGateDismissed(true);
-                      }}
-                      className="rounded-xl border border-cyan-100/22 bg-transparent px-4 py-3 text-sm font-semibold text-cyan-50/88 transition hover:bg-cyan-100/10"
-                    >
-                      Stay Here
-                    </button>
-                  </div>
-                </div>
-              </motion.section>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_44%,rgba(253,230,138,0.08))]" />
+
+                      <div className="relative z-10">
+                        <p className="text-center text-xs uppercase tracking-[0.22em] text-cyan-100/72">Resume Studio Access</p>
+                        <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">Let&apos;s Start With Your First Analysis</h3>
+                        <p className="mx-auto mt-3 max-w-xl text-center text-sm text-cyan-50/78 sm:text-base">
+                          Resume Studio unlocks after your first analysis result. Finish one run on Analyze and return instantly.
+                        </p>
+                        <p className="mt-2 text-center text-xs text-cyan-100/72">
+                          Analyses completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
+                        </p>
+
+                        <div className="mt-2">
+                          <StudioLockVisual />
+                        </div>
+
+                        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowStudioGateModal(false);
+                              setStudioGateDismissed(true);
+                              router.push("/upload");
+                            }}
+                            className="rounded-xl border border-cyan-100/38 bg-cyan-200/18 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
+                          >
+                            Go To Analyze
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowStudioGateModal(false);
+                              setStudioGateDismissed(true);
+                            }}
+                            className="rounded-xl border border-cyan-100/22 bg-transparent px-4 py-3 text-sm font-semibold text-cyan-50/88 transition hover:bg-cyan-100/10"
+                          >
+                            Stay Here
+                          </button>
+                        </div>
+                      </div>
+                    </motion.section>
+                  </motion.div>
+                )}
+              </AnimatePresence>,
+              document.body
+            )
+          : null}
 
         {optimizedResume && !studioLockedByFirstAnalysis && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="studio-soft-card rounded-[2rem] p-6 sm:p-8">
