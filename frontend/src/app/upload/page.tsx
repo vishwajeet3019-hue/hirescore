@@ -337,6 +337,7 @@ export default function UploadPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [queuedAnalyzeMode, setQueuedAnalyzeMode] = useState<"manual" | "upload" | null>(null);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const closeResultModalRef = useRef<() => void>(() => {});
 
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
@@ -436,8 +437,7 @@ export default function UploadPage() {
     if (!showResultModal) return;
     const onEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setShowResultModal(false);
-        setActiveResultTab("summary");
+        closeResultModalRef.current();
       }
     };
     window.addEventListener("keydown", onEscape);
@@ -1240,6 +1240,7 @@ export default function UploadPage() {
       }
     })();
   };
+  closeResultModalRef.current = handleCloseResultModal;
 
   const analysisFieldClass =
     "w-full rounded-2xl border border-amber-100/28 bg-[#1a1020]/78 px-4 py-3.5 text-amber-50 placeholder:text-amber-100/40 outline-none transition focus:border-rose-100/70 focus:shadow-[0_0_0_3px_rgba(255,186,138,0.2)]";
