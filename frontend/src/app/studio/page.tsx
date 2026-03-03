@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import StudioLockVisual from "@/app/components/studio-lock-visual";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
 
@@ -1519,20 +1520,10 @@ export default function StudioPage() {
                 className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/30 bg-[#031426]/96 p-6 shadow-[0_36px_110px_rgba(0,0,0,0.62)] sm:p-8"
               >
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(34,211,238,0.3),rgba(34,211,238,0)_38%),radial-gradient(circle_at_82%_78%,rgba(251,191,36,0.24),rgba(251,191,36,0)_40%)]" />
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 14, ease: "linear" }}
-                  className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-100/20"
-                />
-                <motion.div
-                  animate={{ rotate: -360 }}
-                  transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
-                  className="pointer-events-none absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full border border-amber-100/14"
-                />
 
                 <div className="relative z-10">
                   <p className="text-center text-xs uppercase tracking-[0.22em] text-cyan-100/72">Live Studio Lock</p>
-                  <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">Run 1 Analysis To Activate Studio</h3>
+                  <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">First, Let&apos;s Analyze Your Profile</h3>
                   <p className="mx-auto mt-3 max-w-xl text-center text-sm text-cyan-50/78 sm:text-base">
                     Resume Studio unlocks after your first analysis result. Finish one run on Analyze and return instantly.
                   </p>
@@ -1540,15 +1531,8 @@ export default function StudioPage() {
                     Analyses completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
                   </p>
 
-                  <div className="mx-auto mt-6 flex max-w-xl items-end justify-center gap-1.5 rounded-2xl border border-cyan-100/20 bg-cyan-100/6 p-4">
-                    {Array.from({ length: 20 }).map((_, index) => (
-                      <motion.span
-                        key={`studio-wave-${index}`}
-                        className="w-1.5 rounded-full bg-gradient-to-t from-cyan-300/80 to-amber-200/90"
-                        animate={{ height: [8, 18 + ((index * 7) % 42), 8], opacity: [0.45, 1, 0.45] }}
-                        transition={{ repeat: Infinity, duration: 1.3 + (index % 5) * 0.16, delay: index * 0.05, ease: "easeInOut" }}
-                      />
-                    ))}
+                  <div className="mt-2">
+                    <StudioLockVisual />
                   </div>
 
                   <div className="mt-6 grid gap-2 sm:grid-cols-2">
