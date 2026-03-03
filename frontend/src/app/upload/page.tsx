@@ -185,6 +185,12 @@ type GoalRoadmapMilestone = {
   id: string;
   title: string;
   detail: string;
+  category?: string | null;
+  priority?: "critical" | "high" | "medium" | "low" | string | null;
+  timeframe?: string | null;
+  why?: string | null;
+  done_when?: string | null;
+  focus_skills?: string[];
   completed: boolean;
   completed_at?: string | null;
 };
@@ -1119,6 +1125,10 @@ export default function UploadPage() {
   const resultProgress = Math.round(((resultStepIndex + 1) / RESULT_STEPS.length) * 100);
   const activeResultStep = RESULT_STEPS[resultStepIndex] || RESULT_STEPS[0];
   const nextResultStep = RESULT_STEPS[Math.min(RESULT_STEPS.length - 1, resultStepIndex + 1)] || RESULT_STEPS[RESULT_STEPS.length - 1];
+  const nextRoadmapPreviewMilestone = useMemo(
+    () => roadmapPreview?.milestones.find((milestone) => !milestone.completed) || null,
+    [roadmapPreview]
+  );
 
   const navigateResultStep = (direction: "next" | "back") => {
     const delta = direction === "next" ? 1 : -1;
@@ -1127,10 +1137,34 @@ export default function UploadPage() {
   };
 
   const buildRoadmapMilestones = (analysisResult: AnalysisResult) => {
-    const milestoneMap = new Map<string, { id: string; title: string; detail: string }>();
-    const registerMilestone = (titleRaw: string, detailRaw: string, fallbackIndex: number) => {
-      const title = titleRaw.trim();
-      const detail = detailRaw.trim();
+    type DraftMilestone = Omit<GoalRoadmapMilestone, "completed" | "completed_at">;
+    const milestoneMap = new Map<string, DraftMilestone>();
+    const roleLabel = role.trim() || analysisResult.positioning_strategy?.target_role || "your target role";
+    const userSkillSignals = parseSkillTokens(analysisSkills).slice(0, 14);
+
+    const toTimeframe = (value?: string | null) => {
+      const token = value?.trim();
+      if (!token) return "";
+      return /week|month|day/i.test(token) ? token : `${token} weeks`;
+    };
+
+    const matchSkillSignals = (text: string) => {
+      const haystack = text.toLowerCase();
+      return userSkillSignals.filter((skill) => haystack.includes(skill.toLowerCase())).slice(0, 4);
+    };
+
+    const priorityWeight = (value?: string | null) => {
+      const token = (value || "").toLowerCase();
+      if (token === "critical") return 0;
+      if (token === "high") return 1;
+      if (token === "medium") return 2;
+      if (token === "low") return 3;
+      return 4;
+    };
+
+    const registerMilestone = (draft: Partial<DraftMilestone>, fallbackIndex: number) => {
+      const title = (draft.title || "").trim();
+      const detail = (draft.detail || "").trim();
       if (!title || !detail) return;
       const idBase = title
         .toLowerCase()
@@ -1138,43 +1172,134 @@ export default function UploadPage() {
         .replace(/^-+|-+$/g, "")
         .slice(0, 44);
       const id = idBase ? `milestone-${idBase}` : `milestone-${fallbackIndex}`;
-      if (!milestoneMap.has(id)) {
-        milestoneMap.set(id, { id, title, detail });
-      }
+      if (milestoneMap.has(id)) return;
+      milestoneMap.set(id, {
+        id,
+        title,
+        detail,
+        category: draft.category || "Execution",
+        priority: draft.priority || "medium",
+        timeframe: draft.timeframe || null,
+        why: draft.why || null,
+        done_when: draft.done_when || null,
+        focus_skills: (draft.focus_skills || []).slice(0, 5),
+      });
     };
 
     analysisResult.ninety_plus_strategy?.actions?.slice(0, 4).forEach((action, index) => {
+      const actionText = `${action.action || ""} ${action.why_it_matters || ""}`;
       registerMilestone(
-        action.title || action.step_label || `Action ${index + 1}`,
-        action.action || action.why_it_matters || "Complete this action to improve shortlist score.",
+        {
+          title: action.title || action.step_label || `Execution Action ${index + 1}`,
+          detail: action.action || action.why_it_matters || "Complete this action to improve shortlist score.",
+          category: "Execution",
+          priority: index === 0 ? "critical" : index === 1 ? "high" : "medium",
+          timeframe: toTimeframe(action.timeline_weeks),
+          why: action.why_it_matters || `Improves shortlist readiness for ${roleLabel}.`,
+          done_when:
+            action.how_to_execute?.[0] ||
+            `You can show one measurable ${roleLabel} result tied to this action in your resume.`,
+          focus_skills: matchSkillSignals(actionText),
+        },
         index + 1
       );
     });
 
-    analysisResult.learning_roadmap?.phases?.slice(0, 4).forEach((phase, index) => {
+    analysisResult.learning_roadmap?.phases?.slice(0, 3).forEach((phase, index) => {
       registerMilestone(
-        `${phase.phase} (${phase.duration_weeks})`,
-        phase.outcome || phase.focus.join(", "),
+        {
+          title: `${phase.phase}`,
+          detail: phase.outcome || phase.focus.join(", "),
+          category: "Capability Build",
+          priority: index === 0 ? "high" : "medium",
+          timeframe: toTimeframe(phase.duration_weeks),
+          why: `Hiring teams evaluate ${roleLabel} candidates on these capability signals.`,
+          done_when:
+            phase.deliverables?.[0] ||
+            `You can demonstrate at least one concrete proof story for ${phase.phase.toLowerCase()}.`,
+          focus_skills: (phase.focus || []).slice(0, 4),
+        },
         index + 11
       );
     });
 
-    (analysisResult.quick_wins || []).slice(0, 3).forEach((win, index) => {
-      registerMilestone(`Quick Win ${index + 1}`, win, index + 21);
+    (analysisResult.quick_wins || []).slice(0, 2).forEach((win, index) => {
+      registerMilestone(
+        {
+          title: `Quick Win ${index + 1}`,
+          detail: win,
+          category: "Quick Win",
+          priority: "high",
+          timeframe: "This week",
+          why: `Fast wins increase recruiter trust and callback quality for ${roleLabel}.`,
+          done_when: `You have added one quantified resume bullet proving this quick win.`,
+          focus_skills: matchSkillSignals(win),
+        },
+        index + 21
+      );
     });
 
-    (analysisResult.areas_to_improve || []).slice(0, 3).forEach((area, index) => {
-      const topDetail = area.details?.[0] || "Address this area to improve profile quality.";
-      registerMilestone(area.category || `Improvement ${index + 1}`, topDetail, index + 31);
+    (analysisResult.areas_to_improve || []).slice(0, 2).forEach((area, index) => {
+      registerMilestone(
+        {
+          title: area.category || `Improvement ${index + 1}`,
+          detail: area.details?.[0] || "Address this area to improve profile quality.",
+          category: "Profile Optimization",
+          priority: "medium",
+          timeframe: "1 week sprint",
+          why: area.details?.[1] || `This removes friction during recruiter screening for ${roleLabel}.`,
+          done_when: area.details?.[2] || `This section is reflected clearly in your updated resume.`,
+          focus_skills: matchSkillSignals((area.details || []).join(" ")),
+        },
+        index + 31
+      );
     });
 
     if (milestoneMap.size === 0) {
-      registerMilestone("Improve role-fit alignment", "Refine your resume bullets around role-specific outcomes and metrics.", 41);
-      registerMilestone("Strengthen keyword precision", "Add target-role keywords naturally across summary, skills, and project lines.", 42);
-      registerMilestone("Quantify impact", "Convert responsibilities into measurable achievements with numbers and outcomes.", 43);
+      registerMilestone(
+        {
+          title: "Improve role-fit alignment",
+          detail: "Refine your resume bullets around role-specific outcomes and metrics.",
+          category: "Baseline",
+          priority: "high",
+          timeframe: "Week 1",
+          why: "Role-fit clarity increases initial screening success.",
+          done_when: "Top 5 bullets are rewritten with role-specific language and measurable outcomes.",
+          focus_skills: [],
+        },
+        41
+      );
+      registerMilestone(
+        {
+          title: "Strengthen keyword precision",
+          detail: "Add target-role keywords naturally across summary, skills, and project lines.",
+          category: "Optimization",
+          priority: "medium",
+          timeframe: "Week 1-2",
+          why: "Keyword precision improves ATS and recruiter scanning outcomes.",
+          done_when: "Resume sections include role keywords without keyword stuffing.",
+          focus_skills: [],
+        },
+        42
+      );
+      registerMilestone(
+        {
+          title: "Quantify impact",
+          detail: "Convert responsibilities into measurable achievements with numbers and outcomes.",
+          category: "Proof Of Work",
+          priority: "high",
+          timeframe: "Week 2",
+          why: "Quantified impact makes your profile more credible and interview-ready.",
+          done_when: "At least 3 bullets show impact metrics, ownership, and business result.",
+          focus_skills: [],
+        },
+        43
+      );
     }
 
-    return Array.from(milestoneMap.values()).slice(0, 8);
+    return Array.from(milestoneMap.values())
+      .sort((a, b) => priorityWeight(a.priority) - priorityWeight(b.priority))
+      .slice(0, 8);
   };
 
   const upsertRoadmapFromResult = async (analysisResult: AnalysisResult) => {
@@ -2290,33 +2415,59 @@ export default function UploadPage() {
 
               {!roadmapLoading && roadmapPreview && (
                 <>
-                  <div className="mt-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/7 p-4">
-                    <p className="text-sm font-semibold text-cyan-50">{roadmapPreview.goal_title}</p>
-                    {roadmapPreview.goal_context && <p className="mt-1 text-sm text-cyan-50/72">{roadmapPreview.goal_context}</p>}
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-cyan-100/72">
-                      {roadmapPreview.target_role && <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Role: {roadmapPreview.target_role}</span>}
-                      {roadmapPreview.target_industry && (
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Industry: {roadmapPreview.target_industry}</span>
-                      )}
-                      <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">
-                        Progress: {roadmapPreview.completed_milestones}/{roadmapPreview.total_milestones}
-                      </span>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-[1.2fr_0.8fr]">
+                    <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/7 p-4">
+                      <p className="text-sm font-semibold text-cyan-50">{roadmapPreview.goal_title}</p>
+                      {roadmapPreview.goal_context && <p className="mt-1 text-sm text-cyan-50/72">{roadmapPreview.goal_context}</p>}
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-cyan-100/72">
+                        {roadmapPreview.target_role && <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Role: {roadmapPreview.target_role}</span>}
+                        {roadmapPreview.target_industry && (
+                          <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Industry: {roadmapPreview.target_industry}</span>
+                        )}
+                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">
+                          {roadmapPreview.progress_percent}% complete
+                        </span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/8">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
+                          style={{ width: `${roadmapPreview.progress_percent}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs text-cyan-100/72">
+                        {roadmapPreview.completed_milestones}/{roadmapPreview.total_milestones} milestones completed
+                      </p>
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/8">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
-                        style={{ width: `${roadmapPreview.progress_percent}%` }}
-                      />
+
+                    <div className="rounded-2xl border border-emerald-100/24 bg-emerald-200/8 p-4">
+                      <p className="text-xs uppercase tracking-[0.12em] text-emerald-100/82">How This Works</p>
+                      <p className="mt-2 text-sm text-emerald-50/88">
+                        Open dashboard and use <span className="font-semibold">Mark Complete</span> on each step.
+                      </p>
+                      {nextRoadmapPreviewMilestone && (
+                        <div className="mt-3 rounded-lg border border-emerald-100/25 bg-emerald-200/12 p-2.5">
+                          <p className="text-[11px] uppercase tracking-[0.11em] text-emerald-100/78">First Focus</p>
+                          <p className="mt-1 text-sm font-semibold text-emerald-50">{nextRoadmapPreviewMilestone.title}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <ol className="mt-4 space-y-2">
+                  <ol className="mt-4 max-h-[36vh] space-y-2 overflow-y-auto pr-1">
                     {roadmapPreview.milestones.map((milestone, index) => (
                       <li key={milestone.id} className="rounded-xl border border-cyan-100/16 bg-cyan-100/6 p-3">
-                        <p className="text-sm font-semibold text-cyan-50">
-                          {index + 1}. {milestone.title}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] uppercase tracking-[0.1em] text-cyan-100/74">
+                          <span className="rounded-full border border-cyan-100/24 bg-cyan-100/8 px-2 py-0.5">Step {index + 1}</span>
+                          {milestone.category && (
+                            <span className="rounded-full border border-cyan-100/24 bg-cyan-100/8 px-2 py-0.5">{milestone.category}</span>
+                          )}
+                          {milestone.timeframe && (
+                            <span className="rounded-full border border-cyan-100/24 bg-cyan-100/8 px-2 py-0.5">{milestone.timeframe}</span>
+                          )}
+                        </div>
+                        <p className="mt-2 text-sm font-semibold text-cyan-50">{milestone.title}</p>
                         <p className="mt-1 text-xs text-cyan-50/72">{milestone.detail}</p>
+                        {milestone.done_when && <p className="mt-1 text-xs text-emerald-100/78">Done when: {milestone.done_when}</p>}
                       </li>
                     ))}
                   </ol>
@@ -2327,7 +2478,7 @@ export default function UploadPage() {
                       onClick={() => setShowRoadmapModal(false)}
                       className="rounded-xl border border-cyan-100/38 bg-cyan-200/18 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
                     >
-                      Track Milestones In Dashboard
+                      Open Dashboard Tracker
                     </Link>
                     <button
                       type="button"

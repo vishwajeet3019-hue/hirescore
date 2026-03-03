@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type CreditWallet = {
   credits: number;
@@ -40,6 +40,12 @@ type GoalRoadmapMilestone = {
   id: string;
   title: string;
   detail: string;
+  category?: string | null;
+  priority?: "critical" | "high" | "medium" | "low" | string | null;
+  timeframe?: string | null;
+  why?: string | null;
+  done_when?: string | null;
+  focus_skills?: string[];
   completed: boolean;
   completed_at?: string | null;
 };
@@ -89,6 +95,7 @@ export default function DashboardPage() {
   const [roadmap, setRoadmap] = useState<GoalRoadmap | null>(null);
   const [roadmapError, setRoadmapError] = useState("");
   const [roadmapUpdatingMilestoneId, setRoadmapUpdatingMilestoneId] = useState<string | null>(null);
+  const [roadmapFilter, setRoadmapFilter] = useState<"active" | "completed" | "all">("active");
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -220,6 +227,37 @@ export default function DashboardPage() {
     }
   };
 
+  const roadmapMilestones = useMemo(() => roadmap?.milestones || [], [roadmap]);
+  const nextMilestone = useMemo(
+    () => roadmapMilestones.find((milestone) => !milestone.completed) || null,
+    [roadmapMilestones]
+  );
+  const visibleRoadmapMilestones = useMemo(() => {
+    if (roadmapFilter === "all") return roadmapMilestones;
+    if (roadmapFilter === "completed") return roadmapMilestones.filter((milestone) => milestone.completed);
+    return roadmapMilestones.filter((milestone) => !milestone.completed);
+  }, [roadmapFilter, roadmapMilestones]);
+  const scoreGap =
+    roadmap && typeof roadmap.target_score === "number" && typeof roadmap.current_score === "number"
+      ? Math.max(0, roadmap.target_score - roadmap.current_score)
+      : null;
+
+  const priorityToneClass = (priority?: string | null) => {
+    const normalized = (priority || "").toLowerCase();
+    if (normalized === "critical") return "border-rose-200/40 bg-rose-200/14 text-rose-100";
+    if (normalized === "high") return "border-amber-200/40 bg-amber-200/14 text-amber-100";
+    if (normalized === "low") return "border-cyan-200/35 bg-cyan-200/10 text-cyan-100";
+    return "border-cyan-100/26 bg-cyan-100/8 text-cyan-100/88";
+  };
+
+  const priorityLabel = (priority?: string | null) => {
+    const normalized = (priority || "").toLowerCase();
+    if (normalized === "critical") return "Critical";
+    if (normalized === "high") return "High";
+    if (normalized === "low") return "Low";
+    return "Medium";
+  };
+
   const cardClass = "rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5";
 
   return (
@@ -266,8 +304,10 @@ export default function DashboardPage() {
         {!loading && !error && (
           <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
             <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Goal Roadmap</p>
-            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Progress To Your Target Role</h2>
-            <p className="mt-1 text-sm text-cyan-50/70">Complete milestones one-by-one and keep moving toward your goal.</p>
+            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Roadmap Tracker</h2>
+            <p className="mt-1 text-sm text-cyan-50/70">
+              Clear checklist, detailed steps, and explicit completion actions for desktop and mobile.
+            </p>
 
             {roadmapError && <p className="mt-3 text-xs text-amber-100">{roadmapError}</p>}
 
@@ -283,57 +323,154 @@ export default function DashboardPage() {
               </div>
             ) : (
               <>
-                <div className="mt-4 rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
-                  <p className="text-sm font-semibold text-cyan-50">{roadmap.goal_title}</p>
-                  {roadmap.goal_context && <p className="mt-1 text-xs text-cyan-50/72">{roadmap.goal_context}</p>}
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-100/72">
-                    {roadmap.target_role && <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Role: {roadmap.target_role}</span>}
-                    {roadmap.target_industry && (
-                      <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Industry: {roadmap.target_industry}</span>
-                    )}
-                    <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">
-                      Progress: {roadmap.completed_milestones}/{roadmap.total_milestones}
-                    </span>
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div className="rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
+                    <p className="text-sm font-semibold text-cyan-50">{roadmap.goal_title}</p>
+                    {roadmap.goal_context && <p className="mt-1 text-xs text-cyan-50/72">{roadmap.goal_context}</p>}
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-100/72">
+                      {roadmap.target_role && <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Role: {roadmap.target_role}</span>}
+                      {roadmap.target_industry && (
+                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Industry: {roadmap.target_industry}</span>
+                      )}
+                      <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">
+                        {roadmap.progress_percent}% complete
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-cyan-100/7">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200 transition-all duration-500"
+                        style={{ width: `${roadmap.progress_percent}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-cyan-100/70">
+                      {roadmap.completed_milestones}/{roadmap.total_milestones} milestones completed.
+                    </p>
                   </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-cyan-100/7">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200 transition-all duration-500"
-                      style={{ width: `${roadmap.progress_percent}%` }}
-                    />
+
+                  <div className="rounded-xl border border-emerald-100/22 bg-emerald-200/8 p-4">
+                    <p className="text-xs uppercase tracking-[0.12em] text-emerald-100/82">How To Update Progress</p>
+                    <p className="mt-2 text-sm text-emerald-50/88">
+                      Use the <span className="font-semibold">Mark Complete</span> button on each milestone card.
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-50/78">
+                      No more numeric tap guesswork. Each action has a clear completion button.
+                    </p>
+                    {nextMilestone && (
+                      <div className="mt-3 rounded-lg border border-emerald-100/28 bg-emerald-200/12 p-2.5">
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-emerald-100/80">Current Focus</p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-50">{nextMilestone.title}</p>
+                      </div>
+                    )}
+                    {scoreGap !== null && (
+                      <p className="mt-3 text-xs text-emerald-50/82">
+                        Score gap to target: <span className="font-semibold">+{scoreGap} points</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                <ol className="mt-4 space-y-3">
-                  {roadmap.milestones.map((milestone, index) => {
-                    const updating = roadmapUpdatingMilestoneId === milestone.id;
-                    return (
-                      <li key={milestone.id} className="rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
-                        <div className="flex items-start gap-3">
-                          <button
-                            type="button"
-                            onClick={() => void handleToggleRoadmapMilestone(milestone.id, !milestone.completed)}
-                            disabled={updating}
-                            className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition ${
-                              milestone.completed
-                                ? "border-emerald-200/55 bg-emerald-200/25 text-emerald-50"
-                                : "border-cyan-100/34 bg-cyan-100/10 text-cyan-50"
-                            } disabled:cursor-not-allowed disabled:opacity-55`}
-                            aria-label={milestone.completed ? "Mark milestone as incomplete" : "Mark milestone as complete"}
-                          >
-                            {milestone.completed ? "✓" : index + 1}
-                          </button>
-                          <div className="min-w-0">
-                            <p className={`text-sm font-semibold ${milestone.completed ? "text-emerald-100" : "text-cyan-50"}`}>{milestone.title}</p>
-                            <p className="mt-1 text-xs text-cyan-50/72">{milestone.detail}</p>
-                            {milestone.completed_at && (
-                              <p className="mt-1 text-[11px] text-emerald-100/80">Completed on {formatReportDate(milestone.completed_at)}</p>
-                            )}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {[
+                    { id: "active" as const, label: `Active (${roadmap.milestones.filter((item) => !item.completed).length})` },
+                    { id: "completed" as const, label: `Completed (${roadmap.milestones.filter((item) => item.completed).length})` },
+                    { id: "all" as const, label: `All (${roadmap.milestones.length})` },
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setRoadmapFilter(filter.id)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                        roadmapFilter === filter.id
+                          ? "border-cyan-100/50 bg-cyan-200/18 text-cyan-50"
+                          : "border-cyan-100/24 bg-cyan-100/8 text-cyan-100/80 hover:bg-cyan-100/12"
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+
+                {!visibleRoadmapMilestones.length ? (
+                  <p className="mt-4 rounded-xl border border-cyan-100/16 bg-[#041634]/55 px-3 py-2 text-sm text-cyan-50/76">
+                    No milestones in this filter yet.
+                  </p>
+                ) : (
+                  <ol className="mt-4 space-y-3">
+                    {visibleRoadmapMilestones.map((milestone, index) => {
+                      const originalIndex = roadmap.milestones.findIndex((item) => item.id === milestone.id);
+                      const stepIndex = originalIndex >= 0 ? originalIndex + 1 : index + 1;
+                      const updating = roadmapUpdatingMilestoneId === milestone.id;
+                      return (
+                        <li key={milestone.id} className="rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.11em]">
+                                <span className="rounded-full border border-cyan-100/26 bg-cyan-100/8 px-2 py-1 text-cyan-100/82">Step {stepIndex}</span>
+                                {milestone.category && (
+                                  <span className="rounded-full border border-cyan-100/26 bg-cyan-100/8 px-2 py-1 text-cyan-100/82">{milestone.category}</span>
+                                )}
+                                {milestone.timeframe && (
+                                  <span className="rounded-full border border-cyan-100/26 bg-cyan-100/8 px-2 py-1 text-cyan-100/82">{milestone.timeframe}</span>
+                                )}
+                                <span className={`rounded-full border px-2 py-1 ${priorityToneClass(milestone.priority)}`}>
+                                  {priorityLabel(milestone.priority)}
+                                </span>
+                              </div>
+
+                              <p className={`mt-2 text-base font-semibold ${milestone.completed ? "text-emerald-100" : "text-cyan-50"}`}>{milestone.title}</p>
+                              <p className="mt-1 text-sm text-cyan-50/74">{milestone.detail}</p>
+
+                              {Array.isArray(milestone.focus_skills) && milestone.focus_skills.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {milestone.focus_skills.map((skill) => (
+                                    <span key={`${milestone.id}-${skill}`} className="rounded-md border border-cyan-100/22 bg-cyan-100/8 px-2 py-1 text-[11px] text-cyan-100/82">
+                                      {skill}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                {milestone.why && (
+                                  <div className="rounded-lg border border-cyan-100/18 bg-cyan-100/7 p-2.5">
+                                    <p className="text-[11px] uppercase tracking-[0.1em] text-cyan-100/72">Why this matters</p>
+                                    <p className="mt-1 text-xs text-cyan-50/78">{milestone.why}</p>
+                                  </div>
+                                )}
+                                {milestone.done_when && (
+                                  <div className="rounded-lg border border-emerald-100/20 bg-emerald-200/8 p-2.5">
+                                    <p className="text-[11px] uppercase tracking-[0.1em] text-emerald-100/78">Done when</p>
+                                    <p className="mt-1 text-xs text-emerald-50/82">{milestone.done_when}</p>
+                                  </div>
+                                )}
+                              </div>
+
+                              {milestone.completed_at && (
+                                <p className="mt-2 text-[11px] text-emerald-100/80">Completed on {formatReportDate(milestone.completed_at)}</p>
+                              )}
+                            </div>
+
+                            <div className="w-full lg:w-[180px]">
+                              <button
+                                type="button"
+                                onClick={() => void handleToggleRoadmapMilestone(milestone.id, !milestone.completed)}
+                                disabled={updating}
+                                className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-55 ${
+                                  milestone.completed
+                                    ? "border-amber-100/32 bg-amber-100/14 text-amber-50 hover:bg-amber-100/20"
+                                    : "border-emerald-200/40 bg-emerald-200/18 text-emerald-50 hover:bg-emerald-200/24"
+                                }`}
+                                aria-label={milestone.completed ? "Mark milestone as incomplete" : "Mark milestone as complete"}
+                              >
+                                {updating ? "Updating..." : milestone.completed ? "Mark Incomplete" : "Mark Complete"}
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
               </>
             )}
           </section>

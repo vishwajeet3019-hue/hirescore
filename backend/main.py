@@ -390,6 +390,12 @@ class GoalRoadmapMilestoneRequest(BaseModel):
     id: str | None = None
     title: str
     detail: str | None = None
+    category: str | None = None
+    priority: str | None = None
+    timeframe: str | None = None
+    why: str | None = None
+    done_when: str | None = None
+    focus_skills: list[str] | None = None
 
 
 class GoalRoadmapUpsertRequest(BaseModel):
@@ -8228,12 +8234,64 @@ def sanitize_goal_roadmap_milestone_detail(value: Any, fallback_title: str) -> s
     return f"Complete {fallback_title.lower()} and update progress in your dashboard."
 
 
+def sanitize_goal_roadmap_meta_text(value: Any, max_len: int = 280) -> str:
+    text = re.sub(r"\s+", " ", safe_text(str(value or "")).strip())
+    if not text:
+        return ""
+    return text[: max(1, int(max_len))]
+
+
+def sanitize_goal_roadmap_milestone_category(value: Any) -> str:
+    category = sanitize_goal_roadmap_meta_text(value, 56)
+    return category or "Execution"
+
+
+def sanitize_goal_roadmap_milestone_priority(value: Any) -> str:
+    token = sanitize_goal_roadmap_meta_text(value, 16).lower()
+    aliases = {
+        "p0": "critical",
+        "urgent": "critical",
+        "p1": "high",
+        "p2": "medium",
+        "p3": "low",
+    }
+    normalized = aliases.get(token, token)
+    if normalized not in {"critical", "high", "medium", "low"}:
+        return "medium"
+    return normalized
+
+
+def sanitize_goal_roadmap_focus_skills(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    skills: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        token = sanitize_goal_roadmap_meta_text(item, 42)
+        if not token:
+            continue
+        dedupe_key = token.lower()
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        skills.append(token)
+        if len(skills) >= 5:
+            break
+    return skills
+
+
 def default_goal_roadmap_milestones() -> list[dict[str, Any]]:
     return [
         {
             "id": "milestone-role-fit-baseline",
             "title": "Establish your role-fit baseline",
             "detail": "Run one focused analysis and review score drivers before editing your profile.",
+            "category": "Baseline",
+            "priority": "high",
+            "timeframe": "Week 1",
+            "why": "A clear baseline makes every later milestone measurable and easier to execute.",
+            "done_when": "You can list the top 3 score gaps and the first role-fit action in your dashboard notes.",
+            "focus_skills": [],
             "completed": False,
             "completed_at": None,
         },
@@ -8241,6 +8299,12 @@ def default_goal_roadmap_milestones() -> list[dict[str, Any]]:
             "id": "milestone-priority-gap-closure",
             "title": "Close top skill and evidence gaps",
             "detail": "Address the highest-impact missing skills and add quantified proof bullets.",
+            "category": "Gap Closure",
+            "priority": "critical",
+            "timeframe": "Weeks 1-3",
+            "why": "Closing core gaps improves screening pass rate before advanced polishing.",
+            "done_when": "At least 2 must-have gaps are addressed with concrete resume evidence.",
+            "focus_skills": [],
             "completed": False,
             "completed_at": None,
         },
@@ -8248,6 +8312,12 @@ def default_goal_roadmap_milestones() -> list[dict[str, Any]]:
             "id": "milestone-validate-improved-score",
             "title": "Validate improved shortlist score",
             "detail": "Run analysis again after updates and confirm progress against your target role.",
+            "category": "Validation",
+            "priority": "high",
+            "timeframe": "Week 4",
+            "why": "Validation confirms your improvements are converting into a stronger shortlist signal.",
+            "done_when": "Your updated analysis score and roadmap progress both improve versus baseline.",
+            "focus_skills": [],
             "completed": False,
             "completed_at": None,
         },
@@ -8277,17 +8347,35 @@ def normalize_goal_roadmap_milestones(
             raw_id = item.get("id")
             raw_title = item.get("title")
             raw_detail = item.get("detail")
+            raw_category = item.get("category")
+            raw_priority = item.get("priority")
+            raw_timeframe = item.get("timeframe")
+            raw_why = item.get("why")
+            raw_done_when = item.get("done_when")
+            raw_focus_skills = item.get("focus_skills")
             raw_completed = item.get("completed")
             raw_completed_at = item.get("completed_at")
         else:
             raw_id = getattr(item, "id", None)
             raw_title = getattr(item, "title", None)
             raw_detail = getattr(item, "detail", None)
+            raw_category = getattr(item, "category", None)
+            raw_priority = getattr(item, "priority", None)
+            raw_timeframe = getattr(item, "timeframe", None)
+            raw_why = getattr(item, "why", None)
+            raw_done_when = getattr(item, "done_when", None)
+            raw_focus_skills = getattr(item, "focus_skills", None)
             raw_completed = getattr(item, "completed", None)
             raw_completed_at = getattr(item, "completed_at", None)
 
         title = sanitize_goal_roadmap_milestone_title(raw_title, index)
         detail = sanitize_goal_roadmap_milestone_detail(raw_detail, title)
+        category = sanitize_goal_roadmap_milestone_category(raw_category)
+        priority = sanitize_goal_roadmap_milestone_priority(raw_priority)
+        timeframe = sanitize_goal_roadmap_meta_text(raw_timeframe, 56)
+        why = sanitize_goal_roadmap_meta_text(raw_why, 280)
+        done_when = sanitize_goal_roadmap_meta_text(raw_done_when, 280)
+        focus_skills = sanitize_goal_roadmap_focus_skills(raw_focus_skills)
         milestone_id = sanitize_goal_roadmap_milestone_id(safe_text(str(raw_id or title)), index)
 
         if milestone_id in seen_ids:
@@ -8310,6 +8398,12 @@ def normalize_goal_roadmap_milestones(
                 "id": milestone_id,
                 "title": title,
                 "detail": detail,
+                "category": category,
+                "priority": priority,
+                "timeframe": timeframe or None,
+                "why": why or None,
+                "done_when": done_when or None,
+                "focus_skills": focus_skills,
                 "completed": completed,
                 "completed_at": completed_at or None,
             }
