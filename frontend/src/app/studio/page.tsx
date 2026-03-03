@@ -1067,7 +1067,7 @@ export default function StudioPage() {
                     <div className="mt-3 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
                       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-50">Studio Locked</p>
                       <p className="mt-1 text-xs text-amber-50/86">{studioLockMessage}</p>
-                      <p className="mt-1 text-[11px] text-amber-50/78">Completed analyses: {analysisCount}</p>
+                      <p className="mt-1 text-[11px] text-amber-50/78">Analysis runs completed: {analysisCount}</p>
                       <a
                         href="/upload"
                         className="mt-2 inline-flex rounded-lg border border-amber-100/36 bg-amber-100/16 px-2.5 py-1.5 text-[11px] font-semibold text-amber-50 transition hover:bg-amber-100/24"
@@ -1540,12 +1540,12 @@ export default function StudioPage() {
 
                       <div className="relative z-10">
                         <p className="text-center text-xs uppercase tracking-[0.22em] text-cyan-100/72">Resume Studio Access</p>
-                        <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">Let&apos;s Start With Your First Analysis</h3>
+                        <h3 className="mt-3 text-center text-3xl font-semibold text-cyan-50 sm:text-4xl">Let&apos;s Analyze Your Skills First</h3>
                         <p className="mx-auto mt-3 max-w-xl text-center text-sm text-cyan-50/78 sm:text-base">
                           Resume Studio unlocks after your first analysis result. Finish one run on Analyze and return instantly.
                         </p>
                         <p className="mt-2 text-center text-xs text-cyan-100/72">
-                          Analyses completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
+                          Analysis runs completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
                         </p>
 
                         <div className="mt-2">
