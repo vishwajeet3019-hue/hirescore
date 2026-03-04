@@ -3231,6 +3231,95 @@ def extract_resume_text_for_analysis(file_name: str, content_type: str | None, c
     )
 
 
+def extract_text_from_uploaded_image_with_openai(contents: bytes, content_type: str | None = None) -> str:
+    if client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Image text extraction is unavailable right now. Upload a PDF or paste text instead.",
+        )
+
+    encoded_image = base64.b64encode(contents).decode("ascii")
+    mime_type = safe_text(content_type).lower()
+    if not mime_type.startswith("image/"):
+        mime_type = "image/png"
+    image_data_url = f"data:{mime_type};base64,{encoded_image}"
+
+    prompt = (
+        "Extract only the visible job description text from this image.\n"
+        "Return plain text only, no markdown, no code fences."
+    )
+
+    models: list[str] = []
+    for model in [ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
+        cleaned = safe_text(model)
+        if cleaned and cleaned not in models:
+            models.append(cleaned)
+
+    last_error: str | None = None
+    for model in models:
+        for attempt in range(2):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "Return only extracted plain text."},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {"type": "image_url", "image_url": {"url": image_data_url}},
+                            ],
+                        },
+                    ],
+                    temperature=0.0,
+                )
+                content = extract_llm_text(response.choices[0].message.content if response.choices else "")
+                cleaned_text = re.sub(r"\n{3,}", "\n\n", content).strip()
+                if len(cleaned_text) >= 24:
+                    return cleaned_text
+                last_error = f"short_extraction_{model}"
+            except Exception as exc:
+                last_error = f"{type(exc).__name__} on model {model}"
+                logger.exception("Image JD extraction failed for model '%s' (attempt %s).", model, attempt + 1)
+                if attempt == 0 and is_transient_openai_error(exc):
+                    time.sleep(0.25)
+                    continue
+                break
+
+    logger.warning("Image JD extraction failed: %s", last_error)
+    raise HTTPException(
+        status_code=400,
+        detail="Could not read enough job description text from this image. Try a clearer image or upload a PDF.",
+    )
+
+
+def extract_job_description_text_from_upload(file_name: str, content_type: str | None, contents: bytes) -> str:
+    normalized_name = safe_text(file_name).lower()
+    normalized_type = safe_text(content_type).lower()
+
+    is_pdf = normalized_name.endswith(".pdf") or normalized_type == "application/pdf"
+    is_txt = normalized_name.endswith(".txt") or normalized_type.startswith("text/")
+    is_image = normalized_type.startswith("image/") or bool(re.search(r"\.(png|jpe?g|webp|gif|bmp|tiff?)$", normalized_name))
+
+    if is_pdf:
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(contents))
+        extracted_pages: list[str] = []
+        for page in pdf_reader.pages:
+            extracted_pages.append(page.extract_text() or "")
+        return "\n".join(extracted_pages).strip()
+
+    if is_txt:
+        return contents.decode("utf-8", errors="ignore").strip()
+
+    if is_image:
+        return extract_text_from_uploaded_image_with_openai(contents, normalized_type)
+
+    raise HTTPException(
+        status_code=400,
+        detail="Unsupported JD file type. Upload a PDF, TXT, or image.",
+    )
+
+
 def usage_window_key() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
@@ -7803,6 +7892,46 @@ def analysis_jd_match(data: JobDescriptionMatchRequest, request: Request) -> dic
         },
     )
     return payload
+
+
+@app.post("/analysis/jd-match/extract")
+async def analysis_jd_match_extract_from_file(
+    request: Request,
+    file: UploadFile = File(...),
+    auth_token: str | None = Form(None),
+) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    file_name = safe_text(file.filename) or "uploaded-jd"
+    content_type = safe_text(file.content_type)
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(contents) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="JD file is too large. Upload a file smaller than 12 MB.")
+
+    job_description = extract_job_description_text_from_upload(file_name, content_type, contents).strip()
+    if len(job_description) < 24:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not extract enough JD text. Upload a clearer file or paste the description manually.",
+        )
+
+    log_analytics_event(
+        "analysis",
+        "analysis_jd_file_extracted",
+        user_id=int(user["id"]),
+        meta={
+            "file_type": content_type or "unknown",
+            "file_name": file_name[:120],
+            "chars": len(job_description),
+        },
+    )
+    return {
+        "job_description": job_description[:16000],
+        "extracted_chars": len(job_description),
+        "file_name": file_name,
+        "file_type": content_type or "",
+    }
 
 
 @app.get("/analysis/reports/compare")

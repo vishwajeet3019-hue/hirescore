@@ -259,6 +259,13 @@ type JdMatchPayload = {
   };
 };
 
+type JdExtractPayload = {
+  job_description: string;
+  extracted_chars: number;
+  file_name: string;
+  file_type?: string;
+};
+
 type InterviewPrepPayload = {
   role: string;
   industry: string;
@@ -384,6 +391,9 @@ export default function UploadPage() {
   const [jdInput, setJdInput] = useState("");
   const [jdMatch, setJdMatch] = useState<JdMatchPayload | null>(null);
   const [jdMatchLoading, setJdMatchLoading] = useState(false);
+  const [jdFileUploading, setJdFileUploading] = useState(false);
+  const [jdUploadedFileName, setJdUploadedFileName] = useState("");
+  const [showJdScanner, setShowJdScanner] = useState(false);
   const [jdMatchError, setJdMatchError] = useState("");
   const [interviewPrep, setInterviewPrep] = useState<InterviewPrepPayload | null>(null);
   const [interviewPrepLoading, setInterviewPrepLoading] = useState(false);
@@ -423,6 +433,7 @@ export default function UploadPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [queuedAnalyzeMode, setQueuedAnalyzeMode] = useState<"manual" | "upload" | null>(null);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const jdFileInputRef = useRef<HTMLInputElement | null>(null);
   const closeResultModalRef = useRef<() => void>(() => {});
 
   const authHeader = useMemo(
@@ -831,6 +842,8 @@ export default function UploadPage() {
     setRoadmapPreviewMeta(null);
     setJdInput("");
     setJdMatch(null);
+    setJdUploadedFileName("");
+    setShowJdScanner(false);
     setJdMatchError("");
     setInterviewPrep(null);
     setApplicationPack(null);
@@ -1557,6 +1570,59 @@ export default function UploadPage() {
     } finally {
       setRoadmapLoading(false);
       setRoadmapDecisionSubmitting(false);
+    }
+  };
+
+  const handleUploadJdFile = async (file: File | null) => {
+    if (!file) return;
+    if (!authToken || !authHeader) {
+      setJdMatchError("Login required to upload a JD file.");
+      return;
+    }
+
+    const normalizedName = file.name.toLowerCase();
+    const isPdf = file.type === "application/pdf" || normalizedName.endsWith(".pdf");
+    const isText = file.type.startsWith("text/") || normalizedName.endsWith(".txt");
+    const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/.test(normalizedName);
+    if (!isPdf && !isText && !isImage) {
+      setJdMatchError("Upload a JD as PDF, TXT, or image (JPG/PNG/WebP).");
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      setJdMatchError("JD file is too large. Keep it under 12 MB.");
+      return;
+    }
+
+    setJdMatchError("");
+    setJdMatch(null);
+    setJdFileUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("auth_token", authToken);
+
+      const payload = await fetchJsonWithWakeAndRetry<JdExtractPayload>({
+        apiUrl,
+        path: "/analysis/jd-match/extract",
+        init: {
+          method: "POST",
+          headers: {
+            ...authHeader,
+          },
+          body: formData,
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "JD file extraction is taking longer than expected. Please try again.",
+      });
+
+      setJdInput(payload.job_description || "");
+      setJdUploadedFileName(payload.file_name || file.name);
+      setShowJdScanner(true);
+    } catch (error) {
+      setJdMatchError(error instanceof Error ? error.message : "Unable to extract JD text from the uploaded file.");
+    } finally {
+      setJdFileUploading(false);
     }
   };
 
@@ -2429,40 +2495,47 @@ export default function UploadPage() {
                       {resultStepIndex >= RESULT_STEPS.length - 1 ? "Final section" : `Up next: ${nextResultStep.label}`}
                     </span>
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {RESULT_STEPS.map((step) => {
+                      const active = activeResultTab === step.id;
+                      return (
+                        <button
+                          key={step.id}
+                          type="button"
+                          onClick={() => setActiveResultTab(step.id)}
+                          className={`rounded-xl border px-2.5 py-1 text-xs font-semibold transition ${
+                            active
+                              ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
+                              : "border-cyan-100/20 bg-cyan-100/5 text-cyan-50/75 hover:bg-cyan-100/12"
+                          }`}
+                        >
+                          {step.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[11px] text-cyan-100/66">Focused mode: open one section at a time using Back/Next or these step chips.</p>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3 sm:p-6">
-                <div className="mb-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/5 p-3 sm:mb-5 sm:p-4">
-                  <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Now Reading</p>
-                  <p className="mt-1 text-lg font-semibold text-cyan-50">{activeResultStep.label}</p>
-                  <p className="mt-1 text-sm text-cyan-50/76">{activeResultStep.description}</p>
-                </div>
-
+              <div className="flex-1 overflow-y-auto p-3 sm:p-5">
                 <motion.div key={activeResultTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
                 {activeResultTab === "summary" && (
-                  <div className="space-y-4 sm:space-y-6">
-                    <div className="rounded-2xl border border-cyan-100/22 bg-cyan-100/8 p-3 sm:p-4">
-                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Read This First</p>
-                      <p className="mt-2 text-[13px] leading-relaxed text-cyan-50/78 sm:text-sm">
-                        Start with your shortlist score, then follow the plan in this order:
-                        <span className="font-semibold text-cyan-100"> Summary → Strategy → Salary + Callback → Hiring Timing → Improvements.</span>
-                      </p>
-                    </div>
-                    <div className="grid gap-6 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
+                  <div className="space-y-4 sm:space-y-5">
+                    <div className="grid gap-4 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
                       <div className="flex flex-col items-center justify-center rounded-3xl border border-cyan-100/20 bg-cyan-300/6 p-6 text-center">
                         <div
-                          className="relative flex h-44 w-44 items-center justify-center rounded-full p-[14px]"
+                          className="relative flex h-40 w-40 items-center justify-center rounded-full p-[12px] sm:h-44 sm:w-44"
                           style={{
                             background: `conic-gradient(#45f0df ${result.overall_score}%, rgba(93,138,168,0.2) ${result.overall_score}% 100%)`,
                           }}
                         >
                           <div className="pointer-events-none absolute inset-1 rounded-full border border-dashed border-cyan-100/24 ring-spin" />
                           <div className="relative flex h-full w-full items-center justify-center rounded-full border border-cyan-100/15 bg-[#041224]/85">
-                            <span className="text-4xl font-semibold text-cyan-50">{result.overall_score}%</span>
+                            <span className="text-3xl font-semibold text-cyan-50 sm:text-4xl">{result.overall_score}%</span>
                           </div>
                         </div>
-                        <p className="mt-5 text-sm uppercase tracking-[0.2em] text-cyan-100/65">Shortlist Probability</p>
+                        <p className="mt-4 text-xs uppercase tracking-[0.18em] text-cyan-100/65 sm:text-sm">Shortlist Probability</p>
                         {typeof result.confidence === "number" && <p className="mt-1 text-xs text-cyan-50/70">Confidence: {result.confidence}%</p>}
                         {result.likely_interview_call && (
                           <span
@@ -2479,7 +2552,7 @@ export default function UploadPage() {
                         )}
                       </div>
 
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         {metricCards.map((item, index) => (
                           <div key={item.label} className="space-y-2">
                             <div className="flex items-center justify-between text-sm text-cyan-50/74">
@@ -2499,9 +2572,9 @@ export default function UploadPage() {
 
                         {(result.quick_wins || []).length > 0 && (
                           <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
-                            <p className="text-sm font-semibold text-cyan-100">Quick Wins</p>
+                            <p className="text-sm font-semibold text-cyan-100">Immediate Quick Wins</p>
                             <ul className="mt-2 space-y-1.5 text-[13px] text-cyan-50/75 sm:mt-3 sm:space-y-2 sm:text-sm">
-                              {(result.quick_wins || []).map((item, index) => (
+                              {(result.quick_wins || []).slice(0, 4).map((item, index) => (
                                 <li key={`win-${index}`}>- {item}</li>
                               ))}
                             </ul>
@@ -2509,42 +2582,76 @@ export default function UploadPage() {
                         )}
 
                         <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
-                          <p className="text-sm font-semibold text-cyan-100">JD Match Scanner</p>
-                          <p className="mt-1 text-xs text-cyan-50/72">
-                            Paste the target job description to check keyword alignment and missing must-have skills.
-                          </p>
-                          <textarea
-                            value={jdInput}
-                            onChange={(event) => setJdInput(event.target.value)}
-                            placeholder="Paste target job description here"
-                            className={`${textAreaClass} mt-3 min-h-24`}
-                          />
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-cyan-100">JD Match Scanner</p>
+                              <p className="mt-1 text-xs text-cyan-50/72">Upload JD (PDF/image) or paste text when you are ready.</p>
+                            </div>
                             <button
                               type="button"
-                              onClick={() => void handleRunJdMatch()}
-                              disabled={jdMatchLoading}
-                              className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => setShowJdScanner((prev) => !prev)}
+                              className="rounded-xl border border-cyan-100/30 bg-cyan-100/8 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14"
                             >
-                              {jdMatchLoading ? "Matching..." : "Run JD Match"}
+                              {showJdScanner ? "Hide Tool" : "Open Tool"}
                             </button>
-                            {jdMatch && <span className="text-xs text-cyan-100/78">Match score: {jdMatch.match_score}%</span>}
                           </div>
-                          {jdMatchError && <p className="mt-2 text-xs text-amber-100">{jdMatchError}</p>}
-                          {jdMatch && (
-                            <div className="mt-3 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
-                              <p className="text-xs text-cyan-50/78">{jdMatch.alignment_summary}</p>
-                              <p className="mt-2 text-xs text-cyan-100/84">
-                                Missing keywords: {(jdMatch.missing_keywords || []).slice(0, 8).join(", ") || "None"}
-                              </p>
-                              {(jdMatch.suggested_bullets || []).length > 0 && (
-                                <ul className="mt-2 space-y-1 text-xs text-cyan-50/75">
-                                  {(jdMatch.suggested_bullets || []).slice(0, 3).map((line, idx) => (
-                                    <li key={`jd-suggestion-${idx}`}>- {line}</li>
-                                  ))}
-                                </ul>
+
+                          {showJdScanner && (
+                            <>
+                              <textarea
+                                value={jdInput}
+                                onChange={(event) => setJdInput(event.target.value)}
+                                placeholder="Paste target job description here"
+                                className={`${textAreaClass} mt-3 min-h-24`}
+                              />
+                              <input
+                                ref={jdFileInputRef}
+                                type="file"
+                                accept=".pdf,.txt,image/*"
+                                className="hidden"
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0] || null;
+                                  void handleUploadJdFile(file);
+                                  event.currentTarget.value = "";
+                                }}
+                              />
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => jdFileInputRef.current?.click()}
+                                  disabled={jdFileUploading}
+                                  className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {jdFileUploading ? "Extracting..." : "Upload PDF / Image"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRunJdMatch()}
+                                  disabled={jdMatchLoading}
+                                  className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {jdMatchLoading ? "Matching..." : "Run JD Match"}
+                                </button>
+                                {jdMatch && <span className="text-xs text-cyan-100/78">Match score: {jdMatch.match_score}%</span>}
+                              </div>
+                              {jdUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">Imported from: {jdUploadedFileName}</p>}
+                              {jdMatchError && <p className="mt-2 text-xs text-amber-100">{jdMatchError}</p>}
+                              {jdMatch && (
+                                <div className="mt-3 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
+                                  <p className="text-xs text-cyan-50/78">{jdMatch.alignment_summary}</p>
+                                  <p className="mt-2 text-xs text-cyan-100/84">
+                                    Missing keywords: {(jdMatch.missing_keywords || []).slice(0, 8).join(", ") || "None"}
+                                  </p>
+                                  {(jdMatch.suggested_bullets || []).length > 0 && (
+                                    <ul className="mt-2 space-y-1 text-xs text-cyan-50/75">
+                                      {(jdMatch.suggested_bullets || []).slice(0, 3).map((line, idx) => (
+                                        <li key={`jd-suggestion-${idx}`}>- {line}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
                               )}
-                            </div>
+                            </>
                           )}
                         </div>
                       </div>
@@ -2827,27 +2934,6 @@ export default function UploadPage() {
                 )}
                 </motion.div>
 
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
-                  <button
-                    type="button"
-                    onClick={() => navigateResultStep("back")}
-                    disabled={resultStepIndex === 0}
-                    className="rounded-xl border border-cyan-100/26 bg-cyan-100/7 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    Back
-                  </button>
-                  <p className="text-xs text-cyan-100/68">
-                    Step {resultStepIndex + 1}/{RESULT_STEPS.length}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => navigateResultStep("next")}
-                    disabled={resultStepIndex >= RESULT_STEPS.length - 1}
-                    className="rounded-xl border border-cyan-100/36 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    {resultStepIndex >= RESULT_STEPS.length - 1 ? "Complete" : "Next"}
-                  </button>
-                </div>
               </div>
             </motion.section>
           </motion.div>
