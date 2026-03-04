@@ -337,15 +337,19 @@ export default function PricingPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (response) => {
-        if (!response.ok) throw new Error("Session expired");
+        if (response.status === 401) {
+          setAuthToken("");
+          setWallet(null);
+          setAuthUserEmail("");
+          window.localStorage.removeItem("hirescore_auth_token");
+          return;
+        }
+        if (!response.ok) return;
         const payload = (await response.json()) as AuthPayload;
         applyAuthPayload(payload);
       })
       .catch(() => {
-        setAuthToken("");
-        setWallet(null);
-        setAuthUserEmail("");
-        window.localStorage.removeItem("hirescore_auth_token");
+        // Keep local session when network/backends are temporarily unavailable.
       });
   }, []);
 

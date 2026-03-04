@@ -125,15 +125,24 @@ export default function FloatingSupportChat() {
             Authorization: `Bearer ${token}`,
           },
         });
-        if (!response.ok) throw new Error("Session expired");
+        if (response.status === 401) {
+          if (!active) return;
+          setIsAuthenticated(false);
+          setIsOpen(false);
+          setToken("");
+          window.localStorage.removeItem("hirescore_auth_token");
+          return;
+        }
+        if (!response.ok) {
+          if (!active) return;
+          setIsAuthenticated(false);
+          return;
+        }
         if (!active) return;
         setIsAuthenticated(true);
       } catch {
         if (!active) return;
         setIsAuthenticated(false);
-        setIsOpen(false);
-        setToken("");
-        window.localStorage.removeItem("hirescore_auth_token");
       }
     };
     void validateSession();

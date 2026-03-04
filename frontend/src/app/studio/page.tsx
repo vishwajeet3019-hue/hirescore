@@ -223,21 +223,25 @@ export default function StudioPage() {
       },
     })
       .then(async (response) => {
+        if (response.status === 401) {
+          if (cancelled) return;
+          setAuthToken("");
+          setWallet(null);
+          setAuthUserEmail("");
+          setAnalysisCount(0);
+          setStudioUnlocked(false);
+          window.localStorage.removeItem("hirescore_auth_token");
+          return;
+        }
         if (!response.ok) {
-          throw new Error("Session expired");
+          return;
         }
         const payload = (await response.json()) as AuthPayload;
         if (cancelled) return;
         applyAuthPayload(payload);
       })
       .catch(() => {
-        if (cancelled) return;
-        setAuthToken("");
-        setWallet(null);
-        setAuthUserEmail("");
-        setAnalysisCount(0);
-        setStudioUnlocked(false);
-        window.localStorage.removeItem("hirescore_auth_token");
+        // Do not clear auth token on transient connectivity failures.
       })
       .finally(() => {
         if (cancelled) return;

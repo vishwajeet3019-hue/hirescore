@@ -16,17 +16,6 @@ type AdminAnalytics = {
   stripe_enabled: boolean;
   razorpay_enabled?: boolean;
   payment_gateway?: string;
-  roadmaps_total?: number;
-  reports_total?: number;
-  signups_24h?: number;
-  logins_24h?: number;
-  analyses_24h?: number;
-  failed_logins_24h?: number;
-  backend_uptime_minutes?: number;
-  async_jobs_queued?: number;
-  async_jobs_running?: number;
-  async_jobs_succeeded?: number;
-  async_jobs_failed?: number;
 };
 
 type AdminUser = {
@@ -641,29 +630,12 @@ export default function AdminPage() {
         { label: "Signups", value: analytics.signups_total },
         { label: "Logins", value: analytics.logins_total },
         { label: "Analyses", value: analytics.analyses_total },
-        { label: "Roadmaps", value: analytics.roadmaps_total ?? 0 },
-        { label: "Reports", value: analytics.reports_total ?? 0 },
         { label: "Feedback", value: analytics.feedback_total },
         { label: "Avg Rating", value: analytics.feedback_avg_rating },
         { label: "Payments", value: analytics.payments_total },
         { label: "Revenue (INR)", value: analytics.revenue_inr_total },
         { label: "Credits Sold", value: analytics.credits_sold_total },
         { label: "Gateway", value: (analytics.payment_gateway || "none").toUpperCase() },
-        { label: "Signups 24h", value: analytics.signups_24h ?? 0 },
-        { label: "Logins 24h", value: analytics.logins_24h ?? 0 },
-        { label: "Analyses 24h", value: analytics.analyses_24h ?? 0 },
-        { label: "Failed Logins 24h", value: analytics.failed_logins_24h ?? 0 },
-        {
-          label: "Backend Uptime",
-          value:
-            typeof analytics.backend_uptime_minutes === "number"
-              ? `${Math.floor(analytics.backend_uptime_minutes / 60)}h ${analytics.backend_uptime_minutes % 60}m`
-              : "0h 0m",
-        },
-        { label: "Async Queued", value: analytics.async_jobs_queued ?? 0 },
-        { label: "Async Running", value: analytics.async_jobs_running ?? 0 },
-        { label: "Async Succeeded", value: analytics.async_jobs_succeeded ?? 0 },
-        { label: "Async Failed", value: analytics.async_jobs_failed ?? 0 },
       ]
     : [];
 

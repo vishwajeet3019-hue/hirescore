@@ -56,7 +56,7 @@ export default function SiteHeader() {
   const [analysisCount, setAnalysisCount] = useState(0);
   const [studioUnlocked, setStudioUnlocked] = useState(false);
   const [showStudioLockModal, setShowStudioLockModal] = useState(false);
-  const [portalReady, setPortalReady] = useState(false);
+  const portalReady = typeof window !== "undefined";
 
   useEffect(() => {
     if (!showStudioLockModal) return;
@@ -75,10 +75,6 @@ export default function SiteHeader() {
   }, [pathname]);
 
   useEffect(() => {
-    setPortalReady(true);
-  }, []);
-
-  useEffect(() => {
     const syncAuth = async () => {
       const token = window.localStorage.getItem("hirescore_auth_token") || "";
       if (!token) {
@@ -95,7 +91,17 @@ export default function SiteHeader() {
             Authorization: `Bearer ${token}`,
           },
         });
-        if (!response.ok) throw new Error("Session expired");
+        if (response.status === 401) {
+          setAuthToken("");
+          setWallet(null);
+          setAnalysisCount(0);
+          setStudioUnlocked(false);
+          window.localStorage.removeItem("hirescore_auth_token");
+          return;
+        }
+        if (!response.ok) {
+          return;
+        }
         const payload = (await response.json()) as AuthPayload;
         if (payload.wallet) setWallet(payload.wallet);
         const nextAnalysisCount = Math.max(0, Math.floor(payload.analysis_count || 0));
@@ -108,11 +114,7 @@ export default function SiteHeader() {
           setStudioUnlocked(false);
         }
       } catch {
-        setAuthToken("");
-        setWallet(null);
-        setAnalysisCount(0);
-        setStudioUnlocked(false);
-        window.localStorage.removeItem("hirescore_auth_token");
+        // Avoid hard logout during temporary backend/network failures.
       }
     };
     void syncAuth();

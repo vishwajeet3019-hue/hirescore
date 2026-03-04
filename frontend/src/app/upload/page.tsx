@@ -474,19 +474,24 @@ export default function UploadPage() {
       },
     })
       .then(async (response) => {
+        if (response.status === 401) {
+          setAuthToken("");
+          setWallet(null);
+          setAuthUserEmail("");
+          setFeedbackRequired(false);
+          setShowFeedbackModal(false);
+          window.localStorage.removeItem("hirescore_auth_token");
+          return;
+        }
         if (!response.ok) {
-          throw new Error("Session expired");
+          // Keep local session for transient backend/network issues.
+          return;
         }
         const payload = (await response.json()) as AuthPayload;
         applyAuthPayload(payload);
       })
       .catch(() => {
-        setAuthToken("");
-        setWallet(null);
-        setAuthUserEmail("");
-        setFeedbackRequired(false);
-        setShowFeedbackModal(false);
-        window.localStorage.removeItem("hirescore_auth_token");
+        // Do not force logout on temporary connectivity failures.
       });
   }, []);
 
