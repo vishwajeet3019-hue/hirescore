@@ -15,9 +15,11 @@ import hashlib
 import hmac
 import base64
 import secrets
+import uuid
 import urllib.request
 import urllib.error
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import Any
@@ -248,8 +250,14 @@ GOOGLE_CLIENT_IDS = {
     if client_id.strip()
 }
 GOOGLE_TOKENINFO_TIMEOUT_SECONDS = max(4, min(20, int((os.getenv("GOOGLE_TOKENINFO_TIMEOUT_SECONDS") or "8").strip())))
+AB_FLAGS_JSON = (os.getenv("AB_FLAGS_JSON") or "").strip()
+ASYNC_JOB_WORKERS = max(1, min(8, int((os.getenv("ASYNC_JOB_WORKERS") or "3").strip())))
+ASYNC_JOB_RETRY_ATTEMPTS = max(0, min(4, int((os.getenv("ASYNC_JOB_RETRY_ATTEMPTS") or "2").strip())))
 
 AUTH_DB_LOCK = threading.Lock()
+ASYNC_JOB_LOCK = threading.Lock()
+ASYNC_JOB_STORE: dict[str, dict[str, Any]] = {}
+ASYNC_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=ASYNC_JOB_WORKERS)
 
 
 class AuthRequest(BaseModel):
@@ -412,6 +420,44 @@ class GoalRoadmapUpsertRequest(BaseModel):
 class GoalRoadmapMilestoneToggleRequest(BaseModel):
     completed: bool
     auth_token: str | None = None
+
+
+class GoalRoadmapMilestoneEvidenceRequest(BaseModel):
+    note: str | None = None
+    link: str | None = None
+    auth_token: str | None = None
+
+
+class JobDescriptionMatchRequest(BaseModel):
+    industry: str
+    role: str
+    resume_text: str
+    job_description: str
+    auth_token: str | None = None
+
+
+class InterviewPrepRequest(BaseModel):
+    industry: str
+    role: str
+    job_description: str | None = None
+    critical_missing_skills: list[str] | None = None
+    auth_token: str | None = None
+
+
+class ApplicationPackRequest(BaseModel):
+    industry: str
+    role: str
+    resume_text: str
+    job_description: str | None = None
+    auth_token: str | None = None
+
+
+class BuildResumeAsyncRequest(ResumeBuildRequest):
+    async_mode: bool = True
+
+
+class ExportResumePdfAsyncRequest(ResumeExportRequest):
+    async_mode: bool = True
 
 
 PLAN_RULES: dict[str, dict[str, Any]] = {
@@ -7445,6 +7491,58 @@ def auth_me(request: Request, auth_token: str | None = None) -> dict[str, Any]:
     return auth_response_payload(user)
 
 
+@app.get("/feature-flags")
+def feature_flags(request: Request, auth_token: str | None = None) -> dict[str, Any]:
+    user_id: int | None = None
+    try:
+        user = require_authenticated_user(request, auth_token)
+        user_id = int(user["id"])
+    except HTTPException:
+        user_id = None
+    return {
+        "feature_flags": build_feature_flags(user_id),
+        "variant_seed": int(user_id or 0),
+    }
+
+
+@app.get("/dashboard/bootstrap")
+def dashboard_bootstrap(
+    request: Request,
+    auth_token: str | None = None,
+    reports_limit: int = 30,
+    roadmap_limit: int = 24,
+) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    user_id = int(user["id"])
+    safe_reports_limit = int(clamp_float(float(reports_limit), 1.0, 120.0))
+    safe_roadmap_limit = int(clamp_float(float(roadmap_limit), 1.0, 64.0))
+
+    connection = auth_db_connection()
+    try:
+        reports = collect_analysis_reports_for_user(connection, user_id, safe_reports_limit)
+        roadmaps = fetch_goal_roadmaps_for_user(connection, user_id, limit=safe_roadmap_limit)
+        roadmap = roadmaps[0] if roadmaps else None
+        analysis_comparison = build_analysis_comparison_payload(connection, user_id)
+        role_benchmark = build_role_benchmark_payload(
+            connection,
+            user_id,
+            report_id=int((analysis_comparison.get("latest") or {}).get("id") or 0) or None,
+        )
+    finally:
+        connection.close()
+
+    return {
+        "auth": auth_response_payload(user),
+        "reports": reports,
+        "roadmap": roadmap,
+        "roadmaps": roadmaps,
+        "analysis_comparison": analysis_comparison,
+        "weekly_execution_coach": build_weekly_execution_coach_payload(roadmap),
+        "role_benchmark": role_benchmark,
+        "feature_flags": build_feature_flags(user_id),
+    }
+
+
 @app.get("/roadmap/current")
 def user_goal_roadmap(request: Request, auth_token: str | None = None) -> dict[str, Any]:
     user = require_authenticated_user(request, auth_token)
@@ -7471,6 +7569,32 @@ def user_goal_roadmap_list(request: Request, auth_token: str | None = None, limi
         "roadmap": roadmaps[0] if roadmaps else None,
         "count": len(roadmaps),
     }
+
+
+@app.post("/roadmap/preview-upsert")
+def user_goal_roadmap_preview_upsert(data: GoalRoadmapUpsertRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    milestones_count = len(data.milestones or [])
+    if milestones_count > 24:
+        raise HTTPException(status_code=400, detail="Roadmap supports up to 24 milestones.")
+
+    connection = auth_db_connection()
+    try:
+        preview_payload = preview_goal_roadmap_upsert_for_user(connection, int(user["id"]), data)
+    finally:
+        connection.close()
+
+    log_analytics_event(
+        "roadmap",
+        "roadmap_preview_upsert_requested",
+        user_id=int(user["id"]),
+        meta={
+            "incoming_milestones": milestones_count,
+            "action": safe_text(preview_payload.get("action")),
+            "similarity_score": float(preview_payload.get("similarity_score") or 0),
+        },
+    )
+    return preview_payload
 
 
 @app.post("/roadmap/upsert")
@@ -7582,6 +7706,160 @@ def user_goal_roadmap_toggle_milestone(
     request: Request,
 ) -> dict[str, Any]:
     return toggle_roadmap_milestone_handler(None, milestone_id, data, request)
+
+
+def evidence_roadmap_milestone_handler(
+    roadmap_id: int | None,
+    milestone_id: str,
+    data: GoalRoadmapMilestoneEvidenceRequest,
+    request: Request,
+) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    if not safe_text(milestone_id):
+        raise HTTPException(status_code=400, detail="Invalid milestone id.")
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            evidence_payload = update_goal_roadmap_milestone_evidence_for_user(
+                connection,
+                int(user["id"]),
+                milestone_id,
+                data.note,
+                data.link,
+                roadmap_id=roadmap_id,
+            )
+            connection.commit()
+        except HTTPException:
+            connection.rollback()
+            raise
+        except Exception as exc:
+            connection.rollback()
+            logger.exception("Failed to update roadmap milestone evidence for user %s", int(user["id"]))
+            raise HTTPException(status_code=500, detail="Unable to update milestone evidence right now.") from exc
+        finally:
+            connection.close()
+
+    log_analytics_event(
+        "roadmap",
+        "roadmap_milestone_evidence_updated",
+        user_id=int(user["id"]),
+        meta={
+            "roadmap_id": int((evidence_payload.get("roadmap") or {}).get("id") or 0),
+            "milestone_id": sanitize_goal_roadmap_milestone_id(milestone_id, 1),
+            "has_note": bool(safe_text(data.note)),
+            "has_link": bool(safe_text(data.link)),
+        },
+    )
+    return evidence_payload
+
+
+@app.post("/roadmap/{roadmap_id}/milestones/{milestone_id}/evidence")
+def user_goal_roadmap_milestone_evidence_by_track(
+    roadmap_id: int,
+    milestone_id: str,
+    data: GoalRoadmapMilestoneEvidenceRequest,
+    request: Request,
+) -> dict[str, Any]:
+    if roadmap_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid roadmap id.")
+    return evidence_roadmap_milestone_handler(roadmap_id, milestone_id, data, request)
+
+
+@app.post("/roadmap/milestones/{milestone_id}/evidence")
+def user_goal_roadmap_milestone_evidence(
+    milestone_id: str,
+    data: GoalRoadmapMilestoneEvidenceRequest,
+    request: Request,
+) -> dict[str, Any]:
+    return evidence_roadmap_milestone_handler(None, milestone_id, data, request)
+
+
+@app.post("/analysis/jd-match")
+def analysis_jd_match(data: JobDescriptionMatchRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    job_description = safe_text(data.job_description)
+    resume_text = safe_text(data.resume_text)
+    if len(job_description) < 24:
+        raise HTTPException(status_code=400, detail="Job description is too short.")
+    if len(resume_text) < 24:
+        raise HTTPException(status_code=400, detail="Resume text is too short.")
+
+    payload = build_jd_match_payload(data.industry, data.role, resume_text, job_description)
+    log_analytics_event(
+        "analysis",
+        "analysis_jd_match_generated",
+        user_id=int(user["id"]),
+        meta={
+            "role": safe_text(data.role),
+            "industry": safe_text(data.industry),
+            "match_score": int(payload.get("match_score") or 0),
+            "missing_keywords": len(payload.get("missing_keywords") or []),
+        },
+    )
+    return payload
+
+
+@app.get("/analysis/reports/compare")
+def analysis_reports_compare(request: Request, auth_token: str | None = None) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    connection = auth_db_connection()
+    try:
+        return build_analysis_comparison_payload(connection, int(user["id"]))
+    finally:
+        connection.close()
+
+
+@app.get("/analysis/role-benchmark")
+def analysis_role_benchmark(
+    request: Request,
+    auth_token: str | None = None,
+    report_id: int | None = None,
+    role: str | None = None,
+    industry: str | None = None,
+    score: int | None = None,
+) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    connection = auth_db_connection()
+    try:
+        return build_role_benchmark_payload(
+            connection,
+            int(user["id"]),
+            role=role,
+            industry=industry,
+            score=score,
+            report_id=report_id,
+        )
+    finally:
+        connection.close()
+
+
+@app.post("/analysis/interview-prep")
+def analysis_interview_prep(data: InterviewPrepRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    payload = build_interview_prep_payload(data)
+    log_analytics_event(
+        "analysis",
+        "analysis_interview_prep_generated",
+        user_id=int(user["id"]),
+        meta={"role": safe_text(data.role), "industry": safe_text(data.industry)},
+    )
+    return payload
+
+
+@app.post("/analysis/application-pack")
+def analysis_application_pack(data: ApplicationPackRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    payload = build_application_pack_payload(data)
+    log_analytics_event(
+        "analysis",
+        "analysis_application_pack_generated",
+        user_id=int(user["id"]),
+        meta={"role": safe_text(data.role), "industry": safe_text(data.industry)},
+    )
+    return payload
 
 
 @app.get("/analysis/reports")
@@ -8255,6 +8533,509 @@ def serialize_analysis_report_row(row: Any) -> dict[str, Any]:
     }
 
 
+def keyword_tokens_from_text(value: str, limit: int = 90) -> list[str]:
+    normalized = normalize_search_text(value)
+    if not normalized:
+        return []
+    tokens: list[str] = []
+    for raw in normalized.split():
+        token = safe_text(raw).strip()
+        if len(token) < 3:
+            continue
+        if token.isdigit():
+            continue
+        if token in STOPWORDS:
+            continue
+        if token not in tokens:
+            tokens.append(token)
+        if len(tokens) >= limit:
+            break
+    return tokens
+
+
+def build_jd_match_payload(industry: str, role: str, resume_text: str, job_description: str) -> dict[str, Any]:
+    jd_skills = extract_skills_from_text(job_description)
+    resume_skills = extract_skills_from_text(resume_text)
+    jd_tokens = dedupe_preserve_order([*jd_skills, *keyword_tokens_from_text(job_description, limit=120)])[:80]
+    resume_tokens = set(dedupe_preserve_order([*resume_skills, *keyword_tokens_from_text(resume_text, limit=120)]))
+    if not jd_tokens:
+        jd_tokens = keyword_tokens_from_text(f"{industry} {role}", limit=16)
+
+    matched = [token for token in jd_tokens if token in resume_tokens][:20]
+    missing = [token for token in jd_tokens if token not in resume_tokens][:20]
+    denominator = max(1, len(jd_tokens))
+    coverage = (len(matched) / denominator) * 100.0
+
+    role_track, blueprint, critical_skills, _ = resolve_role_profile(role, industry, resume_skills)
+    critical_total = max(1, len(critical_skills))
+    critical_hits = len([skill for skill in critical_skills if skill in resume_tokens])
+    critical_coverage = (critical_hits / critical_total) * 100.0
+    match_score = clamp(0.68 * coverage + 0.32 * critical_coverage)
+
+    suggested_bullets: list[str] = []
+    for skill in missing[:5]:
+        suggested_bullets.append(
+            f"Add one quantified bullet proving {skill} impact for {safe_text(role) or 'the target role'}."
+        )
+    if not suggested_bullets and matched:
+        suggested_bullets.append("Your keyword alignment is strong. Focus on quantified outcomes and role-specific proof.")
+
+    return {
+        "role_track": role_track,
+        "match_score": match_score,
+        "matched_keywords": matched,
+        "missing_keywords": missing,
+        "jd_keyword_count": len(jd_tokens),
+        "resume_keyword_count": len(resume_tokens),
+        "critical_coverage": int(round(critical_coverage)),
+        "suggested_bullets": suggested_bullets,
+        "alignment_summary": (
+            "Strong role-JD alignment."
+            if match_score >= 75
+            else "Moderate alignment. Add missing must-have skills and stronger proof."
+            if match_score >= 50
+            else "Low alignment. Prioritize core JD requirements first."
+        ),
+        "role_profile": {
+            "core": blueprint["core"][:8],
+            "critical": critical_skills[:5],
+        },
+    }
+
+
+def analysis_snapshot_from_row(row: Any) -> dict[str, Any]:
+    payload = parse_meta_json(row["report_json"])
+    callback_forecast = payload.get("callback_forecast") if isinstance(payload.get("callback_forecast"), dict) else {}
+    confidence = int(clamp_float(float(payload.get("confidence") or 0), 0.0, 100.0))
+    callback_rate = round(clamp_float(float(callback_forecast.get("estimated_callback_rate") or 0), 0.0, 100.0), 1)
+    return {
+        "id": int(row["id"]),
+        "created_at": safe_text(row["created_at"]),
+        "source": safe_text(row["source"]) or "manual_input",
+        "industry": safe_text(row["industry"]),
+        "role": safe_text(row["role"]),
+        "overall_score": int(clamp_float(float(row["overall_score"] or payload.get("overall_score") or 0), 0.0, 100.0)),
+        "confidence": confidence,
+        "critical_missing_count": len(normalize_string_list(payload.get("critical_missing_skills"), limit=24, max_item_len=80)),
+        "estimated_callback_rate": callback_rate,
+        "shortlist_prediction": safe_text(payload.get("shortlist_prediction") or row["shortlist_prediction"]),
+    }
+
+
+def build_analysis_comparison_payload(connection: AuthDBConnection, user_id: int) -> dict[str, Any]:
+    rows = connection.execute(
+        """
+        SELECT id, source, industry, role, overall_score, shortlist_prediction, report_json, created_at
+        FROM analysis_reports
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 2
+        """,
+        (user_id,),
+    ).fetchall()
+    if not rows:
+        return {"latest": None, "previous": None, "delta": None}
+
+    latest = analysis_snapshot_from_row(rows[0])
+    previous = analysis_snapshot_from_row(rows[1]) if len(rows) > 1 else None
+    if not previous:
+        return {"latest": latest, "previous": None, "delta": None}
+
+    delta = {
+        "overall_score": int(latest["overall_score"]) - int(previous["overall_score"]),
+        "confidence": int(latest["confidence"]) - int(previous["confidence"]),
+        "critical_missing_count": int(previous["critical_missing_count"]) - int(latest["critical_missing_count"]),
+        "estimated_callback_rate": round(float(latest["estimated_callback_rate"]) - float(previous["estimated_callback_rate"]), 1),
+    }
+    return {"latest": latest, "previous": previous, "delta": delta}
+
+
+def build_weekly_execution_coach_payload(roadmap: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not roadmap:
+        return None
+    milestones = roadmap.get("milestones") if isinstance(roadmap.get("milestones"), list) else []
+    pending = [item for item in milestones if not bool(item.get("completed"))]
+    if not pending:
+        return {
+            "title": "Roadmap Completed",
+            "coach_note": "All milestones are complete. Run a fresh analysis to generate your next track.",
+            "next_three_tasks": [],
+            "week_focus": "Validate gains with a new analysis run and maintain momentum.",
+        }
+
+    next_three = []
+    for item in pending[:3]:
+        next_three.append(
+            {
+                "id": safe_text(item.get("id")),
+                "title": safe_text(item.get("title")) or "Milestone task",
+                "detail": safe_text(item.get("detail"))[:220],
+                "timeframe": safe_text(item.get("timeframe")) or "This week",
+                "done_when": safe_text(item.get("done_when"))[:220],
+            }
+        )
+    return {
+        "title": "Weekly Execution Coach",
+        "coach_note": "Complete these three actions this week to improve shortlist outcomes measurably.",
+        "next_three_tasks": next_three,
+        "week_focus": safe_text(next_three[0]["title"]) if next_three else "Prioritize your top pending milestone.",
+    }
+
+
+def build_feature_flags(user_id: int | None = None) -> dict[str, Any]:
+    base = {
+        "onboarding_copy_variant": "A",
+        "roadmap_prompt_variant": "A",
+        "pricing_cta_variant": "A",
+    }
+    if AB_FLAGS_JSON:
+        try:
+            parsed = json.loads(AB_FLAGS_JSON)
+            if isinstance(parsed, dict):
+                for key in base:
+                    value = safe_text(parsed.get(key))
+                    if value in {"A", "B"}:
+                        base[key] = value
+        except Exception:
+            pass
+    if user_id and user_id > 0:
+        bucket = int(user_id) % 2
+        if bucket == 1:
+            base["roadmap_prompt_variant"] = "B"
+        if int(user_id) % 3 == 1:
+            base["pricing_cta_variant"] = "B"
+    return base
+
+
+def enqueue_async_job(user_id: int, job_type: str, worker_fn) -> dict[str, Any]:
+    job_id = f"job_{uuid.uuid4().hex[:20]}"
+    now = now_utc_iso()
+    with ASYNC_JOB_LOCK:
+        ASYNC_JOB_STORE[job_id] = {
+            "id": job_id,
+            "user_id": int(user_id),
+            "job_type": safe_text(job_type) or "job",
+            "status": "queued",
+            "attempts": 0,
+            "created_at": now,
+            "updated_at": now,
+            "started_at": None,
+            "completed_at": None,
+            "error": None,
+            "result": None,
+        }
+
+    def _run_job() -> None:
+        attempts = 0
+        while attempts <= ASYNC_JOB_RETRY_ATTEMPTS:
+            attempts += 1
+            with ASYNC_JOB_LOCK:
+                if job_id not in ASYNC_JOB_STORE:
+                    return
+                ASYNC_JOB_STORE[job_id]["status"] = "running"
+                ASYNC_JOB_STORE[job_id]["attempts"] = attempts
+                ASYNC_JOB_STORE[job_id]["started_at"] = ASYNC_JOB_STORE[job_id]["started_at"] or now_utc_iso()
+                ASYNC_JOB_STORE[job_id]["updated_at"] = now_utc_iso()
+
+            try:
+                result_payload = worker_fn()
+                with ASYNC_JOB_LOCK:
+                    if job_id not in ASYNC_JOB_STORE:
+                        return
+                    ASYNC_JOB_STORE[job_id]["status"] = "succeeded"
+                    ASYNC_JOB_STORE[job_id]["result"] = result_payload
+                    ASYNC_JOB_STORE[job_id]["error"] = None
+                    ASYNC_JOB_STORE[job_id]["completed_at"] = now_utc_iso()
+                    ASYNC_JOB_STORE[job_id]["updated_at"] = now_utc_iso()
+                return
+            except Exception as exc:
+                retryable = is_transient_openai_error(exc) or (
+                    isinstance(exc, HTTPException) and int(exc.status_code or 500) >= 500
+                )
+                if attempts <= ASYNC_JOB_RETRY_ATTEMPTS and retryable:
+                    time.sleep(0.35 * attempts)
+                    continue
+                if isinstance(exc, HTTPException):
+                    detail_text = safe_text(exc.detail if isinstance(exc.detail, str) else json.dumps(exc.detail))
+                else:
+                    detail_text = safe_text(str(exc))
+                with ASYNC_JOB_LOCK:
+                    if job_id not in ASYNC_JOB_STORE:
+                        return
+                    ASYNC_JOB_STORE[job_id]["status"] = "failed"
+                    ASYNC_JOB_STORE[job_id]["error"] = detail_text[:320] or "Job failed."
+                    ASYNC_JOB_STORE[job_id]["completed_at"] = now_utc_iso()
+                    ASYNC_JOB_STORE[job_id]["updated_at"] = now_utc_iso()
+                return
+
+    ASYNC_JOB_EXECUTOR.submit(_run_job)
+    with ASYNC_JOB_LOCK:
+        return dict(ASYNC_JOB_STORE[job_id])
+
+
+def get_async_job_for_user(job_id: str, user_id: int) -> dict[str, Any] | None:
+    token = safe_text(job_id)
+    if not token:
+        return None
+    with ASYNC_JOB_LOCK:
+        row = ASYNC_JOB_STORE.get(token)
+        if not row:
+            return None
+        if int(row.get("user_id") or 0) != int(user_id):
+            return None
+        return dict(row)
+
+
+def serialize_async_job_payload(job: dict[str, Any] | None) -> dict[str, Any]:
+    if not job:
+        return {}
+    return {
+        "id": safe_text(job.get("id")),
+        "job_type": safe_text(job.get("job_type")),
+        "status": safe_text(job.get("status")) or "queued",
+        "attempts": int(job.get("attempts") or 0),
+        "created_at": safe_text(job.get("created_at")),
+        "updated_at": safe_text(job.get("updated_at")),
+        "started_at": safe_text(job.get("started_at")),
+        "completed_at": safe_text(job.get("completed_at")),
+        "error": safe_text(job.get("error")),
+        "result": job.get("result") if isinstance(job.get("result"), dict) else None,
+    }
+
+
+def build_interview_prep_payload(data: InterviewPrepRequest) -> dict[str, Any]:
+    role = safe_text(data.role) or "Target role"
+    industry = safe_text(data.industry) or "General"
+    missing_from_input = normalize_string_list(data.critical_missing_skills, limit=8, max_item_len=64)
+    jd_skills = extract_skills_from_text(safe_text(data.job_description))[:8]
+    _, _, critical_skills, _ = resolve_role_profile(role, industry, missing_from_input)
+
+    prep_focus = dedupe_preserve_order([*missing_from_input, *jd_skills, *critical_skills])[:6]
+    if not prep_focus:
+        prep_focus = ["role narrative", "problem solving", "impact metrics", "stakeholder communication"]
+
+    mock_questions = [
+        f"Walk me through a project where you applied {prep_focus[0]} and measurable outcomes.",
+        f"How would you prioritize your first 30 days as a {role} in {industry}?",
+        f"Describe a challenge where you had to improve {prep_focus[min(1, len(prep_focus) - 1)]}. What changed?",
+        f"Tell me about a decision with incomplete data and how you reduced risk.",
+        f"How do you collaborate with cross-functional stakeholders under tight timelines?",
+    ]
+    if len(prep_focus) > 2:
+        mock_questions.append(f"What is your plan to close the {prep_focus[2]} gap in the next 4 weeks?")
+
+    star_drills = [
+        {
+            "title": "High-impact story",
+            "prompt": "Situation + Task + Action + Result with one hard metric and clear ownership.",
+        },
+        {
+            "title": "Conflict resolution story",
+            "prompt": "Explain disagreement context, decision framing, compromise, and business outcome.",
+        },
+        {
+            "title": "Failure recovery story",
+            "prompt": "Share what failed, your correction loop, and the measurable recovery result.",
+        },
+    ]
+
+    fallback_note = (
+        f"Prepare answers around {', '.join(prep_focus[:3])}. Keep every answer metric-backed and role-specific for {role}."
+    )
+    coach_note, ai_generated, _ = generate_with_llm(
+        system_prompt="You are an interview coach. Give concise and practical guidance.",
+        user_prompt=(
+            f"Role: {role}\nIndustry: {industry}\n"
+            f"Focus gaps: {', '.join(prep_focus)}\n"
+            "Write one short coaching note (max 55 words) to improve interview performance."
+        ),
+        temperature=0.2,
+        fallback_text=fallback_note,
+    )
+
+    return {
+        "role": role,
+        "industry": industry,
+        "focus_skills": prep_focus,
+        "coach_note": safe_text(coach_note) or fallback_note,
+        "coach_note_ai_generated": bool(ai_generated),
+        "mock_questions": mock_questions[:6],
+        "star_drills": star_drills,
+        "prep_sprint": [
+            "Day 1: Draft 6 role-specific story bullets.",
+            "Day 2: Convert each bullet into STAR format with one metric.",
+            "Day 3: Practice concise 90-second answers and record yourself.",
+            "Day 4: Mock interview with follow-up challenge questions.",
+            "Day 5: Tighten weak answers and finalize interview cheat sheet.",
+        ],
+    }
+
+
+def build_application_pack_payload(data: ApplicationPackRequest) -> dict[str, Any]:
+    role = safe_text(data.role) or "Target role"
+    industry = safe_text(data.industry) or "General"
+    resume_text = safe_text(data.resume_text)
+    job_description = safe_text(data.job_description)
+
+    resume_lines = [
+        safe_text(re.sub(r"^[\-\*\u2022]+\s*", "", line))
+        for line in resume_text.splitlines()
+        if safe_text(line)
+    ]
+    highlight_lines = [line for line in resume_lines if len(line) > 30][:5]
+    jd_skills = extract_skills_from_text(job_description)[:8]
+    if not highlight_lines:
+        highlight_lines = [
+            f"Role-fit profile built for {role}.",
+            "Outcome-focused bullets with measurable impact.",
+        ]
+
+    subject_line = f"Application for {role} - measurable impact profile"
+    outreach_email = (
+        f"Hi Hiring Team,\n\n"
+        f"I am applying for the {role} position in {industry}. I’ve aligned my profile to your role requirements and focused on quantified outcomes.\n\n"
+        f"Highlights:\n"
+        f"- {highlight_lines[0]}\n"
+        f"- {highlight_lines[min(1, len(highlight_lines) - 1)]}\n"
+        f"- {highlight_lines[min(2, len(highlight_lines) - 1)]}\n\n"
+        "I would value an opportunity to discuss how this experience can contribute to your team goals.\n\n"
+        "Regards,"
+    )
+    linkedin_message = (
+        f"Hi, I’m exploring {role} opportunities in {industry}. "
+        f"I’ve recently refined my profile around {', '.join(jd_skills[:3]) or 'core role outcomes'} "
+        "and would appreciate a quick conversation."
+    )
+    cover_letter_opening = (
+        f"I’m excited to apply for the {role} role. My profile combines execution depth in {industry} "
+        "with measurable outcomes and recruiter-ready positioning."
+    )
+
+    return {
+        "role": role,
+        "industry": industry,
+        "subject_line": subject_line,
+        "outreach_email": outreach_email,
+        "linkedin_message": linkedin_message,
+        "cover_letter_opening": cover_letter_opening,
+        "jd_focus_keywords": jd_skills[:6],
+        "application_checklist": [
+            "Resume title and summary aligned to role + industry.",
+            "Top 4 bullets include measurable business outcomes.",
+            "Core JD keywords appear naturally in resume sections.",
+            "Outreach message customized for role and company context.",
+            "Portfolio/proof links updated and working.",
+        ],
+    }
+
+
+def build_role_benchmark_payload(
+    connection: AuthDBConnection,
+    user_id: int,
+    role: str | None = None,
+    industry: str | None = None,
+    score: int | None = None,
+    report_id: int | None = None,
+) -> dict[str, Any]:
+    subject_role = safe_text(role)
+    subject_industry = safe_text(industry)
+    subject_score = score
+
+    if report_id and int(report_id) > 0:
+        row = fetch_analysis_report_for_user(connection, int(user_id), int(report_id))
+        if row:
+            subject_role = safe_text(row["role"]) or subject_role
+            subject_industry = safe_text(row["industry"]) or subject_industry
+            if subject_score is None:
+                raw = row["overall_score"]
+                if raw is not None:
+                    try:
+                        subject_score = int(clamp_float(float(raw), 0.0, 100.0))
+                    except Exception:
+                        subject_score = None
+
+    if subject_score is None:
+        latest_rows = connection.execute(
+            """
+            SELECT role, industry, overall_score
+            FROM analysis_reports
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (int(user_id),),
+        ).fetchall()
+        if latest_rows:
+            latest = latest_rows[0]
+            subject_role = subject_role or safe_text(latest["role"])
+            subject_industry = subject_industry or safe_text(latest["industry"])
+            raw = latest["overall_score"]
+            if raw is not None:
+                try:
+                    subject_score = int(clamp_float(float(raw), 0.0, 100.0))
+                except Exception:
+                    subject_score = None
+
+    if subject_score is None:
+        subject_score = 0
+
+    query = "SELECT overall_score FROM analysis_reports WHERE overall_score IS NOT NULL"
+    params: list[Any] = []
+    if subject_role:
+        query += " AND lower(role) = ?"
+        params.append(subject_role.lower())
+    if subject_industry:
+        query += " AND lower(industry) = ?"
+        params.append(subject_industry.lower())
+    query += " ORDER BY id DESC LIMIT 500"
+
+    rows = connection.execute(query, tuple(params)).fetchall()
+    scores = [int(clamp_float(float(row["overall_score"] or 0), 0.0, 100.0)) for row in rows]
+    if not scores:
+        rows = connection.execute(
+            "SELECT overall_score FROM analysis_reports WHERE overall_score IS NOT NULL ORDER BY id DESC LIMIT 500"
+        ).fetchall()
+        scores = [int(clamp_float(float(row["overall_score"] or 0), 0.0, 100.0)) for row in rows]
+
+    if not scores:
+        scores = [subject_score]
+
+    ordered = sorted(scores)
+    peer_count = len(ordered)
+    count_less_equal = sum(1 for value in ordered if value <= subject_score)
+    percentile = int(round((count_less_equal / max(1, peer_count)) * 100))
+
+    def percentile_value(frac: float) -> int:
+        if not ordered:
+            return 0
+        index = int(round((len(ordered) - 1) * frac))
+        return int(ordered[max(0, min(len(ordered) - 1, index))])
+
+    if percentile >= 90:
+        band = "Top 10%"
+    elif percentile >= 75:
+        band = "Top 25%"
+    elif percentile >= 50:
+        band = "Above Median"
+    else:
+        band = "Below Median"
+
+    return {
+        "role": subject_role or "All roles",
+        "industry": subject_industry or "All industries",
+        "score": int(subject_score),
+        "peer_count": peer_count,
+        "percentile": int(clamp_float(float(percentile), 0.0, 100.0)),
+        "band_label": band,
+        "benchmarks": {
+            "p25": percentile_value(0.25),
+            "p50": percentile_value(0.50),
+            "p75": percentile_value(0.75),
+            "p90": percentile_value(0.90),
+        },
+    }
+
+
 def normalize_goal_roadmap_score(value: Any) -> int | None:
     if value in (None, ""):
         return None
@@ -8333,6 +9114,15 @@ def sanitize_goal_roadmap_focus_skills(value: Any) -> list[str]:
     return skills
 
 
+def sanitize_goal_roadmap_evidence_link(value: Any) -> str:
+    token = sanitize_goal_roadmap_meta_text(value, 320)
+    if not token:
+        return ""
+    if token.startswith(("http://", "https://")):
+        return token
+    return ""
+
+
 def default_goal_roadmap_milestones() -> list[dict[str, Any]]:
     return [
         {
@@ -8347,6 +9137,9 @@ def default_goal_roadmap_milestones() -> list[dict[str, Any]]:
             "focus_skills": [],
             "completed": False,
             "completed_at": None,
+            "evidence_note": None,
+            "evidence_link": None,
+            "evidence_updated_at": None,
         },
         {
             "id": "milestone-priority-gap-closure",
@@ -8360,6 +9153,9 @@ def default_goal_roadmap_milestones() -> list[dict[str, Any]]:
             "focus_skills": [],
             "completed": False,
             "completed_at": None,
+            "evidence_note": None,
+            "evidence_link": None,
+            "evidence_updated_at": None,
         },
         {
             "id": "milestone-validate-improved-score",
@@ -8373,6 +9169,9 @@ def default_goal_roadmap_milestones() -> list[dict[str, Any]]:
             "focus_skills": [],
             "completed": False,
             "completed_at": None,
+            "evidence_note": None,
+            "evidence_link": None,
+            "evidence_updated_at": None,
         },
     ]
 
@@ -8408,6 +9207,9 @@ def normalize_goal_roadmap_milestones(
             raw_focus_skills = item.get("focus_skills")
             raw_completed = item.get("completed")
             raw_completed_at = item.get("completed_at")
+            raw_evidence_note = item.get("evidence_note")
+            raw_evidence_link = item.get("evidence_link")
+            raw_evidence_updated_at = item.get("evidence_updated_at")
         else:
             raw_id = getattr(item, "id", None)
             raw_title = getattr(item, "title", None)
@@ -8420,6 +9222,9 @@ def normalize_goal_roadmap_milestones(
             raw_focus_skills = getattr(item, "focus_skills", None)
             raw_completed = getattr(item, "completed", None)
             raw_completed_at = getattr(item, "completed_at", None)
+            raw_evidence_note = getattr(item, "evidence_note", None)
+            raw_evidence_link = getattr(item, "evidence_link", None)
+            raw_evidence_updated_at = getattr(item, "evidence_updated_at", None)
 
         title = sanitize_goal_roadmap_milestone_title(raw_title, index)
         detail = sanitize_goal_roadmap_milestone_detail(raw_detail, title)
@@ -8445,6 +9250,16 @@ def normalize_goal_roadmap_milestones(
         completed_at = safe_text(str((preserved_state or {}).get("completed_at") or raw_completed_at or ""))
         if not completed:
             completed_at = ""
+        evidence_note = sanitize_goal_roadmap_meta_text(
+            (preserved_state or {}).get("evidence_note") if preserved_state else raw_evidence_note,
+            420,
+        )
+        evidence_link = sanitize_goal_roadmap_evidence_link(
+            (preserved_state or {}).get("evidence_link") if preserved_state else raw_evidence_link
+        )
+        evidence_updated_at = safe_text(
+            str((preserved_state or {}).get("evidence_updated_at") or raw_evidence_updated_at or "")
+        )
 
         normalized.append(
             {
@@ -8459,6 +9274,9 @@ def normalize_goal_roadmap_milestones(
                 "focus_skills": focus_skills,
                 "completed": completed,
                 "completed_at": completed_at or None,
+                "evidence_note": evidence_note or None,
+                "evidence_link": evidence_link or None,
+                "evidence_updated_at": evidence_updated_at or None,
             }
         )
 
@@ -8741,6 +9559,9 @@ def upsert_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int, dat
             existing_completion[safe_text(milestone.get("id"))] = {
                 "completed": bool(milestone.get("completed")),
                 "completed_at": safe_text(milestone.get("completed_at")),
+                "evidence_note": safe_text(milestone.get("evidence_note")),
+                "evidence_link": safe_text(milestone.get("evidence_link")),
+                "evidence_updated_at": safe_text(milestone.get("evidence_updated_at")),
             }
 
         merged_raw, added_milestones = merge_goal_roadmap_milestones(matched_roadmap.get("milestones") or [], incoming_milestones)
@@ -8820,6 +9641,121 @@ def upsert_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int, dat
         "created_new_track": created_new_track,
         "added_milestones": int(max(0, added_milestones)),
         "similarity_score": round(float(similarity_score), 3),
+    }
+
+
+def preview_goal_roadmap_upsert_for_user(connection: AuthDBConnection, user_id: int, data: GoalRoadmapUpsertRequest) -> dict[str, Any]:
+    goal_title = safe_text(data.goal_title).strip() or "Reach your target role"
+    target_role = safe_text(data.target_role).strip()
+    target_industry = safe_text(data.target_industry).strip()
+    incoming_milestones = normalize_goal_roadmap_milestones(data.milestones, None)
+
+    existing_roadmaps = fetch_goal_roadmaps_for_user(connection, int(user_id), limit=32)
+    matched_roadmap, similarity_score = pick_goal_roadmap_for_update(
+        existing_roadmaps,
+        target_role,
+        target_industry,
+        incoming_milestones,
+    )
+
+    if matched_roadmap:
+        merged_raw, added_milestones = merge_goal_roadmap_milestones(
+            matched_roadmap.get("milestones") or [],
+            incoming_milestones,
+        )
+        merged_milestones = normalize_goal_roadmap_milestones(merged_raw, None)
+        existing_ids = {safe_text(item.get("id")) for item in (matched_roadmap.get("milestones") or [])}
+        added_titles = [safe_text(item.get("title")) for item in merged_milestones if safe_text(item.get("id")) not in existing_ids][:6]
+        action = "merged_missing_skills" if added_milestones > 0 else "no_new_missing_skills"
+        return {
+            "action": action,
+            "created_new_track": False,
+            "matched_roadmap_id": int(matched_roadmap["id"]),
+            "matched_track_title": safe_text(matched_roadmap.get("goal_title")) or "Existing track",
+            "incoming_milestones": len(incoming_milestones),
+            "added_milestones": int(max(0, added_milestones)),
+            "resulting_total_milestones": len(merged_milestones),
+            "similarity_score": round(float(similarity_score), 3),
+            "added_titles": [title for title in added_titles if title],
+            "summary": (
+                "No new missing-skill milestones detected. Existing roadmap will remain unchanged."
+                if action == "no_new_missing_skills"
+                else f"{added_milestones} missing-skill milestone(s) will be added to your matched roadmap track."
+            ),
+        }
+
+    created_new_track = bool(existing_roadmaps)
+    return {
+        "action": "created_new_track" if created_new_track else "created_first_track",
+        "created_new_track": created_new_track,
+        "matched_roadmap_id": None,
+        "matched_track_title": None,
+        "incoming_milestones": len(incoming_milestones),
+        "added_milestones": len(incoming_milestones),
+        "resulting_total_milestones": len(incoming_milestones),
+        "similarity_score": round(float(similarity_score), 3),
+        "added_titles": [safe_text(item.get("title")) for item in incoming_milestones[:6] if safe_text(item.get("title"))],
+        "summary": (
+            "A separate roadmap track will be created for this new direction."
+            if created_new_track
+            else f"Your first roadmap track '{goal_title}' will be created."
+        ),
+    }
+
+
+def update_goal_roadmap_milestone_evidence_for_user(
+    connection: AuthDBConnection,
+    user_id: int,
+    milestone_id: str,
+    note: str | None,
+    link: str | None,
+    roadmap_id: int | None = None,
+) -> dict[str, Any]:
+    existing_row = fetch_goal_roadmap_row_for_user(connection, user_id, roadmap_id=roadmap_id)
+    if not existing_row:
+        raise HTTPException(status_code=404, detail="Roadmap not found for this account.")
+
+    roadmap = serialize_goal_roadmap_row(existing_row)
+    target_id = sanitize_goal_roadmap_milestone_id(milestone_id, 1)
+    sanitized_note = sanitize_goal_roadmap_meta_text(note, 420)
+    sanitized_link = sanitize_goal_roadmap_evidence_link(link)
+    now = now_utc_iso()
+    found = False
+
+    for milestone in roadmap["milestones"]:
+        if safe_text(milestone.get("id")) != target_id:
+            continue
+        has_payload = bool(sanitized_note or sanitized_link)
+        milestone["evidence_note"] = sanitized_note or None
+        milestone["evidence_link"] = sanitized_link or None
+        milestone["evidence_updated_at"] = now if has_payload else None
+        found = True
+        break
+
+    if not found:
+        raise HTTPException(status_code=404, detail="Milestone not found in roadmap.")
+
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        UPDATE user_goal_roadmaps
+        SET milestones_json = ?, updated_at = ?
+        WHERE user_id = ? AND id = ?
+        """,
+        (
+            json.dumps(roadmap["milestones"], ensure_ascii=False, separators=(",", ":"), default=str),
+            now,
+            int(user_id),
+            int(roadmap["id"]),
+        ),
+    )
+
+    refreshed = fetch_goal_roadmap_for_user(connection, int(user_id), roadmap_id=int(roadmap["id"]))
+    if not refreshed:
+        raise HTTPException(status_code=500, detail="Unable to refresh roadmap right now.")
+    return {
+        "roadmap": refreshed,
+        "roadmaps": fetch_goal_roadmaps_for_user(connection, int(user_id), limit=32),
     }
 
 
@@ -9107,6 +10043,7 @@ def collect_admin_chat_threads(
 
 
 def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str, Any]:
+    cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     users_total = int(connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"])
     feedback_row = connection.execute(
         "SELECT COUNT(*) AS count, COALESCE(AVG(rating), 0) AS avg_rating FROM user_feedback"
@@ -9137,10 +10074,51 @@ def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str,
     payment_rows = connection.execute(
         "SELECT meta_json FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
     ).fetchall()
+    roadmaps_total = int(connection.execute("SELECT COUNT(*) AS count FROM user_goal_roadmaps").fetchone()["count"])
+    reports_total = int(connection.execute("SELECT COUNT(*) AS count FROM analysis_reports").fetchone()["count"])
+    signups_24h = int(
+        connection.execute(
+            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'signup_success' AND created_at >= ?",
+            (cutoff_24h,),
+        ).fetchone()["count"]
+    )
+    logins_24h = int(
+        connection.execute(
+            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'login_success' AND created_at >= ?",
+            (cutoff_24h,),
+        ).fetchone()["count"]
+    )
+    analyses_24h = int(
+        connection.execute(
+            "SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze' AND created_at >= ?",
+            (cutoff_24h,),
+        ).fetchone()["count"]
+    )
+    failed_logins_24h = int(
+        connection.execute(
+            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name LIKE 'login_failed%' AND created_at >= ?",
+            (cutoff_24h,),
+        ).fetchone()["count"]
+    )
+
     revenue_inr = 0
     for row in payment_rows:
         meta = parse_meta_json(row["meta_json"])
         revenue_inr += int(meta.get("amount_inr") or 0)
+
+    try:
+        started_at = datetime.fromisoformat(APP_STARTED_AT)
+        uptime_minutes = int(max(0.0, (datetime.now(timezone.utc) - started_at).total_seconds()) // 60)
+    except Exception:
+        uptime_minutes = 0
+
+    async_counts = {"queued": 0, "running": 0, "succeeded": 0, "failed": 0}
+    with ASYNC_JOB_LOCK:
+        for job in ASYNC_JOB_STORE.values():
+            status = safe_text(job.get("status")) or "queued"
+            if status not in async_counts:
+                continue
+            async_counts[status] += 1
 
     return {
         "users_total": users_total,
@@ -9155,6 +10133,17 @@ def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str,
         "stripe_enabled": STRIPE_ENABLED,
         "razorpay_enabled": RAZORPAY_ENABLED,
         "payment_gateway": PAYMENT_GATEWAY_ACTIVE,
+        "roadmaps_total": roadmaps_total,
+        "reports_total": reports_total,
+        "signups_24h": signups_24h,
+        "logins_24h": logins_24h,
+        "analyses_24h": analyses_24h,
+        "failed_logins_24h": failed_logins_24h,
+        "backend_uptime_minutes": uptime_minutes,
+        "async_jobs_queued": async_counts["queued"],
+        "async_jobs_running": async_counts["running"],
+        "async_jobs_succeeded": async_counts["succeeded"],
+        "async_jobs_failed": async_counts["failed"],
     }
 
 
@@ -10358,16 +11347,51 @@ def suggest_actions(data: ResumeRequest, request: Request) -> dict[str, Any]:
     return payload
 
 
-@app.post("/build-resume")
-def build_resume(data: ResumeBuildRequest, request: Request) -> dict[str, Any]:
-    user = require_authenticated_user(request, data.auth_token)
-    user_id = int(user["id"])
+@app.get("/jobs/{job_id}")
+def async_job_status(job_id: str, request: Request, auth_token: str | None = None) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    job = get_async_job_for_user(job_id, int(user["id"]))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return {"job": serialize_async_job_payload(job)}
+
+
+@app.get("/jobs/{job_id}/download")
+def async_job_download(job_id: str, request: Request, auth_token: str | None = None) -> StreamingResponse:
+    user = require_authenticated_user(request, auth_token)
+    job = get_async_job_for_user(job_id, int(user["id"]))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if safe_text(job.get("status")) != "succeeded":
+        raise HTTPException(status_code=409, detail="Job is not completed yet.")
+
+    result = job.get("result")
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=400, detail="Job result is unavailable.")
+
+    encoded = safe_text(result.get("pdf_base64"))
+    if not encoded:
+        raise HTTPException(status_code=400, detail="This job has no downloadable output.")
+    try:
+        payload_bytes = base64.b64decode(encoded)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to decode job output.") from exc
+
+    safe_file_name = safe_text(result.get("file_name")) or "resume.pdf"
+    return StreamingResponse(
+        io.BytesIO(payload_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_file_name}"'},
+    )
+
+
+def build_resume_payload_for_user(user_id: int, data: ResumeBuildRequest, route_label: str = "/build-resume") -> dict[str, Any]:
     require_studio_access(user_id)
     debit = debit_credits(
         user_id,
         "ai_resume_generation",
         CREDIT_COSTS["ai_resume_generation"],
-        meta={"route": "/build-resume", "role": safe_text(data.role), "industry": safe_text(data.industry)},
+        meta={"route": safe_text(route_label) or "/build-resume", "role": safe_text(data.role), "industry": safe_text(data.industry)},
     )
 
     seeded_skills = extract_skills_from_text(safe_text(data.skills))
@@ -10447,7 +11471,7 @@ Return only the final resume text.
             user_id,
             "refund_ai_resume_generation",
             CREDIT_COSTS["ai_resume_generation"],
-            meta={"reason": ai_error, "route": "/build-resume"},
+            meta={"reason": ai_error, "route": safe_text(route_label) or "/build-resume"},
         )
         effective_wallet = refund["wallet"]
 
@@ -10460,6 +11484,70 @@ Return only the final resume text.
         if (not ai_generated and ai_error)
         else None,
     }
+
+
+def export_resume_pdf_job_payload_for_user(
+    user_id: int,
+    data: ResumeExportRequest,
+    route_label: str = "/export-resume-pdf/async",
+) -> dict[str, Any]:
+    require_studio_access(user_id)
+    resume_text = safe_text(data.resume_text)
+    if not resume_text:
+        raise HTTPException(status_code=400, detail="Resume text is required for PDF export.")
+
+    template_name = safe_text(data.template).lower() or "minimal"
+    debit = debit_credits(
+        user_id,
+        "template_pdf_download",
+        CREDIT_COSTS["template_pdf_download"],
+        meta={"route": safe_text(route_label) or "/export-resume-pdf/async", "template": template_name},
+    )
+
+    try:
+        pdf_bytes = render_resume_pdf_bytes(data.name or "Candidate", template_name, resume_text)
+    except Exception as exc:
+        credit_credits(
+            user_id,
+            "refund_template_pdf_download",
+            CREDIT_COSTS["template_pdf_download"],
+            meta={"reason": "pdf_render_failed", "route": safe_text(route_label) or "/export-resume-pdf/async"},
+        )
+        raise HTTPException(status_code=500, detail="Unable to generate PDF right now.") from exc
+
+    safe_name = sanitize_download_name(data.name)
+    file_name = f"{safe_name}-{template_name}.pdf"
+    return {
+        "file_name": file_name,
+        "media_type": "application/pdf",
+        "pdf_base64": base64.b64encode(pdf_bytes).decode("ascii"),
+        "wallet": debit["wallet"],
+        "credit_transaction_id": debit["transaction_id"],
+    }
+
+
+@app.post("/build-resume")
+def build_resume(data: ResumeBuildRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    user_id = int(user["id"])
+    return build_resume_payload_for_user(user_id, data, route_label="/build-resume")
+
+
+@app.post("/build-resume/async")
+def build_resume_async(data: BuildResumeAsyncRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    user_id = int(user["id"])
+    require_studio_access(user_id)
+    payload_dict = data.dict() if hasattr(data, "dict") else data.model_dump()
+    payload_dict.pop("async_mode", None)
+    job_request = ResumeBuildRequest(**payload_dict)
+    job = enqueue_async_job(
+        user_id,
+        "build_resume",
+        lambda: build_resume_payload_for_user(user_id, job_request, route_label="/build-resume/async"),
+    )
+    log_analytics_event("studio", "build_resume_async_queued", user_id=user_id, meta={"job_id": safe_text(job.get("id"))})
+    return {"job": serialize_async_job_payload(job)}
 
 
 @app.post("/improvise-resume")
@@ -10600,3 +11688,20 @@ def export_resume_pdf(data: ResumeExportRequest, request: Request) -> StreamingR
         "X-HireScore-Credits-Remaining": str(debit["wallet"]["credits"]),
     }
     return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+
+
+@app.post("/export-resume-pdf/async")
+def export_resume_pdf_async(data: ExportResumePdfAsyncRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    user_id = int(user["id"])
+    require_studio_access(user_id)
+    payload_dict = data.dict() if hasattr(data, "dict") else data.model_dump()
+    payload_dict.pop("async_mode", None)
+    job_request = ResumeExportRequest(**payload_dict)
+    job = enqueue_async_job(
+        user_id,
+        "export_resume_pdf",
+        lambda: export_resume_pdf_job_payload_for_user(user_id, job_request, route_label="/export-resume-pdf/async"),
+    )
+    log_analytics_event("studio", "export_resume_pdf_async_queued", user_id=user_id, meta={"job_id": safe_text(job.get("id"))})
+    return {"job": serialize_async_job_payload(job)}

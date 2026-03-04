@@ -23,6 +23,12 @@ type AuthPayload = {
   wallet?: CreditWallet;
 };
 
+type FeatureFlags = {
+  onboarding_copy_variant?: "A" | "B";
+  roadmap_prompt_variant?: "A" | "B";
+  pricing_cta_variant?: "A" | "B";
+};
+
 type AnalysisReportSummary = {
   id: number;
   source: string;
@@ -31,10 +37,6 @@ type AnalysisReportSummary = {
   overall_score: number | null;
   shortlist_prediction: string;
   created_at: string;
-};
-
-type AnalysisReportsPayload = {
-  reports?: AnalysisReportSummary[];
 };
 
 type GoalRoadmapMilestone = {
@@ -49,6 +51,9 @@ type GoalRoadmapMilestone = {
   focus_skills?: string[];
   completed: boolean;
   completed_at?: string | null;
+  evidence_note?: string | null;
+  evidence_link?: string | null;
+  evidence_updated_at?: string | null;
 };
 
 type GoalRoadmap = {
@@ -76,6 +81,69 @@ type GoalRoadmapPayload = {
   added_milestones?: number;
 };
 
+type AnalysisSnapshot = {
+  id: number;
+  created_at: string;
+  source: string;
+  industry: string;
+  role: string;
+  overall_score: number;
+  confidence: number;
+  critical_missing_count: number;
+  estimated_callback_rate: number;
+  shortlist_prediction: string;
+};
+
+type AnalysisComparison = {
+  latest?: AnalysisSnapshot | null;
+  previous?: AnalysisSnapshot | null;
+  delta?: {
+    overall_score: number;
+    confidence: number;
+    critical_missing_count: number;
+    estimated_callback_rate: number;
+  } | null;
+};
+
+type WeeklyExecutionCoach = {
+  title: string;
+  coach_note: string;
+  week_focus: string;
+  next_three_tasks: {
+    id: string;
+    title: string;
+    detail: string;
+    timeframe: string;
+    done_when: string;
+  }[];
+};
+
+type RoleBenchmark = {
+  role: string;
+  industry: string;
+  score: number;
+  peer_count: number;
+  percentile: number;
+  band_label: string;
+  benchmarks?: {
+    p25: number;
+    p50: number;
+    p75: number;
+    p90: number;
+  };
+};
+
+type DashboardBootstrapPayload = {
+  auth?: AuthPayload;
+  reports?: AnalysisReportSummary[];
+  roadmap?: GoalRoadmap | null;
+  roadmaps?: GoalRoadmap[];
+  analysis_comparison?: AnalysisComparison;
+  weekly_execution_coach?: WeeklyExecutionCoach | null;
+  role_benchmark?: RoleBenchmark | null;
+  feature_flags?: FeatureFlags;
+};
+
 type RoadmapCelebration = {
   kind: "milestone" | "goal";
   milestoneTitle: string;
@@ -83,6 +151,11 @@ type RoadmapCelebration = {
   progressPercent: number;
   completedMilestones: number;
   totalMilestones: number;
+};
+
+type MilestoneEvidenceDraft = {
+  note: string;
+  link: string;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
@@ -105,11 +178,17 @@ export default function DashboardPage() {
   const [token, setToken] = useState("");
   const [email, setEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({});
   const [reports, setReports] = useState<AnalysisReportSummary[]>([]);
   const [reportsError, setReportsError] = useState("");
+  const [analysisComparison, setAnalysisComparison] = useState<AnalysisComparison | null>(null);
+  const [weeklyCoach, setWeeklyCoach] = useState<WeeklyExecutionCoach | null>(null);
+  const [roleBenchmark, setRoleBenchmark] = useState<RoleBenchmark | null>(null);
   const [roadmaps, setRoadmaps] = useState<GoalRoadmap[]>([]);
   const [roadmapError, setRoadmapError] = useState("");
   const [roadmapUpdatingMilestoneId, setRoadmapUpdatingMilestoneId] = useState<string | null>(null);
+  const [roadmapSavingEvidenceMilestoneId, setRoadmapSavingEvidenceMilestoneId] = useState<string | null>(null);
+  const [milestoneEvidenceDrafts, setMilestoneEvidenceDrafts] = useState<Record<string, MilestoneEvidenceDraft>>({});
   const [selectedRoadmapId, setSelectedRoadmapId] = useState<number | null>(null);
   const [showAllRoadmapMilestones, setShowAllRoadmapMilestones] = useState(false);
   const [activeWorkspace, setActiveWorkspace] = useState<"roadmaps" | "reports">("roadmaps");
@@ -128,55 +207,32 @@ export default function DashboardPage() {
       }
       setToken(authToken);
       try {
-        const response = await fetch(apiUrl("/auth/me"), {
+        const response = await fetch(apiUrl("/dashboard/bootstrap?reports_limit=30&roadmap_limit=24"), {
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
         });
         if (!response.ok) throw new Error("Session expired. Please login again.");
-        const payload = (await response.json()) as AuthPayload;
-        setEmail(payload.user?.email || "");
-        setWallet(payload.wallet || null);
-        const [reportsResult, roadmapResult] = await Promise.allSettled([
-          fetch(apiUrl("/analysis/reports?limit=30"), {
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-            },
-          }),
-          fetch(apiUrl("/roadmap/list?limit=24"), {
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-            },
-          }),
-        ]);
+        const payload = (await response.json()) as DashboardBootstrapPayload;
+        const authPayload = payload.auth || {};
+        const reportsPayload = Array.isArray(payload.reports) ? payload.reports : [];
+        const roadmapTracks = Array.isArray(payload.roadmaps)
+          ? payload.roadmaps
+          : payload.roadmap
+            ? [payload.roadmap]
+            : [];
 
-        if (reportsResult.status === "fulfilled") {
-          if (!reportsResult.value.ok) {
-            setReportsError("Unable to load saved reports.");
-          } else {
-            const reportsPayload = (await reportsResult.value.json()) as AnalysisReportsPayload;
-            setReports(Array.isArray(reportsPayload.reports) ? reportsPayload.reports : []);
-          }
-        } else {
-          setReportsError("Unable to load saved reports.");
-        }
-
-        if (roadmapResult.status === "fulfilled") {
-          if (!roadmapResult.value.ok) {
-            setRoadmapError("Unable to load your roadmap right now.");
-          } else {
-            const roadmapPayload = (await roadmapResult.value.json()) as GoalRoadmapPayload;
-            const roadmapTracks = Array.isArray(roadmapPayload.roadmaps)
-              ? roadmapPayload.roadmaps
-              : roadmapPayload.roadmap
-                ? [roadmapPayload.roadmap]
-                : [];
-            setRoadmaps(roadmapTracks);
-            setSelectedRoadmapId(roadmapTracks[0]?.id ?? null);
-          }
-        } else {
-          setRoadmapError("Unable to load your roadmap right now.");
-        }
+        setEmail(authPayload.user?.email || "");
+        setWallet(authPayload.wallet || null);
+        setFeatureFlags(payload.feature_flags || {});
+        setReports(reportsPayload);
+        setReportsError("");
+        setRoadmaps(roadmapTracks);
+        setSelectedRoadmapId(roadmapTracks[0]?.id ?? null);
+        setRoadmapError("");
+        setAnalysisComparison(payload.analysis_comparison || null);
+        setWeeklyCoach(payload.weekly_execution_coach || null);
+        setRoleBenchmark(payload.role_benchmark || null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load dashboard.");
       } finally {
@@ -299,10 +355,74 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSaveMilestoneEvidence = async (milestoneId: string) => {
+    if (!token) {
+      setError("Login required to update roadmap evidence.");
+      return;
+    }
+    const activeRoadmap = roadmaps.find((item) => item.id === selectedRoadmapId) || roadmaps[0];
+    if (!activeRoadmap) {
+      setRoadmapError("No roadmap track selected.");
+      return;
+    }
+
+    const draft = milestoneEvidenceDrafts[milestoneId] || { note: "", link: "" };
+    setRoadmapError("");
+    setRoadmapSavingEvidenceMilestoneId(milestoneId);
+    try {
+      const response = await fetch(apiUrl(`/roadmap/${activeRoadmap.id}/milestones/${encodeURIComponent(milestoneId)}/evidence`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          note: draft.note,
+          link: draft.link,
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(payload?.detail || "Unable to save milestone evidence.");
+      }
+      const payload = (await response.json()) as GoalRoadmapPayload;
+      const nextTracks = Array.isArray(payload.roadmaps)
+        ? payload.roadmaps
+        : payload.roadmap
+          ? [payload.roadmap]
+          : [];
+      if (!nextTracks.length) {
+        throw new Error("Roadmap payload missing.");
+      }
+      const resolvedRoadmapId = payload.roadmap?.id || activeRoadmap.id;
+      setRoadmaps(nextTracks);
+      setSelectedRoadmapId(resolvedRoadmapId);
+    } catch (err) {
+      setRoadmapError(err instanceof Error ? err.message : "Unable to save milestone evidence.");
+    } finally {
+      setRoadmapSavingEvidenceMilestoneId(null);
+    }
+  };
+
   const activeRoadmap = useMemo(
     () => roadmaps.find((item) => item.id === selectedRoadmapId) || roadmaps[0] || null,
     [roadmaps, selectedRoadmapId]
   );
+
+  useEffect(() => {
+    if (!activeRoadmap) {
+      setMilestoneEvidenceDrafts({});
+      return;
+    }
+    const drafts: Record<string, MilestoneEvidenceDraft> = {};
+    for (const milestone of activeRoadmap.milestones || []) {
+      drafts[milestone.id] = {
+        note: milestone.evidence_note || "",
+        link: milestone.evidence_link || "",
+      };
+    }
+    setMilestoneEvidenceDrafts(drafts);
+  }, [activeRoadmap]);
   const roadmapMilestones = useMemo(() => activeRoadmap?.milestones || [], [activeRoadmap]);
   const nextMilestone = useMemo(
     () => roadmapMilestones.find((milestone) => !milestone.completed) || null,
@@ -334,6 +454,11 @@ export default function DashboardPage() {
     if (normalized === "high") return "High";
     if (normalized === "low") return "Low";
     return "Medium";
+  };
+  const formatDelta = (value: number, suffix = "") => {
+    const normalized = Number.isFinite(value) ? value : 0;
+    const sign = normalized > 0 ? "+" : "";
+    return `${sign}${normalized}${suffix}`;
   };
 
   const cardClass = "rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5";
@@ -456,10 +581,86 @@ export default function DashboardPage() {
         )}
 
         {!loading && !error && (
+          <section className="mt-6 grid gap-4 lg:grid-cols-3">
+            <article className={cardClass}>
+              <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Latest Analysis Delta</p>
+              {analysisComparison?.latest ? (
+                <>
+                  <p className="mt-2 text-sm font-semibold text-cyan-50">
+                    {analysisComparison.latest.role || "Latest run"} • {formatReportDate(analysisComparison.latest.created_at)}
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg border border-cyan-100/18 bg-cyan-100/8 px-2 py-1.5 text-cyan-100/82">
+                      Score {analysisComparison.latest.overall_score}%
+                    </div>
+                    <div className="rounded-lg border border-cyan-100/18 bg-cyan-100/8 px-2 py-1.5 text-cyan-100/82">
+                      Confidence {analysisComparison.latest.confidence}%
+                    </div>
+                  </div>
+                  {analysisComparison.delta && (
+                    <p className="mt-2 text-xs text-emerald-100/88">
+                      Score {formatDelta(analysisComparison.delta.overall_score)} • Callback{" "}
+                      {formatDelta(analysisComparison.delta.estimated_callback_rate, "%")}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-cyan-50/72">Run analysis to unlock comparison insights.</p>
+              )}
+            </article>
+
+            <article className={cardClass}>
+              <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Weekly Execution Coach</p>
+              {weeklyCoach ? (
+                <>
+                  <p className="mt-2 text-sm font-semibold text-cyan-50">{weeklyCoach.week_focus}</p>
+                  <p className="mt-1 text-xs text-cyan-50/70">{weeklyCoach.coach_note}</p>
+                  <ul className="mt-3 space-y-1.5 text-xs text-cyan-100/82">
+                    {(weeklyCoach.next_three_tasks || []).slice(0, 3).map((task) => (
+                      <li key={task.id || task.title}>• {task.title}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-cyan-50/72">No coach actions yet. Add your first roadmap track.</p>
+              )}
+            </article>
+
+            <article className={cardClass}>
+              <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Role Benchmark</p>
+              {roleBenchmark ? (
+                <>
+                  <p className="mt-2 text-sm font-semibold text-cyan-50">
+                    {roleBenchmark.band_label} • {roleBenchmark.percentile}th percentile
+                  </p>
+                  <p className="mt-1 text-xs text-cyan-50/70">
+                    {roleBenchmark.role} • {roleBenchmark.industry}
+                  </p>
+                  <p className="mt-1 text-xs text-cyan-100/82">
+                    Peer sample: {roleBenchmark.peer_count} • Score: {roleBenchmark.score}%
+                  </p>
+                  {roleBenchmark.benchmarks && (
+                    <p className="mt-2 text-[11px] text-cyan-100/74">
+                      P50 {roleBenchmark.benchmarks.p50}% • P75 {roleBenchmark.benchmarks.p75}% • P90 {roleBenchmark.benchmarks.p90}%
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-cyan-50/72">Benchmark appears after your first analysis report.</p>
+              )}
+            </article>
+          </section>
+        )}
+
+        {!loading && !error && (
           <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
             <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Dashboard Workspaces</p>
             <h2 className="mt-2 text-xl font-semibold text-cyan-50">Choose What You Want To Work On</h2>
-            <p className="mt-1 text-sm text-cyan-50/70">Interactive cards keep roadmap tracking and report downloads cleanly separated.</p>
+            <p className="mt-1 text-sm text-cyan-50/70">
+              {featureFlags.roadmap_prompt_variant === "B"
+                ? "Switch between roadmap execution and report downloads based on your current objective."
+                : "Interactive cards keep roadmap tracking and report downloads cleanly separated."}
+            </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {[
                 {
@@ -626,9 +827,45 @@ export default function DashboardPage() {
                               {milestone.completed_at && (
                                 <p className="mt-1 text-[11px] text-emerald-100/80">Completed on {formatReportDate(milestone.completed_at)}</p>
                               )}
+                              {milestone.evidence_updated_at && (
+                                <p className="mt-1 text-[11px] text-cyan-100/76">Evidence updated {formatReportDate(milestone.evidence_updated_at)}</p>
+                              )}
+
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                <input
+                                  type="text"
+                                  value={milestoneEvidenceDrafts[milestone.id]?.note || ""}
+                                  onChange={(event) =>
+                                    setMilestoneEvidenceDrafts((prev) => ({
+                                      ...prev,
+                                      [milestone.id]: {
+                                        note: event.target.value,
+                                        link: prev[milestone.id]?.link || "",
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Evidence note"
+                                  className="rounded-lg border border-cyan-100/24 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-50 placeholder:text-cyan-100/42 outline-none transition focus:border-cyan-100/55"
+                                />
+                                <input
+                                  type="url"
+                                  value={milestoneEvidenceDrafts[milestone.id]?.link || ""}
+                                  onChange={(event) =>
+                                    setMilestoneEvidenceDrafts((prev) => ({
+                                      ...prev,
+                                      [milestone.id]: {
+                                        note: prev[milestone.id]?.note || "",
+                                        link: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Proof link (optional)"
+                                  className="rounded-lg border border-cyan-100/24 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-50 placeholder:text-cyan-100/42 outline-none transition focus:border-cyan-100/55"
+                                />
+                              </div>
                             </div>
 
-                            <div className="w-full lg:w-[180px]">
+                            <div className="w-full lg:w-[190px]">
                               <button
                                 type="button"
                                 onClick={() => void handleToggleRoadmapMilestone(milestone.id, !milestone.completed)}
@@ -641,6 +878,14 @@ export default function DashboardPage() {
                                 aria-label={milestone.completed ? "Mark milestone as incomplete" : "Mark milestone as complete"}
                               >
                                 {updating ? "Updating..." : milestone.completed ? "Mark Incomplete" : "Mark Complete"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveMilestoneEvidence(milestone.id)}
+                                disabled={roadmapSavingEvidenceMilestoneId === milestone.id}
+                                className="mt-2 w-full rounded-lg border border-cyan-100/28 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 disabled:cursor-not-allowed disabled:opacity-55"
+                              >
+                                {roadmapSavingEvidenceMilestoneId === milestone.id ? "Saving..." : "Save Evidence"}
                               </button>
                             </div>
                           </div>

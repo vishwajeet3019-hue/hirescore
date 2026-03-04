@@ -43,6 +43,12 @@ type AuthPayload = {
   otp_expires_minutes?: number;
 };
 
+type FeatureFlags = {
+  onboarding_copy_variant?: "A" | "B";
+  roadmap_prompt_variant?: "A" | "B";
+  pricing_cta_variant?: "A" | "B";
+};
+
 type PaymentPackage = {
   id: string;
   label: string;
@@ -127,6 +133,7 @@ export default function PricingPage() {
   const [authToken, setAuthToken] = useState("");
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({});
   const [authLoading, setAuthLoading] = useState(false);
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -263,6 +270,30 @@ export default function PricingPage() {
   useEffect(() => {
     void warmBackend(apiUrl);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFeatureFlags = async () => {
+      try {
+        const response = await fetch(apiUrl("/feature-flags"), {
+          headers: authHeader,
+        });
+        if (!response.ok) return;
+        const payload = (await response.json().catch(() => null)) as { feature_flags?: FeatureFlags } | null;
+        if (!cancelled) {
+          setFeatureFlags(payload?.feature_flags || {});
+        }
+      } catch {
+        if (!cancelled) {
+          setFeatureFlags({});
+        }
+      }
+    };
+    void loadFeatureFlags();
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeader]);
 
   useEffect(() => {
     const run = async () => {
@@ -773,7 +804,11 @@ export default function PricingPage() {
                     onClick={() => void handleCheckout(item.id)}
                     className="mt-4 w-full rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
                   >
-                    {checkoutLoadingId === item.id ? "Opening..." : "Choose Plan"}
+                    {checkoutLoadingId === item.id
+                      ? "Opening..."
+                      : featureFlags.pricing_cta_variant === "B"
+                        ? "Get Credits Now"
+                        : "Choose Plan"}
                   </button>
                 </div>
               );

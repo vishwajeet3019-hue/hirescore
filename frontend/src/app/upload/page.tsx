@@ -39,6 +39,12 @@ type AuthPayload = {
   otp_expires_minutes?: number;
 };
 
+type FeatureFlags = {
+  onboarding_copy_variant?: "A" | "B";
+  roadmap_prompt_variant?: "A" | "B";
+  pricing_cta_variant?: "A" | "B";
+};
+
 type SalaryBoosterOption = {
   id: string;
   label: string;
@@ -193,6 +199,9 @@ type GoalRoadmapMilestone = {
   focus_skills?: string[];
   completed: boolean;
   completed_at?: string | null;
+  evidence_note?: string | null;
+  evidence_link?: string | null;
+  evidence_updated_at?: string | null;
 };
 
 type GoalRoadmap = {
@@ -219,6 +228,55 @@ type GoalRoadmapPayload = {
   added_milestones?: number;
   count?: number;
   message?: string;
+};
+
+type RoadmapPreviewPayload = {
+  action?: string;
+  created_new_track?: boolean;
+  matched_roadmap_id?: number | null;
+  matched_track_title?: string | null;
+  incoming_milestones?: number;
+  added_milestones?: number;
+  resulting_total_milestones?: number;
+  similarity_score?: number;
+  added_titles?: string[];
+  summary?: string;
+};
+
+type JdMatchPayload = {
+  role_track: string;
+  match_score: number;
+  matched_keywords: string[];
+  missing_keywords: string[];
+  jd_keyword_count: number;
+  resume_keyword_count: number;
+  critical_coverage: number;
+  suggested_bullets: string[];
+  alignment_summary: string;
+  role_profile?: {
+    core: string[];
+    critical: string[];
+  };
+};
+
+type InterviewPrepPayload = {
+  role: string;
+  industry: string;
+  focus_skills: string[];
+  coach_note: string;
+  mock_questions: string[];
+  prep_sprint: string[];
+};
+
+type ApplicationPackPayload = {
+  role: string;
+  industry: string;
+  subject_line: string;
+  outreach_email: string;
+  linkedin_message: string;
+  cover_letter_opening: string;
+  jd_focus_keywords: string[];
+  application_checklist: string[];
 };
 
 type ApiErrorDetail = {
@@ -295,6 +353,7 @@ const RESULT_STEPS: { id: ResultTabId; label: string; description: string }[] = 
 export default function UploadPage() {
   const router = useRouter();
   const [analysisMode, setAnalysisMode] = useState<"manual" | "upload">("manual");
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({});
   const [industry, setIndustry] = useState("");
   const [role, setRole] = useState("");
   const [experienceYears, setExperienceYears] = useState("");
@@ -318,9 +377,19 @@ export default function UploadPage() {
   const [roadmapDecisionLoading, setRoadmapDecisionLoading] = useState(false);
   const [roadmapDecisionSubmitting, setRoadmapDecisionSubmitting] = useState(false);
   const [roadmapServerAction, setRoadmapServerAction] = useState("");
+  const [roadmapPreviewMeta, setRoadmapPreviewMeta] = useState<RoadmapPreviewPayload | null>(null);
   const [roadmapLoading, setRoadmapLoading] = useState(false);
   const [roadmapError, setRoadmapError] = useState("");
   const [roadmapPreview, setRoadmapPreview] = useState<GoalRoadmap | null>(null);
+  const [jdInput, setJdInput] = useState("");
+  const [jdMatch, setJdMatch] = useState<JdMatchPayload | null>(null);
+  const [jdMatchLoading, setJdMatchLoading] = useState(false);
+  const [jdMatchError, setJdMatchError] = useState("");
+  const [interviewPrep, setInterviewPrep] = useState<InterviewPrepPayload | null>(null);
+  const [interviewPrepLoading, setInterviewPrepLoading] = useState(false);
+  const [applicationPack, setApplicationPack] = useState<ApplicationPackPayload | null>(null);
+  const [applicationPackLoading, setApplicationPackLoading] = useState(false);
+  const [prepPackError, setPrepPackError] = useState("");
 
   const [selectedSalaryBoosters, setSelectedSalaryBoosters] = useState<string[]>([]);
   const [callbackSimulationApps, setCallbackSimulationApps] = useState("60");
@@ -413,6 +482,30 @@ export default function UploadPage() {
   useEffect(() => {
     void warmBackend(apiUrl);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFeatureFlags = async () => {
+      try {
+        const response = await fetch(apiUrl("/feature-flags"), {
+          headers: authHeader,
+        });
+        if (!response.ok) return;
+        const payload = (await response.json().catch(() => null)) as { feature_flags?: FeatureFlags } | null;
+        if (!cancelled) {
+          setFeatureFlags(payload?.feature_flags || {});
+        }
+      } catch {
+        if (!cancelled) {
+          setFeatureFlags({});
+        }
+      }
+    };
+    void loadFeatureFlags();
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeader]);
 
   useEffect(() => {
     if (!loading) {
@@ -735,6 +828,13 @@ export default function UploadPage() {
     setRoadmapLoading(false);
     setRoadmapError("");
     setRoadmapPreview(null);
+    setRoadmapPreviewMeta(null);
+    setJdInput("");
+    setJdMatch(null);
+    setJdMatchError("");
+    setInterviewPrep(null);
+    setApplicationPack(null);
+    setPrepPackError("");
     setSelectedSalaryBoosters(data.salary_insight?.selected_boosters || []);
     if (data.callback_forecast?.applications_input) {
       setCallbackSimulationApps(String(data.callback_forecast.applications_input));
@@ -1160,6 +1260,22 @@ export default function UploadPage() {
     if (roadmapServerAction === "no_new_missing_skills") return "Roadmap already covered this direction. Existing milestones were kept.";
     return "Roadmap updated successfully.";
   }, [roadmapServerAction]);
+  const roadmapDecisionTitle =
+    featureFlags.roadmap_prompt_variant === "B"
+      ? roadmapDecisionMode === "first"
+        ? "Create your first execution roadmap?"
+        : "Apply smart roadmap update?"
+      : roadmapDecisionMode === "first"
+        ? "Add this analysis to your roadmap?"
+        : "Update your roadmap with this analysis?";
+  const roadmapDecisionDescription =
+    featureFlags.roadmap_prompt_variant === "B"
+      ? roadmapDecisionMode === "first"
+        ? "We will convert this report into an execution track you can mark complete milestone by milestone."
+        : "We will compare this run with existing tracks, keep overlaps clean, and only add new missing-skill milestones."
+      : roadmapDecisionMode === "first"
+        ? "This creates your first milestone track based on the analysis you just completed."
+        : "We will smartly compare against existing roadmap tracks, add only missing-skill milestones, and create a separate track if this direction is different.";
 
   const navigateResultStep = (direction: "next" | "back") => {
     const delta = direction === "next" ? 1 : -1;
@@ -1351,8 +1467,7 @@ export default function UploadPage() {
     return { count: payload.count ?? tracks.length, roadmaps: tracks };
   };
 
-  const upsertRoadmapFromResult = async (analysisResult: AnalysisResult) => {
-    if (!authToken || !authHeader) return null;
+  const buildRoadmapUpsertBody = (analysisResult: AnalysisResult) => {
     const milestones = buildRoadmapMilestones(analysisResult);
     const targetRole =
       analysisResult.positioning_strategy?.target_role ||
@@ -1364,6 +1479,40 @@ export default function UploadPage() {
       analysisResult.learning_roadmap?.target_industry || analysisResult.salary_insight?.target_industry || industry.trim() || "your target industry";
     const targetScore = analysisResult.ninety_plus_strategy?.target_score || 90;
 
+    return {
+      goal_title: `Reach ${targetScore}% shortlist probability`,
+      goal_context: analysisResult.shortlist_prediction || "Improve your profile for stronger interview conversion.",
+      target_role: targetRole,
+      target_industry: targetIndustry,
+      target_score: targetScore,
+      current_score: analysisResult.overall_score,
+      milestones,
+      auth_token: authToken,
+    };
+  };
+
+  const previewRoadmapUpsertFromResult = async (analysisResult: AnalysisResult) => {
+    if (!authToken || !authHeader) return null;
+    const payload = await fetchJsonWithWakeAndRetry<RoadmapPreviewPayload>({
+      apiUrl,
+      path: "/roadmap/preview-upsert",
+      init: {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader,
+        },
+        body: JSON.stringify(buildRoadmapUpsertBody(analysisResult)),
+      },
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: parseApiError,
+      abortErrorMessage: "Roadmap preview is taking longer than expected. Please try again.",
+    });
+    return payload;
+  };
+
+  const upsertRoadmapFromResult = async (analysisResult: AnalysisResult) => {
+    if (!authToken || !authHeader) return null;
     const payload = await fetchJsonWithWakeAndRetry<GoalRoadmapPayload>({
       apiUrl,
       path: "/roadmap/upsert",
@@ -1373,16 +1522,7 @@ export default function UploadPage() {
           "Content-Type": "application/json",
           ...authHeader,
         },
-        body: JSON.stringify({
-          goal_title: `Reach ${targetScore}% shortlist probability`,
-          goal_context: analysisResult.shortlist_prediction || "Improve your profile for stronger interview conversion.",
-          target_role: targetRole,
-          target_industry: targetIndustry,
-          target_score: targetScore,
-          current_score: analysisResult.overall_score,
-          milestones,
-          auth_token: authToken,
-        }),
+        body: JSON.stringify(buildRoadmapUpsertBody(analysisResult)),
       },
       timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
       parseError: parseApiError,
@@ -1410,6 +1550,7 @@ export default function UploadPage() {
         setRoadmapTracksCount(payload.roadmaps.length);
       }
       setShowRoadmapDecisionModal(false);
+      setRoadmapPreviewMeta(null);
     } catch (error) {
       setRoadmapPreview(null);
       setRoadmapError(error instanceof Error ? error.message : "Unable to prepare roadmap right now.");
@@ -1419,24 +1560,188 @@ export default function UploadPage() {
     }
   };
 
+  const handleRunJdMatch = async () => {
+    if (!result) return;
+    if (!authToken || !authHeader) {
+      setJdMatchError("Login required to run JD match.");
+      return;
+    }
+    const jobDescription = jdInput.trim();
+    if (jobDescription.length < 24) {
+      setJdMatchError("Paste a fuller job description (at least 24 characters).");
+      return;
+    }
+
+    const resumeSource = [
+      analysisSkills.trim(),
+      ...(result.quick_wins || []),
+      ...(result.areas_to_improve || []).flatMap((item) => item.details || []),
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    if (resumeSource.length < 24) {
+      setJdMatchError("Add your current skills first so JD match can evaluate role alignment.");
+      return;
+    }
+
+    setJdMatchError("");
+    setJdMatchLoading(true);
+    try {
+      const payload = await fetchJsonWithWakeAndRetry<JdMatchPayload>({
+        apiUrl,
+        path: "/analysis/jd-match",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            industry: industry.trim() || result.salary_insight?.target_industry || "General",
+            role: role.trim() || result.positioning_strategy?.target_role || "Target role",
+            resume_text: resumeSource,
+            job_description: jobDescription,
+            auth_token: authToken,
+          }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "JD match is taking longer than expected. Please try again.",
+      });
+      setJdMatch(payload);
+    } catch (error) {
+      setJdMatch(null);
+      setJdMatchError(error instanceof Error ? error.message : "Unable to run JD match right now.");
+    } finally {
+      setJdMatchLoading(false);
+    }
+  };
+
+  const handleGenerateInterviewPrep = async () => {
+    if (!result) return;
+    if (!authToken || !authHeader) {
+      setPrepPackError("Login required to generate interview prep.");
+      return;
+    }
+    setPrepPackError("");
+    setInterviewPrepLoading(true);
+    try {
+      const payload = await fetchJsonWithWakeAndRetry<InterviewPrepPayload>({
+        apiUrl,
+        path: "/analysis/interview-prep",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            industry: industry.trim() || result.salary_insight?.target_industry || "General",
+            role: role.trim() || result.positioning_strategy?.target_role || "Target role",
+            job_description: jdInput.trim(),
+            critical_missing_skills: (result.ninety_plus_strategy?.actions || [])
+              .map((item) => item.title || item.action)
+              .slice(0, 4),
+            auth_token: authToken,
+          }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Interview prep generation is taking longer than expected. Please try again.",
+      });
+      setInterviewPrep(payload);
+    } catch (error) {
+      setPrepPackError(error instanceof Error ? error.message : "Unable to generate interview prep right now.");
+    } finally {
+      setInterviewPrepLoading(false);
+    }
+  };
+
+  const handleGenerateApplicationPack = async () => {
+    if (!result) return;
+    if (!authToken || !authHeader) {
+      setPrepPackError("Login required to generate application pack.");
+      return;
+    }
+    const resumeSource = [
+      analysisSkills.trim(),
+      ...(result.quick_wins || []),
+      ...(result.areas_to_improve || []).flatMap((item) => item.details || []),
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    if (resumeSource.length < 24) {
+      setPrepPackError("Add your current skills first to generate a personalized application pack.");
+      return;
+    }
+
+    setPrepPackError("");
+    setApplicationPackLoading(true);
+    try {
+      const payload = await fetchJsonWithWakeAndRetry<ApplicationPackPayload>({
+        apiUrl,
+        path: "/analysis/application-pack",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            industry: industry.trim() || result.salary_insight?.target_industry || "General",
+            role: role.trim() || result.positioning_strategy?.target_role || "Target role",
+            resume_text: resumeSource,
+            job_description: jdInput.trim(),
+            auth_token: authToken,
+          }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Application pack generation is taking longer than expected. Please try again.",
+      });
+      setApplicationPack(payload);
+    } catch (error) {
+      setPrepPackError(error instanceof Error ? error.message : "Unable to generate application pack right now.");
+    } finally {
+      setApplicationPackLoading(false);
+    }
+  };
+
   const handleCloseResultModal = () => {
     setShowResultModal(false);
     setActiveResultTab("summary");
     if (!result || !authToken) return;
     setShowRoadmapModal(false);
     setRoadmapPreview(null);
+    setRoadmapPreviewMeta(null);
     setRoadmapServerAction("");
     setShowRoadmapDecisionModal(true);
     setRoadmapDecisionLoading(true);
     setRoadmapError("");
     void (async () => {
       try {
-        const payload = await fetchRoadmapTracksMeta();
-        const totalTracks = Math.max(0, payload.count);
+        const [tracksPayload, previewPayload] = await Promise.all([
+          fetchRoadmapTracksMeta(),
+          previewRoadmapUpsertFromResult(result),
+        ]);
+        const totalTracks = Math.max(0, tracksPayload.count);
         setRoadmapTracksCount(totalTracks);
-        setRoadmapDecisionMode(totalTracks > 0 ? "update" : "first");
+        if (previewPayload) {
+          setRoadmapPreviewMeta(previewPayload);
+          const previewAction = previewPayload.action || "";
+          if (previewAction === "created_first_track") {
+            setRoadmapDecisionMode("first");
+          } else {
+            setRoadmapDecisionMode("update");
+          }
+        } else {
+          setRoadmapDecisionMode(totalTracks > 0 ? "update" : "first");
+        }
       } catch (error) {
         setRoadmapTracksCount(0);
+        setRoadmapPreviewMeta(null);
         setRoadmapDecisionMode("first");
         setRoadmapError(error instanceof Error ? error.message : "Unable to check roadmap state right now.");
       } finally {
@@ -1482,7 +1787,9 @@ export default function UploadPage() {
               </h1>
 
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-cyan-50/80 sm:text-base">
-                Enter role details, run analysis, and get an easy report: score, interview chances, salary direction, and next-step actions.
+                {featureFlags.onboarding_copy_variant === "B"
+                  ? "Run one focused analysis and get a guided execution flow: score clarity, callback forecast, salary direction, and roadmap actions."
+                  : "Enter role details, run analysis, and get an easy report: score, interview chances, salary direction, and next-step actions."}
               </p>
 
               <form
@@ -2200,6 +2507,46 @@ export default function UploadPage() {
                             </ul>
                           </div>
                         )}
+
+                        <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
+                          <p className="text-sm font-semibold text-cyan-100">JD Match Scanner</p>
+                          <p className="mt-1 text-xs text-cyan-50/72">
+                            Paste the target job description to check keyword alignment and missing must-have skills.
+                          </p>
+                          <textarea
+                            value={jdInput}
+                            onChange={(event) => setJdInput(event.target.value)}
+                            placeholder="Paste target job description here"
+                            className={`${textAreaClass} mt-3 min-h-24`}
+                          />
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleRunJdMatch()}
+                              disabled={jdMatchLoading}
+                              className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {jdMatchLoading ? "Matching..." : "Run JD Match"}
+                            </button>
+                            {jdMatch && <span className="text-xs text-cyan-100/78">Match score: {jdMatch.match_score}%</span>}
+                          </div>
+                          {jdMatchError && <p className="mt-2 text-xs text-amber-100">{jdMatchError}</p>}
+                          {jdMatch && (
+                            <div className="mt-3 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
+                              <p className="text-xs text-cyan-50/78">{jdMatch.alignment_summary}</p>
+                              <p className="mt-2 text-xs text-cyan-100/84">
+                                Missing keywords: {(jdMatch.missing_keywords || []).slice(0, 8).join(", ") || "None"}
+                              </p>
+                              {(jdMatch.suggested_bullets || []).length > 0 && (
+                                <ul className="mt-2 space-y-1 text-xs text-cyan-50/75">
+                                  {(jdMatch.suggested_bullets || []).slice(0, 3).map((line, idx) => (
+                                    <li key={`jd-suggestion-${idx}`}>- {line}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2425,6 +2772,57 @@ export default function UploadPage() {
                         </motion.div>
                       ))}
                     </div>
+
+                    <div className="mt-5 rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-cyan-100">Interview + Application Pack</p>
+                          <p className="mt-1 text-xs text-cyan-50/72">
+                            Generate role-targeted mock questions and outreach assets from this analysis.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleGenerateInterviewPrep()}
+                            disabled={interviewPrepLoading}
+                            className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+                          >
+                            {interviewPrepLoading ? "Generating..." : "Generate Interview Prep"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleGenerateApplicationPack()}
+                            disabled={applicationPackLoading}
+                            className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:opacity-60"
+                          >
+                            {applicationPackLoading ? "Generating..." : "Generate Application Pack"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {prepPackError && <p className="mt-3 text-xs text-amber-100">{prepPackError}</p>}
+
+                      {interviewPrep && (
+                        <div className="mt-4 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
+                          <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/76">Interview Prep</p>
+                          <p className="mt-1 text-xs text-cyan-50/78">{interviewPrep.coach_note}</p>
+                          <ul className="mt-2 space-y-1 text-xs text-cyan-100/84">
+                            {(interviewPrep.mock_questions || []).slice(0, 4).map((question, idx) => (
+                              <li key={`prep-q-${idx}`}>- {question}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {applicationPack && (
+                        <div className="mt-4 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
+                          <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/76">Application Pack</p>
+                          <p className="mt-2 text-xs text-cyan-50/80">Subject: {applicationPack.subject_line}</p>
+                          <p className="mt-1 text-xs text-cyan-50/76">LinkedIn: {applicationPack.linkedin_message}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 </motion.div>
@@ -2464,6 +2862,7 @@ export default function UploadPage() {
             onClick={() => {
               if (roadmapDecisionLoading || roadmapDecisionSubmitting) return;
               setShowRoadmapDecisionModal(false);
+              setRoadmapPreviewMeta(null);
               setRoadmapError("");
             }}
           >
@@ -2474,18 +2873,28 @@ export default function UploadPage() {
               className="w-full max-w-2xl rounded-[1.8rem] border border-cyan-100/22 bg-[#041427]/96 p-5 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:p-7"
             >
               <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Roadmap Decision</p>
-              <h3 className="mt-2 text-2xl font-semibold text-cyan-50">
-                {roadmapDecisionMode === "first" ? "Add this analysis to your roadmap?" : "Update your roadmap with this analysis?"}
-              </h3>
-              <p className="mt-2 text-sm text-cyan-50/76">
-                {roadmapDecisionMode === "first"
-                  ? "This creates your first milestone track based on the analysis you just completed."
-                  : "We will smartly compare against existing roadmap tracks, add only missing-skill milestones, and create a separate track if this direction is different."}
-              </p>
+              <h3 className="mt-2 text-2xl font-semibold text-cyan-50">{roadmapDecisionTitle}</h3>
+              <p className="mt-2 text-sm text-cyan-50/76">{roadmapDecisionDescription}</p>
               {roadmapTracksCount > 0 && (
                 <p className="mt-1 text-xs text-cyan-100/68">
                   Existing roadmap tracks: <span className="font-semibold text-cyan-50">{roadmapTracksCount}</span>
                 </p>
+              )}
+
+              {roadmapPreviewMeta?.summary && (
+                <div className="mt-3 rounded-xl border border-cyan-100/22 bg-cyan-100/8 p-3">
+                  <p className="text-xs text-cyan-50/82">{roadmapPreviewMeta.summary}</p>
+                  {typeof roadmapPreviewMeta.added_milestones === "number" && (
+                    <p className="mt-1 text-[11px] text-cyan-100/72">
+                      New milestones: {roadmapPreviewMeta.added_milestones} • Similarity score: {roadmapPreviewMeta.similarity_score ?? 0}
+                    </p>
+                  )}
+                  {(roadmapPreviewMeta.added_titles || []).length > 0 && (
+                    <p className="mt-1 text-[11px] text-cyan-100/76">
+                      Additions: {(roadmapPreviewMeta.added_titles || []).slice(0, 4).join(", ")}
+                    </p>
+                  )}
+                </div>
               )}
 
               <div className="mt-4 rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3">
@@ -2520,6 +2929,7 @@ export default function UploadPage() {
                   onClick={() => {
                     if (roadmapDecisionLoading || roadmapDecisionSubmitting) return;
                     setShowRoadmapDecisionModal(false);
+                    setRoadmapPreviewMeta(null);
                     setRoadmapError("");
                   }}
                   disabled={roadmapDecisionLoading || roadmapDecisionSubmitting}
