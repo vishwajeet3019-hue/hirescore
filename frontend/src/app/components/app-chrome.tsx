@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import BrandLogo from "./brand-logo";
 import CaptureDeterrence from "./capture-deterrence";
@@ -44,6 +45,9 @@ export default function AppChrome({ children }: AppChromeProps) {
               <p>Shortlist prediction by role intent</p>
               <p>Actionable improvement roadmaps</p>
               <p>In-platform resume building</p>
+              <Link href="/resources" className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50">
+                Resume Optimization Guides
+              </Link>
             </div>
           </div>
 

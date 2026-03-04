@@ -1,0 +1,2057 @@
+export type SeoFaq = {
+  question: string;
+  answer: string;
+};
+
+export type KeywordCluster = {
+  label: string;
+  phrases: string[];
+};
+
+export type SeoLandingPage = {
+  slug: string;
+  keyword: string;
+  title: string;
+  metaDescription: string;
+  h1: string;
+  intro: string;
+  roleFocus: string;
+  searchIntent: string;
+  painPoints: string[];
+  whatYouGet: string[];
+  actionPlan: string[];
+  faqs: SeoFaq[];
+};
+
+export const seoLandingPages: SeoLandingPage[] = [
+  {
+    slug: "ats-resume-checker-software-engineers",
+    keyword: "ATS resume checker for software engineers",
+    title: "ATS Resume Checker for Software Engineers",
+    metaDescription:
+      "Check how ATS-friendly your software engineer resume is and get specific fixes for projects, tech stack, and role-fit keywords.",
+    h1: "ATS Resume Checker for Software Engineers",
+    intro:
+      "Most software resumes fail because they list tools but miss business impact. This page helps you structure your engineering experience for ATS and recruiter screening.",
+    roleFocus: "Software Engineer",
+    searchIntent: "Evaluate and improve ATS compatibility before applying to engineering roles.",
+    painPoints: [
+      "Projects are listed without measurable outcomes.",
+      "Keywords are broad and not mapped to target job descriptions.",
+      "Resume sections are not scannable for recruiter reviews.",
+    ],
+    whatYouGet: [
+      "Role-fit scoring against engineering hiring expectations.",
+      "Keyword gap detection for backend, frontend, and full-stack roles.",
+      "Actionable bullet rewrites focused on shipped impact.",
+    ],
+    actionPlan: [
+      "Run a baseline analysis with your target role and skills.",
+      "Rewrite top 5 bullets with impact metrics and ownership details.",
+      "Re-check score before every application batch.",
+    ],
+    faqs: [
+      {
+        question: "How long should a software engineer resume be?",
+        answer: "Most candidates perform best with one page early-career and two pages for experienced profiles with clear impact sections.",
+      },
+      {
+        question: "Should I list every framework I know?",
+        answer: "No. Prioritize frameworks and tools that directly match the target role and show depth through outcomes.",
+      },
+      {
+        question: "Can ATS read tables and columns?",
+        answer: "Some ATS systems struggle with complex formatting. Use simple structure and clear section headings.",
+      },
+    ],
+  },
+  {
+    slug: "resume-score-checker-freshers",
+    keyword: "resume score checker for freshers",
+    title: "Resume Score Checker for Freshers",
+    metaDescription:
+      "Get a fresher-focused resume score with guidance on skills, projects, and positioning to increase interview callbacks.",
+    h1: "Resume Score Checker for Freshers",
+    intro:
+      "Fresher resumes need clarity, not fluff. Use this guide to highlight proof of ability through projects, internships, and practical outcomes.",
+    roleFocus: "Freshers",
+    searchIntent: "Understand how to improve shortlist chances with limited experience.",
+    painPoints: [
+      "No clear target role in the resume headline.",
+      "Projects describe tasks but not outcomes or learning depth.",
+      "Skills sections are long but not prioritized by role relevance.",
+    ],
+    whatYouGet: [
+      "A score calibrated for entry-level hiring standards.",
+      "Priority suggestions for project and skills sections.",
+      "A simple roadmap to move from low-confidence to interview-ready profile.",
+    ],
+    actionPlan: [
+      "Set one target role and align summary + skills to it.",
+      "Convert 3 project bullets into problem-action-result format.",
+      "Use one clean template and remove low-value information.",
+    ],
+    faqs: [
+      {
+        question: "Do freshers need a summary section?",
+        answer: "Yes, a short role-focused summary helps recruiters understand your direction quickly.",
+      },
+      {
+        question: "Should I include all certifications?",
+        answer: "Include only certifications relevant to the target role and current skill level.",
+      },
+      {
+        question: "Can projects replace work experience?",
+        answer: "For freshers, strong projects with measurable outcomes can act as high-signal evidence.",
+      },
+    ],
+  },
+  {
+    slug: "product-manager-resume-analyzer",
+    keyword: "product manager resume analyzer",
+    title: "Product Manager Resume Analyzer",
+    metaDescription:
+      "Analyze your PM resume for product impact, stakeholder leadership, and metric-driven achievements that recruiters prioritize.",
+    h1: "Product Manager Resume Analyzer",
+    intro:
+      "PM resumes often sound strategic but lack decision impact. This page helps you demonstrate product thinking with measurable results.",
+    roleFocus: "Product Manager",
+    searchIntent: "Improve PM resume quality for shortlist conversion.",
+    painPoints: [
+      "Achievements are described without KPI movement.",
+      "Cross-functional ownership is implied, not proven.",
+      "Resume lacks domain context and product stage clarity.",
+    ],
+    whatYouGet: [
+      "Score insights based on PM hiring signals.",
+      "Gap analysis for product metrics and ownership depth.",
+      "Suggested rewrites for roadmap, launch, and growth impact.",
+    ],
+    actionPlan: [
+      "Map each experience block to one business outcome.",
+      "Add metrics for adoption, retention, or revenue influence.",
+      "Tailor resume versions by domain: SaaS, fintech, marketplace, etc.",
+    ],
+    faqs: [
+      {
+        question: "What metrics should PM resumes include?",
+        answer: "Use metrics tied to business impact such as activation rate, retention, conversion, revenue, or cost savings.",
+      },
+      {
+        question: "How many projects should I include?",
+        answer: "Include 2-4 high-impact initiatives with clear ownership and measurable outcomes.",
+      },
+      {
+        question: "Should PM resumes mention tools?",
+        answer: "Mention tools briefly and focus more on decisions, prioritization, and business outcomes.",
+      },
+    ],
+  },
+  {
+    slug: "data-analyst-resume-checker",
+    keyword: "data analyst resume checker",
+    title: "Data Analyst Resume Checker",
+    metaDescription:
+      "Evaluate your data analyst resume for SQL, BI, and analytics storytelling quality with recruiter-focused improvement recommendations.",
+    h1: "Data Analyst Resume Checker",
+    intro:
+      "Data analyst resumes should show decision support, not only dashboards. This guide helps you position analysis work as business outcomes.",
+    roleFocus: "Data Analyst",
+    searchIntent: "Improve analytics resume quality and shortlist probability.",
+    painPoints: [
+      "Tools are listed, but business impact is missing.",
+      "Analysis work is not connected to stakeholder decisions.",
+      "Projects lack statistical or experimentation depth.",
+    ],
+    whatYouGet: [
+      "Role-fit scoring for analyst expectations.",
+      "Suggestions for SQL, BI, and storytelling section upgrades.",
+      "Prioritized fixes to improve recruiter readability.",
+    ],
+    actionPlan: [
+      "Rewrite project bullets with business question and result.",
+      "Highlight one end-to-end analysis with measurable impact.",
+      "Align your keyword mix to analyst job descriptions.",
+    ],
+    faqs: [
+      {
+        question: "Which tools matter most in analyst resumes?",
+        answer: "SQL, spreadsheets, BI tools, and clear communication of insights typically matter more than long tool lists.",
+      },
+      {
+        question: "Should I include dashboards in my resume?",
+        answer: "Yes, but describe the decision impact created by each dashboard, not just that it was built.",
+      },
+      {
+        question: "How can I show statistical skills?",
+        answer: "Mention methods only when tied to the business problem and measurable outcome.",
+      },
+    ],
+  },
+  {
+    slug: "digital-marketing-resume-score",
+    keyword: "digital marketing resume score",
+    title: "Digital Marketing Resume Score Guide",
+    metaDescription:
+      "Get a digital marketing resume score and improve campaign impact storytelling, channel mix, and growth metrics for better interviews.",
+    h1: "Digital Marketing Resume Score Guide",
+    intro:
+      "Marketing resumes should prove growth outcomes. This page helps you convert activity-heavy bullets into performance-focused achievements.",
+    roleFocus: "Digital Marketing",
+    searchIntent: "Improve marketing resume conversion using metric-led positioning.",
+    painPoints: [
+      "Campaign tasks are listed without growth metrics.",
+      "No clarity on budget ownership or channel strategy.",
+      "Resume lacks evidence of experimentation and optimization.",
+    ],
+    whatYouGet: [
+      "Score feedback tuned to marketing hiring signals.",
+      "Guidance on ad, SEO, and lifecycle campaign storytelling.",
+      "Suggestions to strengthen ROI and conversion narratives.",
+    ],
+    actionPlan: [
+      "Prioritize performance metrics in every experience section.",
+      "Add one case study bullet per channel with before/after impact.",
+      "Use role-specific keywords for SEO, paid, and CRM workflows.",
+    ],
+    faqs: [
+      {
+        question: "What metrics should marketing resumes show?",
+        answer: "Include conversion rate, CAC, ROAS, CTR, lead quality, or revenue influence depending on role scope.",
+      },
+      {
+        question: "Should I include organic and paid in one resume?",
+        answer: "Yes, but prioritize the channel strengths most aligned to the target role.",
+      },
+      {
+        question: "Do recruiters care about tools?",
+        answer: "Tools are useful context, but metric outcomes and strategic ownership matter more.",
+      },
+    ],
+  },
+  {
+    slug: "sales-manager-resume-optimization",
+    keyword: "sales manager resume optimization",
+    title: "Sales Manager Resume Optimization",
+    metaDescription:
+      "Optimize your sales manager resume with quota attainment, pipeline quality, and team leadership signals recruiters expect.",
+    h1: "Sales Manager Resume Optimization",
+    intro:
+      "Sales resumes win when they are number-first and leadership-clear. This guide shows how to make your track record instantly credible.",
+    roleFocus: "Sales Manager",
+    searchIntent: "Increase interview conversions for sales leadership roles.",
+    painPoints: [
+      "Quota performance is missing or not contextualized.",
+      "Pipeline and conversion efficiency are not quantified.",
+      "Team coaching and hiring outcomes are not highlighted.",
+    ],
+    whatYouGet: [
+      "A score aligned with sales manager expectations.",
+      "Recommendations for quota, funnel, and leadership storytelling.",
+      "Priority improvements for clarity and recruiter scan speed.",
+    ],
+    actionPlan: [
+      "Lead each role with quota and attainment context.",
+      "Add pipeline metrics and win-rate improvements.",
+      "Show team development impact with concrete outcomes.",
+    ],
+    faqs: [
+      {
+        question: "Should I include revenue numbers in my resume?",
+        answer: "Yes. Concrete revenue or quota metrics are high-signal for sales hiring decisions.",
+      },
+      {
+        question: "How can I show leadership impact?",
+        answer: "Include team ramp-up, retention, promotion, or coaching outcomes with numbers where possible.",
+      },
+      {
+        question: "What if my quota was not met every quarter?",
+        answer: "Show trend improvements and the specific actions that improved pipeline quality or win rate.",
+      },
+    ],
+  },
+  {
+    slug: "customer-success-resume-analyzer",
+    keyword: "customer success resume analyzer",
+    title: "Customer Success Resume Analyzer",
+    metaDescription:
+      "Analyze your customer success resume with focus on retention, expansion, and relationship management outcomes.",
+    h1: "Customer Success Resume Analyzer",
+    intro:
+      "Customer success resumes should show retention and expansion outcomes. This page helps you convert account activities into measurable impact.",
+    roleFocus: "Customer Success",
+    searchIntent: "Improve customer success resume quality for shortlist decisions.",
+    painPoints: [
+      "Account management tasks are listed without outcome metrics.",
+      "Retention and churn narratives are incomplete.",
+      "Stakeholder communication impact is not visible.",
+    ],
+    whatYouGet: [
+      "Role-fit scoring for customer success benchmarks.",
+      "Suggested rewrites for retention and expansion achievements.",
+      "Recommendations for stronger lifecycle and health metrics.",
+    ],
+    actionPlan: [
+      "Add retention, churn, and NPS movement where available.",
+      "Show expansion wins and strategic account planning outcomes.",
+      "Clarify collaboration with sales, product, and support teams.",
+    ],
+    faqs: [
+      {
+        question: "Which metrics matter for customer success resumes?",
+        answer: "Retention rate, churn reduction, expansion revenue, NPS, and adoption metrics are high-value signals.",
+      },
+      {
+        question: "Should I include support ticket details?",
+        answer: "Only if they show process improvements or customer outcome impact.",
+      },
+      {
+        question: "Can I include onboarding achievements?",
+        answer: "Yes, especially when onboarding improvements improved adoption or reduced time-to-value.",
+      },
+    ],
+  },
+  {
+    slug: "backend-developer-resume-checker",
+    keyword: "backend developer resume checker",
+    title: "Backend Developer Resume Checker",
+    metaDescription:
+      "Evaluate your backend developer resume for architecture depth, scalability impact, and production ownership signals.",
+    h1: "Backend Developer Resume Checker",
+    intro:
+      "Backend resumes should prove reliability, scale, and system thinking. This page helps you frame infrastructure and API work with clear impact.",
+    roleFocus: "Backend Developer",
+    searchIntent: "Improve backend resume quality and ATS fit.",
+    painPoints: [
+      "System design impact is not described in outcomes.",
+      "Performance or reliability improvements are missing metrics.",
+      "Ownership of production incidents and fixes is unclear.",
+    ],
+    whatYouGet: [
+      "Backend-focused score signals for recruiter fit.",
+      "Gap detection for architecture, APIs, and data systems.",
+      "Suggested improvements for measurable engineering outcomes.",
+    ],
+    actionPlan: [
+      "Highlight scale, latency, and uptime improvements.",
+      "Show ownership from design to production support.",
+      "Map stack keywords to exact job description requirements.",
+    ],
+    faqs: [
+      {
+        question: "Should I include system design diagrams in resume links?",
+        answer: "Yes, external links can help, but ensure your resume itself explains architecture outcomes clearly.",
+      },
+      {
+        question: "How do I prove scalability work?",
+        answer: "Use before/after metrics for throughput, latency, reliability, or cost efficiency.",
+      },
+      {
+        question: "Do recruiters value incident response experience?",
+        answer: "Yes. Demonstrated production ownership is a strong backend hiring signal.",
+      },
+    ],
+  },
+  {
+    slug: "frontend-developer-resume-checker",
+    keyword: "frontend developer resume checker",
+    title: "Frontend Developer Resume Checker",
+    metaDescription:
+      "Improve your frontend developer resume with stronger UI impact, performance metrics, and accessibility signals.",
+    h1: "Frontend Developer Resume Checker",
+    intro:
+      "Frontend resumes should demonstrate product impact, not just component work. This guide helps you position UI work as measurable business outcomes.",
+    roleFocus: "Frontend Developer",
+    searchIntent: "Increase shortlist rate for frontend and UI engineering roles.",
+    painPoints: [
+      "UI tasks are listed without business or user impact.",
+      "Performance improvements are not quantified.",
+      "Accessibility and quality contributions are underrepresented.",
+    ],
+    whatYouGet: [
+      "Role-fit analysis for modern frontend hiring needs.",
+      "Suggestions for impact-oriented bullet rewriting.",
+      "Keyword improvements for React, Next.js, and performance roles.",
+    ],
+    actionPlan: [
+      "Quantify performance improvements where possible.",
+      "Add accessibility and usability wins with user impact.",
+      "Connect component work to conversion or engagement outcomes.",
+    ],
+    faqs: [
+      {
+        question: "What metrics can frontend developers include?",
+        answer: "Page speed gains, conversion improvements, engagement uplift, and defect reduction are strong metrics.",
+      },
+      {
+        question: "Is design collaboration worth mentioning?",
+        answer: "Yes, especially when it improved delivery speed or product quality.",
+      },
+      {
+        question: "Should I include portfolio links?",
+        answer: "Yes. Include links that clearly demonstrate shipped work and measurable outcomes.",
+      },
+    ],
+  },
+  {
+    slug: "business-analyst-resume-score",
+    keyword: "business analyst resume score",
+    title: "Business Analyst Resume Score Guide",
+    metaDescription:
+      "Check your business analyst resume score and improve requirement gathering, process impact, and stakeholder communication signals.",
+    h1: "Business Analyst Resume Score Guide",
+    intro:
+      "Business analyst resumes should show problem framing and measurable change. This guide helps you make analysis work recruiter-friendly.",
+    roleFocus: "Business Analyst",
+    searchIntent: "Strengthen BA resume impact and shortlist probability.",
+    painPoints: [
+      "Requirements work is described without business outcomes.",
+      "Process improvements lack quantitative impact.",
+      "Stakeholder alignment and change management are not visible.",
+    ],
+    whatYouGet: [
+      "A BA-focused score and role-fit guidance.",
+      "Specific suggestions for process and stakeholder sections.",
+      "Prioritized edits for better ATS and recruiter clarity.",
+    ],
+    actionPlan: [
+      "Show before/after process efficiency outcomes.",
+      "Add business context to requirement and analysis work.",
+      "Demonstrate cross-team communication impact with evidence.",
+    ],
+    faqs: [
+      {
+        question: "What should BA resumes prioritize?",
+        answer: "Prioritize problem statements, stakeholder alignment, requirement quality, and process impact metrics.",
+      },
+      {
+        question: "Should BA resumes include tools?",
+        answer: "Yes, but tools should support your narrative of business impact and delivery outcomes.",
+      },
+      {
+        question: "Can BA resumes include product work?",
+        answer: "Yes, especially if your analysis influenced roadmap or release outcomes.",
+      },
+    ],
+  },
+  {
+    slug: "career-switch-resume-guide",
+    keyword: "career switch resume guide",
+    title: "Career Switch Resume Guide",
+    metaDescription:
+      "Build a transition-friendly resume that maps transferable skills and reduces risk signals for career switch applications.",
+    h1: "Career Switch Resume Guide",
+    intro:
+      "Career switchers need resumes that reduce uncertainty for recruiters. This guide helps you position transferable value with clear direction.",
+    roleFocus: "Career Switch",
+    searchIntent: "Create a resume strategy for cross-domain role transitions.",
+    painPoints: [
+      "Resume does not clearly explain transition logic.",
+      "Transferable skills are listed but not mapped to target role outcomes.",
+      "Recruiters perceive higher hiring risk due to unclear positioning.",
+    ],
+    whatYouGet: [
+      "Role-fit clarity for transition scenarios.",
+      "A practical narrative framework for transferable achievements.",
+      "Step-by-step edits to reduce mismatch signals.",
+    ],
+    actionPlan: [
+      "Write a targeted summary with transition rationale.",
+      "Map previous achievements to new-role outcomes.",
+      "Use role-specific projects/certifications as proof layers.",
+    ],
+    faqs: [
+      {
+        question: "Should I hide previous domain experience?",
+        answer: "No. Reframe it as transferable value relevant to your target role.",
+      },
+      {
+        question: "How many transition projects should I include?",
+        answer: "Include 2-3 focused projects that directly support your target role requirements.",
+      },
+      {
+        question: "Do career switchers need a cover letter?",
+        answer: "A tailored cover letter can improve context and reduce recruiter uncertainty in transition cases.",
+      },
+    ],
+  },
+  {
+    slug: "resume-improvement-plan-30-days",
+    keyword: "resume improvement plan 30 days",
+    title: "Resume Improvement Plan in 30 Days",
+    metaDescription:
+      "Follow a 30-day resume improvement plan with weekly milestones to improve score, role-fit clarity, and interview conversion.",
+    h1: "Resume Improvement Plan in 30 Days",
+    intro:
+      "If your resume is getting low response, use this structured 30-day plan to improve quality step-by-step and reapply with stronger positioning.",
+    roleFocus: "All Roles",
+    searchIntent: "Get a structured, time-bound resume optimization process.",
+    painPoints: [
+      "Applications are sent without a feedback loop.",
+      "Resume edits are random and not prioritized by impact.",
+      "No clear milestone tracking for improvement.",
+    ],
+    whatYouGet: [
+      "A weekly plan to improve score and clarity.",
+      "Prioritized checkpoints for content, format, and role-fit.",
+      "A repeatable workflow before each application cycle.",
+    ],
+    actionPlan: [
+      "Week 1: baseline analysis and role definition.",
+      "Week 2: rewrite summary, skills, and experience bullets.",
+      "Week 3-4: refine with feedback, run re-analysis, and apply in focused batches.",
+    ],
+    faqs: [
+      {
+        question: "How often should I update my resume?",
+        answer: "Update before each focused application batch or whenever your target role changes significantly.",
+      },
+      {
+        question: "Should I keep one master resume?",
+        answer: "Yes. Maintain one master version and derive role-specific variants from it.",
+      },
+      {
+        question: "When should I re-run analysis?",
+        answer: "Re-run after major edits and before submitting a new application batch.",
+      },
+    ],
+  },
+  {
+    slug: "resume-headline-for-job-portals",
+    keyword: "resume headline for job portals",
+    title: "Resume Headline for Job Portals",
+    metaDescription:
+      "Write a recruiter-friendly resume headline for Naukri and LinkedIn to improve profile visibility and shortlist rate.",
+    h1: "Resume Headline for Job Portals",
+    intro:
+      "A weak headline kills profile visibility before recruiters open your resume. This guide helps you write clear, role-focused headlines that get search hits.",
+    roleFocus: "All Roles",
+    searchIntent: "Improve recruiter visibility on job portals through stronger resume headlines.",
+    painPoints: [
+      "Headlines are generic and do not specify target role.",
+      "Important role and skill keywords are missing.",
+      "No credibility signal like domain, years, or core outcomes.",
+    ],
+    whatYouGet: [
+      "Role-specific headline framework for fresher and experienced profiles.",
+      "Keyword suggestions aligned with recruiter search behavior.",
+      "Examples that improve profile discoverability on portals.",
+    ],
+    actionPlan: [
+      "Pick one target role and one target domain for your headline.",
+      "Add experience, top skill cluster, and role intent in one line.",
+      "Test two headline versions for 7 days and keep higher response one.",
+    ],
+    faqs: [
+      {
+        question: "Should I use 'seeking opportunities' in headline?",
+        answer: "Avoid it. Recruiters search by role keywords, skill signals, and experience depth.",
+      },
+      {
+        question: "Can freshers write strong headlines without experience?",
+        answer: "Yes. Use target role, key skills, and project focus to create relevance.",
+      },
+      {
+        question: "Should I use different headlines for Naukri and LinkedIn?",
+        answer: "Yes. Keep core role same but optimize wording for each platform search style.",
+      },
+    ],
+  },
+  {
+    slug: "naukri-profile-summary-optimization",
+    keyword: "naukri profile summary optimization",
+    title: "Naukri Profile Summary Optimization",
+    metaDescription:
+      "Optimize your Naukri profile summary with role keywords, impact proof, and recruiter-friendly structure for better callbacks.",
+    h1: "Naukri Profile Summary Optimization",
+    intro:
+      "Many candidates update resume but ignore profile summary, which affects recruiter response. This page helps you make your Naukri summary conversion-focused.",
+    roleFocus: "Job Portal Profiles",
+    searchIntent: "Increase recruiter message and callback rate from Naukri profile views.",
+    painPoints: [
+      "Summary is too long and reads like a biography.",
+      "No clear role target or niche specialization.",
+      "Impact and business outcomes are missing.",
+    ],
+    whatYouGet: [
+      "A concise summary format recruiters can scan quickly.",
+      "Keyword placement guidance for better search matching.",
+      "Examples for fresher, mid-level, and role-switch candidates.",
+    ],
+    actionPlan: [
+      "Start summary with role, experience, and domain in first line.",
+      "Add 2-3 measurable wins or high-signal project outcomes.",
+      "Close with target role intent and preferred work scope.",
+    ],
+    faqs: [
+      {
+        question: "How long should Naukri profile summary be?",
+        answer: "Keep it concise and high-signal, generally around 4-6 short lines.",
+      },
+      {
+        question: "Should I copy my resume summary as-is?",
+        answer: "Use the same core message, but optimize wording for recruiter search behavior.",
+      },
+      {
+        question: "How often should I update profile summary?",
+        answer: "Update whenever target role changes or you add a meaningful achievement.",
+      },
+    ],
+  },
+  {
+    slug: "linkedin-about-section-jobseekers",
+    keyword: "linkedin about section for job seekers",
+    title: "LinkedIn About Section for Jobseekers",
+    metaDescription:
+      "Write a strong LinkedIn About section that improves profile credibility, recruiter outreach, and job interview conversion.",
+    h1: "LinkedIn About Section for Jobseekers",
+    intro:
+      "Your LinkedIn About section should position your value in 20 seconds. This guide helps you write a clear narrative that attracts recruiter outreach.",
+    roleFocus: "LinkedIn Profiles",
+    searchIntent: "Improve LinkedIn profile conversion from views to recruiter messages.",
+    painPoints: [
+      "About section is generic and not role-specific.",
+      "No proof of outcomes, ownership, or specialization.",
+      "Call-to-action for recruiters is missing.",
+    ],
+    whatYouGet: [
+      "A practical About section framework with strong opening hook.",
+      "Keyword placement ideas without sounding robotic.",
+      "Templates for freshers, experienced, and career switch profiles.",
+    ],
+    actionPlan: [
+      "Open with role identity, expertise, and core outcome focus.",
+      "Add 2-3 impact examples with metrics where available.",
+      "End with target opportunities and contact preference.",
+    ],
+    faqs: [
+      {
+        question: "Should LinkedIn About be written in first person?",
+        answer: "Yes, first person often feels more authentic and improves profile readability.",
+      },
+      {
+        question: "Can I use emojis in About section?",
+        answer: "Use sparingly. Clarity and recruiter readability should remain the priority.",
+      },
+      {
+        question: "Do recruiters read full About section?",
+        answer: "Often they scan quickly, so the first 2-3 lines should carry your strongest signal.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-2-years-experience-job-switch",
+    keyword: "resume for 2 years experience job switch",
+    title: "Resume for 2 Years Experience Job Switch",
+    metaDescription:
+      "Build a high-conversion resume for 2 years experience with stronger role fit, impact bullets, and job switch positioning.",
+    h1: "Resume for 2 Years Experience Job Switch",
+    intro:
+      "At 2 years experience, recruiters expect clear execution impact and ownership growth. This guide helps you position your profile for better switch outcomes.",
+    roleFocus: "2 Years Experience",
+    searchIntent: "Improve shortlist conversion while switching jobs at early-mid career stage.",
+    painPoints: [
+      "Resume still looks like a fresher profile.",
+      "Work bullets mention tasks but not measurable impact.",
+      "Role intent for switch is unclear to recruiters.",
+    ],
+    whatYouGet: [
+      "Section-by-section structure for 2-year profiles.",
+      "Impact bullet examples for product and service companies.",
+      "Keyword improvements aligned to target role changes.",
+    ],
+    actionPlan: [
+      "Rewrite experience bullets using problem-action-impact format.",
+      "Add role-specific tools and outcomes in top half of resume.",
+      "Create one resume variant per target job family.",
+    ],
+    faqs: [
+      {
+        question: "Should I keep internship details at 2 years experience?",
+        answer: "Only if highly relevant; prioritize full-time impact and role ownership.",
+      },
+      {
+        question: "How many projects should I include?",
+        answer: "Keep 1-3 strong projects tied to your target role and measurable outcomes.",
+      },
+      {
+        question: "Can I apply to senior roles with 2 years experience?",
+        answer: "Target roles where your skills match strongly; avoid mismatch by tailoring resume depth.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-3-years-experience-job-change",
+    keyword: "resume for 3 years experience job change",
+    title: "Resume for 3 Years Experience Job Change",
+    metaDescription:
+      "Optimize your 3 years experience resume with stronger achievements, ownership signals, and role-targeted positioning.",
+    h1: "Resume for 3 Years Experience Job Change",
+    intro:
+      "At 3 years experience, recruiters look for ownership and business impact, not only execution. This page helps you present readiness for higher-responsibility roles.",
+    roleFocus: "3 Years Experience",
+    searchIntent: "Increase callbacks for job change with a higher-signal resume narrative.",
+    painPoints: [
+      "Resume shows activity but limited ownership growth.",
+      "Achievements lack business or team impact context.",
+      "Profile does not clearly signal next-level readiness.",
+    ],
+    whatYouGet: [
+      "A structure to highlight ownership progression and outcomes.",
+      "Guidance on selecting high-value achievements.",
+      "Role-fit keyword suggestions for switch-focused applications.",
+    ],
+    actionPlan: [
+      "Lead each role with top outcomes and responsibility scope.",
+      "Quantify impact on revenue, cost, speed, or quality where possible.",
+      "Align resume summary to your next target role, not current designation.",
+    ],
+    faqs: [
+      {
+        question: "Should I keep resume to one page at 3 years?",
+        answer: "One page works in many cases, but two pages is acceptable if impact content is strong.",
+      },
+      {
+        question: "How much detail should I include for older work?",
+        answer: "Keep older work concise and focus depth on recent, relevant impact.",
+      },
+      {
+        question: "Do recruiters expect leadership examples at this stage?",
+        answer: "Yes, even informal leadership and ownership examples are strong positive signals.",
+      },
+    ],
+  },
+  {
+    slug: "manual-tester-resume-checker",
+    keyword: "manual tester resume checker",
+    title: "Manual Tester Resume Checker",
+    metaDescription:
+      "Check your manual tester resume for test coverage, bug impact storytelling, and QA process ownership signals.",
+    h1: "Manual Tester Resume Checker",
+    intro:
+      "Manual QA resumes should show defect prevention and release quality impact. This guide helps you move beyond test-case listing.",
+    roleFocus: "Manual Tester",
+    searchIntent: "Improve manual QA resume quality and interview conversion.",
+    painPoints: [
+      "Resume lists test cases but misses release impact.",
+      "Defect severity and bug prevention outcomes are unclear.",
+      "Collaboration with dev and product teams is not highlighted.",
+    ],
+    whatYouGet: [
+      "QA-focused scoring aligned with tester role expectations.",
+      "Bullet rewrites that show quality outcomes and ownership.",
+      "Keyword guidance for web, mobile, and API testing roles.",
+    ],
+    actionPlan: [
+      "Highlight critical bugs found and release-risk reduction impact.",
+      "Add test planning, regression, and cross-team collaboration signals.",
+      "Tailor summary for domain-specific QA roles you are targeting.",
+    ],
+    faqs: [
+      {
+        question: "Should manual testers include tools in resume?",
+        answer: "Yes, mention relevant tools but prioritize quality outcomes and release impact.",
+      },
+      {
+        question: "Can freshers in testing show strong proof?",
+        answer: "Yes, include project QA work with clear test approach and defect examples.",
+      },
+      {
+        question: "Do recruiters value bug metrics?",
+        answer: "Yes, defect trend and severity context can strongly improve credibility.",
+      },
+    ],
+  },
+  {
+    slug: "qa-automation-resume-checker",
+    keyword: "qa automation resume checker",
+    title: "QA Automation Resume Checker",
+    metaDescription:
+      "Improve your QA automation resume with framework depth, flaky test reduction, and release confidence metrics.",
+    h1: "QA Automation Resume Checker",
+    intro:
+      "Automation resumes should prove faster, safer releases. This page helps you position framework work as measurable quality and speed improvements.",
+    roleFocus: "QA Automation",
+    searchIntent: "Increase shortlist rate for automation tester and SDET roles.",
+    painPoints: [
+      "Automation scripts are listed without business impact.",
+      "No clarity on framework ownership and coverage improvements.",
+      "Reliability gains like flaky reduction are not documented.",
+    ],
+    whatYouGet: [
+      "Automation-role scoring based on hiring signals.",
+      "Guidance for framework, CI, and test strategy storytelling.",
+      "Priority edits to show quality engineering maturity.",
+    ],
+    actionPlan: [
+      "Add test coverage growth and execution time improvement metrics.",
+      "Show framework ownership and CI/CD integration outcomes.",
+      "Describe reliability improvements like flaky test reduction.",
+    ],
+    faqs: [
+      {
+        question: "Should QA automation resumes include coding details?",
+        answer: "Include relevant depth, but tie coding work to release quality outcomes.",
+      },
+      {
+        question: "How do I show SDET-level impact?",
+        answer: "Show framework design, tooling improvements, and measurable CI quality gains.",
+      },
+      {
+        question: "Are manual testing skills still relevant here?",
+        answer: "Yes, hybrid QA experience can strengthen end-to-end quality ownership.",
+      },
+    ],
+  },
+  {
+    slug: "devops-engineer-resume-checker",
+    keyword: "devops engineer resume checker",
+    title: "DevOps Engineer Resume Checker",
+    metaDescription:
+      "Evaluate your DevOps resume for CI/CD impact, infra reliability, incident response, and cloud deployment ownership.",
+    h1: "DevOps Engineer Resume Checker",
+    intro:
+      "DevOps resumes should demonstrate delivery speed and stability gains. This guide helps you convert tooling lists into measurable platform impact.",
+    roleFocus: "DevOps Engineer",
+    searchIntent: "Improve DevOps resume quality for product and platform hiring.",
+    painPoints: [
+      "Tool stack is listed but reliability outcomes are missing.",
+      "No metrics on deployment speed, failure rate, or recovery.",
+      "Production ownership and incident handling are underplayed.",
+    ],
+    whatYouGet: [
+      "Role-fit score focused on DevOps hiring expectations.",
+      "Guidance for CI/CD, observability, and infra storytelling.",
+      "High-priority changes to highlight ownership depth.",
+    ],
+    actionPlan: [
+      "Add before/after metrics for deployment and incident performance.",
+      "Show ownership across infra setup, monitoring, and on-call response.",
+      "Tailor keywords for Kubernetes, cloud, and automation requirements.",
+    ],
+    faqs: [
+      {
+        question: "What metrics matter most for DevOps resumes?",
+        answer: "Deployment frequency, failure rate, MTTR, uptime, and cost efficiency are key.",
+      },
+      {
+        question: "Should I include all tools I used?",
+        answer: "Include only role-relevant tools and connect each to clear outcomes.",
+      },
+      {
+        question: "Do certifications help in DevOps hiring?",
+        answer: "They help, but practical production impact carries higher weight.",
+      },
+    ],
+  },
+  {
+    slug: "cloud-engineer-resume-score",
+    keyword: "cloud engineer resume score",
+    title: "Cloud Engineer Resume Score Guide",
+    metaDescription:
+      "Get a cloud engineer resume score with practical guidance on architecture, security, reliability, and cloud cost impact.",
+    h1: "Cloud Engineer Resume Score Guide",
+    intro:
+      "Cloud resumes perform best when they show architecture decisions and measurable outcomes. This guide helps you position cloud work for shortlist success.",
+    roleFocus: "Cloud Engineer",
+    searchIntent: "Improve cloud resume quality for infra and platform roles.",
+    painPoints: [
+      "Cloud services are listed without architecture context.",
+      "Security, reliability, and cost outcomes are not measurable.",
+      "Migration and modernization impact is weakly described.",
+    ],
+    whatYouGet: [
+      "Cloud-focused scoring for recruiter fit and ATS relevance.",
+      "Section guidance for architecture, security, and operations.",
+      "Recommendations for stronger business impact storytelling.",
+    ],
+    actionPlan: [
+      "Show one architecture decision with clear tradeoff and impact.",
+      "Add reliability, security, and cost optimization outcomes.",
+      "Map cloud keywords to target role descriptions before applying.",
+    ],
+    faqs: [
+      {
+        question: "Should cloud resumes include diagrams or links?",
+        answer: "Yes, links can help if your resume still clearly summarizes outcomes.",
+      },
+      {
+        question: "Which cloud metrics should I mention?",
+        answer: "Uptime, latency, cost savings, deployment time, and incident reduction are strong signals.",
+      },
+      {
+        question: "Do multi-cloud skills improve hiring chances?",
+        answer: "They can, but depth in one stack with impact is usually stronger than shallow breadth.",
+      },
+    ],
+  },
+  {
+    slug: "hr-recruiter-resume-optimization",
+    keyword: "hr recruiter resume optimization",
+    title: "HR Recruiter Resume Optimization",
+    metaDescription:
+      "Optimize your HR recruiter resume with hiring funnel metrics, sourcing strategy, and closure performance evidence.",
+    h1: "HR Recruiter Resume Optimization",
+    intro:
+      "Recruiter resumes should prove hiring outcomes, not only responsibilities. This page helps you showcase sourcing strength and closure efficiency.",
+    roleFocus: "HR Recruiter",
+    searchIntent: "Increase interview conversion for recruiter and talent acquisition roles.",
+    painPoints: [
+      "Responsibilities are listed without hiring funnel metrics.",
+      "Sourcing and screening impact is not quantified.",
+      "Stakeholder management and closure quality are underrepresented.",
+    ],
+    whatYouGet: [
+      "Recruiter-specific score insights for better positioning.",
+      "Guidance for funnel, TAT, and offer conversion storytelling.",
+      "Resume structure that highlights hiring outcomes fast.",
+    ],
+    actionPlan: [
+      "Add metrics like closure rate, TAT, and source effectiveness.",
+      "Show niche role hiring wins and stakeholder collaboration quality.",
+      "Align resume keywords to TA, recruitment, and HR operations role needs.",
+    ],
+    faqs: [
+      {
+        question: "What metrics should recruiter resumes include?",
+        answer: "Include TAT, closure ratio, offer-join rate, and sourcing channel performance.",
+      },
+      {
+        question: "Should I include ATS tools on recruiter resume?",
+        answer: "Yes, but tool names should support a results-driven hiring narrative.",
+      },
+      {
+        question: "How do I show quality of hires?",
+        answer: "Mention retention trends, hiring manager feedback, or repeat hiring trust where available.",
+      },
+    ],
+  },
+  {
+    slug: "accountant-resume-checker",
+    keyword: "accountant resume checker",
+    title: "Accountant Resume Checker",
+    metaDescription:
+      "Check your accountant resume for compliance clarity, reconciliation impact, reporting accuracy, and audit-readiness signals.",
+    h1: "Accountant Resume Checker",
+    intro:
+      "Accounting resumes should build trust through precision and compliance outcomes. This guide helps you make finance work recruiter-friendly and audit-credible.",
+    roleFocus: "Accountant",
+    searchIntent: "Improve accountant resume quality for finance and accounts roles.",
+    painPoints: [
+      "Daily accounting tasks are listed without process outcomes.",
+      "Compliance and accuracy impact are not clearly shown.",
+      "ERP and reporting strengths are buried in long descriptions.",
+    ],
+    whatYouGet: [
+      "Finance-role scoring calibrated to accountant hiring signals.",
+      "Suggestions for reconciliation, reporting, and compliance sections.",
+      "Actionable rewrites for stronger credibility and clarity.",
+    ],
+    actionPlan: [
+      "Highlight reconciliation quality, report timelines, and error reduction.",
+      "Show GST/TDS/audit coordination outcomes where relevant.",
+      "Tailor keywords for accounting software and domain requirements.",
+    ],
+    faqs: [
+      {
+        question: "Should accountant resumes include software names?",
+        answer: "Yes, mention relevant ERP/accounting tools with context of outcomes.",
+      },
+      {
+        question: "How do I show compliance strength?",
+        answer: "Include timelines met, audit support quality, and error control improvements.",
+      },
+      {
+        question: "Is a summary section important for accountants?",
+        answer: "Yes, a concise summary helps recruiters quickly understand specialization and scope.",
+      },
+    ],
+  },
+  {
+    slug: "customer-support-resume-checker",
+    keyword: "customer support resume checker",
+    title: "Customer Support Resume Checker",
+    metaDescription:
+      "Improve your customer support resume with stronger ticket resolution metrics, empathy signals, and customer satisfaction outcomes.",
+    h1: "Customer Support Resume Checker",
+    intro:
+      "Support resumes should show resolution quality and customer impact. This guide helps you present service work as measurable outcomes.",
+    roleFocus: "Customer Support",
+    searchIntent: "Increase shortlist chances for support and service roles.",
+    painPoints: [
+      "Ticket handling volume is listed without quality outcomes.",
+      "Customer satisfaction and resolution speed are not quantified.",
+      "Escalation handling and process improvements are missing.",
+    ],
+    whatYouGet: [
+      "Support-role score feedback based on recruiter expectations.",
+      "Guidance for CSAT, TAT, and resolution storytelling.",
+      "Resume edits that balance empathy and performance metrics.",
+    ],
+    actionPlan: [
+      "Add ticket resolution, FCR, and CSAT metrics where available.",
+      "Highlight escalation handling and cross-team coordination outcomes.",
+      "Tailor profile for voice, chat, or email support role requirements.",
+    ],
+    faqs: [
+      {
+        question: "What metrics matter for support resumes?",
+        answer: "CSAT, FCR, average handling time, and resolution quality are key signals.",
+      },
+      {
+        question: "Should I mention soft skills explicitly?",
+        answer: "Yes, but back them with real examples and measurable customer outcomes.",
+      },
+      {
+        question: "Can support resumes include process improvement work?",
+        answer: "Yes, process improvements are strong indicators of ownership and growth.",
+      },
+    ],
+  },
+  {
+    slug: "bpo-call-center-resume-guide",
+    keyword: "bpo call center resume guide",
+    title: "BPO Call Center Resume Guide",
+    metaDescription:
+      "Create a strong BPO call center resume with communication proof, handling metrics, and shift-readiness signals recruiters value.",
+    h1: "BPO Call Center Resume Guide",
+    intro:
+      "BPO resumes should show communication quality and performance consistency. This page helps you present your profile in a recruiter-friendly format.",
+    roleFocus: "BPO / Call Center",
+    searchIntent: "Improve interview callbacks for BPO and call center applications.",
+    painPoints: [
+      "Resume lacks clear communication and customer handling proof.",
+      "No metrics on call quality, volume, or resolution.",
+      "Shift flexibility and process adherence are not highlighted.",
+    ],
+    whatYouGet: [
+      "A practical resume structure for BPO hiring workflows.",
+      "Guidance for communication, process, and KPI presentation.",
+      "Examples for fresher and experienced call center candidates.",
+    ],
+    actionPlan: [
+      "Lead with communication strengths and relevant process experience.",
+      "Add KPI signals like call handling, QA score, and attendance reliability.",
+      "Customize resume for domestic or international process requirements.",
+    ],
+    faqs: [
+      {
+        question: "Can freshers apply to BPO with a simple resume?",
+        answer: "Yes, but include communication strengths, language comfort, and training details.",
+      },
+      {
+        question: "Should I include shift availability in resume?",
+        answer: "Yes, shift flexibility can improve fit for many BPO roles.",
+      },
+      {
+        question: "Do BPO recruiters check communication from resume itself?",
+        answer: "Yes, resume clarity and grammar strongly influence first impressions.",
+      },
+    ],
+  },
+  {
+    slug: "internship-to-full-time-resume-guide",
+    keyword: "internship to full time resume guide",
+    title: "Internship to Full-Time Resume Guide",
+    metaDescription:
+      "Convert internship experience into a full-time job resume with stronger ownership signals, outcomes, and role-fit positioning.",
+    h1: "Internship to Full-Time Resume Guide",
+    intro:
+      "Many internship resumes look like training logs. This guide helps you position internship work as full-time-ready impact.",
+    roleFocus: "Freshers / Interns",
+    searchIntent: "Improve conversion from internship experience to full-time interview calls.",
+    painPoints: [
+      "Internship tasks are listed without ownership or outcomes.",
+      "Resume does not show readiness for full-time responsibilities.",
+      "Projects and internship work are not connected to target role.",
+    ],
+    whatYouGet: [
+      "A structure to present internship work as business contribution.",
+      "Guidance for role-specific project and skill alignment.",
+      "Practical rewrites to reduce fresher-risk perception.",
+    ],
+    actionPlan: [
+      "Rewrite internship bullets using impact and ownership language.",
+      "Add one strong project that mirrors full-time role expectations.",
+      "Align summary and skills to one specific target job family.",
+    ],
+    faqs: [
+      {
+        question: "How many internship points should I keep?",
+        answer: "Keep 3-5 high-impact points that show responsibility and outcomes.",
+      },
+      {
+        question: "Should I include college projects with internships?",
+        answer: "Yes, include projects that directly strengthen your target role fit.",
+      },
+      {
+        question: "Can internship candidates keep resume to one page?",
+        answer: "Yes, one page is ideal when content is focused and high-signal.",
+      },
+    ],
+  },
+  {
+    slug: "resume-format-for-freshers-without-experience",
+    keyword: "resume format for freshers without experience",
+    title: "Resume Format for Freshers Without Experience",
+    metaDescription:
+      "Use a fresher resume format that highlights projects, skills, and internship proof even when you have no full-time experience.",
+    h1: "Resume Format for Freshers Without Experience",
+    intro:
+      "Most freshers get rejected because their resume looks generic and unfocused. This guide helps you present projects and skills as evidence recruiters trust.",
+    roleFocus: "Freshers",
+    searchIntent: "Create a fresher resume that gets interviews despite no work experience.",
+    painPoints: [
+      "Resume starts with weak objective statements instead of role intent.",
+      "Projects are listed as tasks with no outcomes or ownership.",
+      "Too much college detail and low recruiter-signal content.",
+    ],
+    whatYouGet: [
+      "A practical one-page structure for fresher job applications.",
+      "Bullet templates for internships, projects, and certifications.",
+      "Role-specific keyword guidance for ATS and recruiter search.",
+    ],
+    actionPlan: [
+      "Pick one target role and align summary, skills, and projects to it.",
+      "Rewrite top 3 projects with problem-action-result format.",
+      "Remove low-value sections and keep only high-signal proof.",
+    ],
+    faqs: [
+      {
+        question: "Can freshers get interviews without internships?",
+        answer: "Yes, strong project proof and clear role-fit can still create shortlist opportunities.",
+      },
+      {
+        question: "Should freshers use one page resume?",
+        answer: "Yes, one page is usually best when content is role-focused and evidence-driven.",
+      },
+      {
+        question: "Is objective statement useful for freshers?",
+        answer: "A short role-focused summary is more effective than a generic objective statement.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-immediate-joiner-jobs",
+    keyword: "resume for immediate joiner jobs",
+    title: "Resume for Immediate Joiner Jobs",
+    metaDescription:
+      "Optimize your resume for immediate joiner roles with fast-impact positioning, availability clarity, and recruiter-ready structure.",
+    h1: "Resume for Immediate Joiner Jobs",
+    intro:
+      "When companies hire urgently, clarity and relevance matter more than long resumes. This page helps immediate joiners improve callback speed.",
+    roleFocus: "Immediate Joiners",
+    searchIntent: "Get faster recruiter response for urgent hiring opportunities.",
+    painPoints: [
+      "Availability is not clearly stated in headline or summary.",
+      "Resume contains too much generic content and slow scan flow.",
+      "No strong proof of role readiness for quick onboarding.",
+    ],
+    whatYouGet: [
+      "Immediate-joiner positioning template for faster recruiter screening.",
+      "Guidance on what to highlight in first half of resume.",
+      "Role-fit edits to improve shortlisting in urgent openings.",
+    ],
+    actionPlan: [
+      "Add availability and target role clearly in headline and summary.",
+      "Move highest-impact achievements to top 40% of resume.",
+      "Tailor keyword set to urgent role descriptions before applying.",
+    ],
+    faqs: [
+      {
+        question: "Should I mention notice period in resume?",
+        answer: "Yes, clearly mentioning immediate availability can increase response for urgent roles.",
+      },
+      {
+        question: "Do urgent roles compromise salary?",
+        answer: "Not always; stronger role-fit proof helps retain negotiation power.",
+      },
+      {
+        question: "How many resume versions should immediate joiners keep?",
+        answer: "Keep 2-3 targeted versions for your main job families to apply faster.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-better-salary-hike",
+    keyword: "resume for better salary hike",
+    title: "Resume for Better Salary Hike",
+    metaDescription:
+      "Build a salary-hike focused resume by highlighting business impact, ownership growth, and measurable achievements recruiters value.",
+    h1: "Resume for Better Salary Hike",
+    intro:
+      "To get better offers, your resume must prove higher business value. This guide helps you frame experience for stronger salary conversations.",
+    roleFocus: "Job Switch",
+    searchIntent: "Improve resume quality to target better compensation during job change.",
+    painPoints: [
+      "Resume lists responsibilities but not quantified outcomes.",
+      "Career progression and ownership growth are unclear.",
+      "Low impact wording weakens offer positioning.",
+    ],
+    whatYouGet: [
+      "A value-first resume framework for better offer conversations.",
+      "Impact-bullet rewrites focused on revenue, cost, quality, or speed.",
+      "Positioning tips for switch roles with compensation upgrade goals.",
+    ],
+    actionPlan: [
+      "Lead each role with business outcomes and scope of ownership.",
+      "Quantify top 5 achievements with measurable impact.",
+      "Align summary to higher-level role expectations, not current title only.",
+    ],
+    faqs: [
+      {
+        question: "Can resume alone increase salary hikes?",
+        answer: "Resume will not do everything, but stronger impact proof improves interview quality and offer range.",
+      },
+      {
+        question: "Should I mention current salary in resume?",
+        answer: "No, keep resume focused on value creation and role-fit outcomes.",
+      },
+      {
+        question: "What matters more: years or impact?",
+        answer: "Impact and ownership clarity usually matter more than years alone.",
+      },
+    ],
+  },
+  {
+    slug: "java-developer-resume-checker",
+    keyword: "java developer resume checker",
+    title: "Java Developer Resume Checker",
+    metaDescription:
+      "Check your Java developer resume for backend depth, performance impact, and production ownership to improve shortlist chances.",
+    h1: "Java Developer Resume Checker",
+    intro:
+      "Java resumes should show production-grade engineering outcomes, not just framework names. This guide helps you strengthen recruiter trust quickly.",
+    roleFocus: "Java Developer",
+    searchIntent: "Improve Java resume quality for backend and enterprise hiring.",
+    painPoints: [
+      "Stack keywords are present but business impact is weak.",
+      "System scale and performance outcomes are not measurable.",
+      "Ownership in production and incident handling is missing.",
+    ],
+    whatYouGet: [
+      "Java-role scoring tuned for ATS and recruiter expectations.",
+      "Suggestions for Spring, microservices, and API impact storytelling.",
+      "Actionable edits for reliability and scalability proof.",
+    ],
+    actionPlan: [
+      "Rewrite bullets with throughput, latency, or reliability outcomes.",
+      "Show ownership from development to production support.",
+      "Match Java/JD keywords before each application batch.",
+    ],
+    faqs: [
+      {
+        question: "Should Java resumes include DSA and coding links?",
+        answer: "Include relevant links if they support target role expectations and practical project depth.",
+      },
+      {
+        question: "Do enterprise recruiters value production ownership?",
+        answer: "Yes, production stability and incident ownership are strong trust signals.",
+      },
+      {
+        question: "Is one-page resume enough for Java developers?",
+        answer: "For early-career profiles yes; experienced profiles may use two pages with clear impact.",
+      },
+    ],
+  },
+  {
+    slug: "python-developer-resume-checker",
+    keyword: "python developer resume checker",
+    title: "Python Developer Resume Checker",
+    metaDescription:
+      "Evaluate your Python developer resume for backend, automation, and problem-solving impact with recruiter-focused recommendations.",
+    h1: "Python Developer Resume Checker",
+    intro:
+      "Python resumes often look tool-heavy but outcome-light. This guide helps you present automation and backend contributions as measurable value.",
+    roleFocus: "Python Developer",
+    searchIntent: "Increase shortlist conversion for Python backend and automation roles.",
+    painPoints: [
+      "Libraries are listed without project outcomes.",
+      "No clarity on architecture, performance, or business impact.",
+      "Role-fit mismatch between resume and applied jobs.",
+    ],
+    whatYouGet: [
+      "Python-focused score and gap analysis for core hiring signals.",
+      "Rewrite guidance for backend, scripting, and automation achievements.",
+      "Keyword optimization for JD-level matching.",
+    ],
+    actionPlan: [
+      "Show one strong project with measurable technical and business outcomes.",
+      "Add scale, optimization, or productivity improvements where possible.",
+      "Tailor Python stack keywords to each target role family.",
+    ],
+    faqs: [
+      {
+        question: "Should I include every Python library I know?",
+        answer: "No, prioritize libraries and frameworks directly relevant to your target role.",
+      },
+      {
+        question: "Can automation projects improve shortlist chances?",
+        answer: "Yes, if you show time saved, quality gains, or process improvements with numbers.",
+      },
+      {
+        question: "Do recruiters expect GitHub links for Python roles?",
+        answer: "Often yes; include high-quality repos that reflect real problem-solving depth.",
+      },
+    ],
+  },
+  {
+    slug: "react-developer-resume-checker",
+    keyword: "react developer resume checker",
+    title: "React Developer Resume Checker",
+    metaDescription:
+      "Improve your React developer resume with stronger UI impact, performance wins, and component architecture signals.",
+    h1: "React Developer Resume Checker",
+    intro:
+      "React resumes should prove product impact and frontend depth. This guide helps you move beyond component lists to measurable outcomes.",
+    roleFocus: "React Developer",
+    searchIntent: "Improve frontend shortlist probability for React-focused roles.",
+    painPoints: [
+      "React stack is listed without user/business impact.",
+      "Performance and accessibility wins are missing.",
+      "No clarity on reusable architecture or state management depth.",
+    ],
+    whatYouGet: [
+      "Role-fit scoring tuned for React and modern frontend hiring.",
+      "Guidance for conversion, performance, and UI quality storytelling.",
+      "Actionable edits for stronger recruiter readability.",
+    ],
+    actionPlan: [
+      "Quantify outcomes like load time, conversion, or engagement uplift.",
+      "Show component architecture and collaboration with design/product.",
+      "Use role-targeted keywords for React ecosystem requirements.",
+    ],
+    faqs: [
+      {
+        question: "Should React resume include portfolio links?",
+        answer: "Yes, strong project links can increase trust and improve recruiter response.",
+      },
+      {
+        question: "Do recruiters care about state management details?",
+        answer: "Yes, when it shows scalable architecture and maintainability impact.",
+      },
+      {
+        question: "Can frontend metrics improve callback rates?",
+        answer: "Yes, measurable performance and conversion outcomes are high-signal proof.",
+      },
+    ],
+  },
+  {
+    slug: "data-scientist-resume-checker",
+    keyword: "data scientist resume checker",
+    title: "Data Scientist Resume Checker",
+    metaDescription:
+      "Analyze your data scientist resume for model impact, experimentation depth, and business outcome storytelling.",
+    h1: "Data Scientist Resume Checker",
+    intro:
+      "Data science resumes should communicate model value, not just techniques. This guide helps you present experiments and deployment outcomes clearly.",
+    roleFocus: "Data Scientist",
+    searchIntent: "Improve data science resume conversion for interview shortlists.",
+    painPoints: [
+      "Algorithms are listed without business outcome context.",
+      "Experiment quality and validation process are unclear.",
+      "Productionization and cross-functional collaboration are missing.",
+    ],
+    whatYouGet: [
+      "Data-science-specific score insights and role-fit recommendations.",
+      "Guidance for problem framing, model impact, and metric reporting.",
+      "Priority edits for stronger ATS and recruiter clarity.",
+    ],
+    actionPlan: [
+      "Lead each project with business problem and measurable impact.",
+      "Add model metrics with practical decision outcomes.",
+      "Highlight deployment and stakeholder collaboration depth.",
+    ],
+    faqs: [
+      {
+        question: "Should data scientist resumes include notebooks?",
+        answer: "Yes, but include only polished work that clearly demonstrates end-to-end thinking.",
+      },
+      {
+        question: "Which metrics should I mention?",
+        answer: "Use model metrics plus business metrics to show practical value creation.",
+      },
+      {
+        question: "How many projects should data scientists include?",
+        answer: "Include 2-4 strong, role-relevant projects with clear outcomes.",
+      },
+    ],
+  },
+  {
+    slug: "ui-ux-designer-resume-checker",
+    keyword: "ui ux designer resume checker",
+    title: "UI UX Designer Resume Checker",
+    metaDescription:
+      "Evaluate your UI UX designer resume for portfolio clarity, user impact metrics, and design problem-solving depth.",
+    h1: "UI UX Designer Resume Checker",
+    intro:
+      "Designer resumes should show problem-solving and product impact, not just tools. This guide helps you present UX outcomes recruiters can trust.",
+    roleFocus: "UI UX Designer",
+    searchIntent: "Improve shortlist conversion for UI and UX design roles.",
+    painPoints: [
+      "Portfolio links exist but case-study outcomes are weak.",
+      "No metrics on user impact or conversion improvement.",
+      "Design process is described without decision rationale.",
+    ],
+    whatYouGet: [
+      "Design-role fit scoring based on recruiter expectations.",
+      "Guidance for case-study storytelling in resume bullets.",
+      "Actionable edits for structure, clarity, and impact.",
+    ],
+    actionPlan: [
+      "Add 2-3 case outcomes with measurable product/user improvement.",
+      "Show collaboration with product, engineering, and research teams.",
+      "Prioritize portfolio links that demonstrate shipped impact.",
+    ],
+    faqs: [
+      {
+        question: "Should designers include tools like Figma in headline?",
+        answer: "Mention tools, but prioritize problem-solving and impact outcomes.",
+      },
+      {
+        question: "Are portfolio links mandatory for UX roles?",
+        answer: "For most design roles, a strong portfolio significantly improves shortlisting odds.",
+      },
+      {
+        question: "Can freshers in design get shortlisted?",
+        answer: "Yes, strong project case studies and clear process thinking can create good opportunities.",
+      },
+    ],
+  },
+  {
+    slug: "operations-manager-resume-checker",
+    keyword: "operations manager resume checker",
+    title: "Operations Manager Resume Checker",
+    metaDescription:
+      "Optimize your operations manager resume with process efficiency, team leadership, and cost-impact signals recruiters expect.",
+    h1: "Operations Manager Resume Checker",
+    intro:
+      "Operations resumes should prove execution reliability and business efficiency. This guide helps you present process ownership with measurable outcomes.",
+    roleFocus: "Operations Manager",
+    searchIntent: "Improve operations resume quality and interview conversion.",
+    painPoints: [
+      "Operations responsibilities are listed without measurable outcomes.",
+      "Cost, quality, and turnaround improvements are unclear.",
+      "Team management impact is not shown with evidence.",
+    ],
+    whatYouGet: [
+      "Ops-role score guidance tuned to hiring expectations.",
+      "Recommendations for process, people, and performance storytelling.",
+      "Prioritized edits for faster recruiter understanding.",
+    ],
+    actionPlan: [
+      "Quantify process improvements in speed, quality, or cost metrics.",
+      "Highlight team size, ownership scope, and leadership outcomes.",
+      "Align keywords to domain-specific operations roles.",
+    ],
+    faqs: [
+      {
+        question: "What metrics should operations resumes include?",
+        answer: "Use turnaround time, error reduction, cost savings, throughput, and SLA adherence metrics.",
+      },
+      {
+        question: "Should operations managers mention cross-team projects?",
+        answer: "Yes, cross-functional execution signals strong ownership and leadership maturity.",
+      },
+      {
+        question: "Can operations resumes be one page?",
+        answer: "Early-career yes; experienced profiles can use two pages with high-impact content only.",
+      },
+    ],
+  },
+  {
+    slug: "mba-fresher-resume-guide",
+    keyword: "mba fresher resume guide",
+    title: "MBA Fresher Resume Guide",
+    metaDescription:
+      "Create a recruiter-ready MBA fresher resume with internship impact, business projects, and role-focused positioning.",
+    h1: "MBA Fresher Resume Guide",
+    intro:
+      "MBA fresher resumes need clear role positioning and business impact proof. This guide helps you move beyond generic MBA profiles.",
+    roleFocus: "MBA Freshers",
+    searchIntent: "Improve MBA fresher shortlist chances for entry-level business roles.",
+    painPoints: [
+      "Resume is generic and not aligned to one target function.",
+      "Internships are listed without business outcomes.",
+      "Too much academic detail and low practical signal.",
+    ],
+    whatYouGet: [
+      "Function-specific resume structure for MBA freshers.",
+      "Guidance for internship/project bullet rewrites with impact.",
+      "Role-fit keyword suggestions for ATS and recruiter visibility.",
+    ],
+    actionPlan: [
+      "Choose one target function and align entire resume to it.",
+      "Rewrite internship bullets with measurable business outcomes.",
+      "Keep skills and certifications relevant to target role only.",
+    ],
+    faqs: [
+      {
+        question: "Should MBA freshers keep separate resumes for different roles?",
+        answer: "Yes, role-specific resume variants improve recruiter relevance and conversion.",
+      },
+      {
+        question: "How to stand out if everyone has similar MBA template?",
+        answer: "Use measurable outcomes and clear role focus instead of generic academic summaries.",
+      },
+      {
+        question: "Is one-page resume enough for MBA freshers?",
+        answer: "Yes, one page with strong internship and project proof is usually ideal.",
+      },
+    ],
+  },
+  {
+    slug: "non-tech-to-tech-resume-guide",
+    keyword: "non tech to tech resume guide",
+    title: "Non-Tech to Tech Resume Guide",
+    metaDescription:
+      "Build a strong transition resume from non-tech to tech roles with transferable skills, proof projects, and clear role intent.",
+    h1: "Non-Tech to Tech Resume Guide",
+    intro:
+      "Career transitions to tech fail when resumes do not reduce recruiter risk. This guide helps you map transferable value with practical proof.",
+    roleFocus: "Career Switch",
+    searchIntent: "Increase shortlist chances for non-tech to tech role transitions.",
+    painPoints: [
+      "Resume does not clearly explain transition logic.",
+      "Transferable skills are not tied to tech role outcomes.",
+      "No strong project proof to support new role intent.",
+    ],
+    whatYouGet: [
+      "A transition-first structure to reduce mismatch signals.",
+      "Guidance for mapping previous work to tech outcomes.",
+      "Action plan for project and skills proof layering.",
+    ],
+    actionPlan: [
+      "Open with a role-focused summary and transition rationale.",
+      "Map previous outcomes to target tech role responsibilities.",
+      "Add 2-3 role-relevant projects with measurable outcomes.",
+    ],
+    faqs: [
+      {
+        question: "Should I hide non-tech experience while switching?",
+        answer: "No, reframe non-tech experience as transferable strength for the target role.",
+      },
+      {
+        question: "Do certifications alone help transition?",
+        answer: "Certifications help, but practical projects and outcomes carry more weight.",
+      },
+      {
+        question: "How long does transition shortlisting usually take?",
+        answer: "It varies, but targeted resumes plus proof projects can significantly improve response quality.",
+      },
+    ],
+  },
+  {
+    slug: "resume-not-getting-interview-calls-fix",
+    keyword: "resume not getting interview calls fix",
+    title: "Resume Not Getting Interview Calls: Fix Guide",
+    metaDescription:
+      "Fix a low-response resume with ATS, role-fit, and impact-bullet improvements to increase interview calls.",
+    h1: "Resume Not Getting Interview Calls: Fix Guide",
+    intro:
+      "If your applications get no response, the issue is usually role mismatch, weak proof, or poor resume structure. This guide gives a practical fix workflow.",
+    roleFocus: "All Roles",
+    searchIntent: "Diagnose and fix resume issues when interview calls are low.",
+    painPoints: [
+      "High application volume but very low callbacks.",
+      "Resume has keywords but lacks impact evidence.",
+      "No feedback loop to improve after each batch.",
+    ],
+    whatYouGet: [
+      "A diagnosis checklist for shortlist failure reasons.",
+      "Prioritized fixes that improve recruiter readability and trust.",
+      "A repeatable workflow for every application cycle.",
+    ],
+    actionPlan: [
+      "Run baseline analysis and identify top 5 blockers.",
+      "Fix summary, skills, and achievement bullets first.",
+      "Track responses by role and keep improving with each batch.",
+    ],
+    faqs: [
+      {
+        question: "How many applications before judging resume quality?",
+        answer: "If you see very low response after multiple focused applications, review and optimize your resume immediately.",
+      },
+      {
+        question: "Is ATS the only reason for low calls?",
+        answer: "No, role-fit mismatch and weak impact proof are also major reasons.",
+      },
+      {
+        question: "Should I use one resume for all jobs?",
+        answer: "No, role-targeted versions usually perform better than one generic resume.",
+      },
+    ],
+  },
+];
+
+export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
+  {
+    label: "Fresher Job Search",
+    phrases: [
+      "resume format for fresher job",
+      "cv format for freshers without experience",
+      "college placement resume format",
+      "first job resume kaise banaye",
+      "resume for btech fresher",
+      "resume for bcom fresher",
+      "fresher resume for it jobs",
+      "internship se full time resume format",
+    ],
+  },
+  {
+    label: "Free Resume Check Intent",
+    phrases: [
+      "resume score check free",
+      "resume checker free online",
+      "ats resume checker free",
+      "resume review free",
+      "resume mistakes checker",
+      "job resume audit online",
+      "free resume improvement tool",
+      "resume ka score kaise check kare",
+    ],
+  },
+  {
+    label: "Interview Call Pain",
+    phrases: [
+      "resume banaya but no interview calls",
+      "why resume not getting shortlisted",
+      "resume rejected again and again",
+      "how to increase interview calls",
+      "resume for more callbacks",
+      "shortlisting chance kaise badhaye",
+      "resume optimize for recruiter",
+      "resume improve for quick job change",
+    ],
+  },
+  {
+    label: "Job Switch and Salary",
+    phrases: [
+      "resume for better salary hike",
+      "job switch resume 2 years experience",
+      "resume for 3 years experience job change",
+      "resume for immediate joiner jobs",
+      "resume for product company switch",
+      "salary hike resume tips",
+      "experience resume format india",
+      "resume for fast job switch",
+    ],
+  },
+  {
+    label: "ATS and Recruiter Terms",
+    phrases: [
+      "ats friendly resume format",
+      "ats resume keywords checker",
+      "resume for naukri and linkedin jobs",
+      "resume headline for job portals",
+      "job description based resume",
+      "resume parser friendly format",
+      "best resume format for recruiters",
+      "resume shortlist score",
+    ],
+  },
+];
+
+const keywordVariantsBySlug: Record<string, string[]> = {
+  "ats-resume-checker-software-engineers": [
+    "software engineer resume checker free",
+    "ats resume check for software developer",
+    "resume format for software engineer fresher",
+    "resume for sde role india",
+    "full stack developer resume review",
+    "backend developer resume score",
+    "software engineer resume for product companies",
+    "developer resume not getting shortlisted",
+  ],
+  "resume-score-checker-freshers": [
+    "fresher resume score checker",
+    "resume for freshers without experience",
+    "resume banane ka format for fresher",
+    "college placement resume template",
+    "first job resume template india",
+    "fresher cv check online free",
+    "resume for btech fresher jobs",
+    "interview call ke liye fresher resume",
+  ],
+  "product-manager-resume-analyzer": [
+    "product manager resume review",
+    "associate product manager resume checker",
+    "apm resume format india",
+    "pm resume for startup jobs",
+    "product resume not shortlisted",
+    "resume for product role switch",
+    "product manager cv sample india",
+    "pm resume with metrics",
+  ],
+  "data-analyst-resume-checker": [
+    "data analyst resume review",
+    "data analyst cv checker free",
+    "fresher data analyst resume format",
+    "sql resume keywords for data analyst",
+    "resume for analytics jobs india",
+    "power bi resume for job",
+    "data analyst resume for interview calls",
+    "business analyst to data analyst resume",
+  ],
+  "digital-marketing-resume-score": [
+    "digital marketing resume format india",
+    "performance marketing resume review",
+    "seo specialist resume checker",
+    "marketing resume for fresher",
+    "resume for google ads jobs",
+    "digital marketer cv sample",
+    "marketing resume not getting interview",
+    "social media manager resume score",
+  ],
+  "sales-manager-resume-optimization": [
+    "sales manager resume format india",
+    "sales resume with targets",
+    "resume for b2b sales manager",
+    "sales profile not getting shortlisted",
+    "resume for area sales manager",
+    "sales executive to manager resume",
+    "fmcg sales resume sample",
+    "sales resume review online",
+  ],
+  "customer-success-resume-analyzer": [
+    "customer success manager resume",
+    "customer success cv sample india",
+    "saas customer success resume format",
+    "account management resume checker",
+    "resume for retention manager jobs",
+    "customer success resume not shortlisted",
+    "client success manager resume score",
+    "customer success associate resume",
+  ],
+  "backend-developer-resume-checker": [
+    "backend developer resume format india",
+    "java developer resume checker",
+    "python backend resume review",
+    "node js developer resume score",
+    "resume for backend engineer jobs",
+    "api developer resume format",
+    "backend resume not getting calls",
+    "backend fresher resume",
+  ],
+  "frontend-developer-resume-checker": [
+    "frontend developer resume format india",
+    "react developer resume checker",
+    "next js resume keywords",
+    "ui developer cv sample",
+    "frontend resume review free",
+    "resume for frontend engineer jobs",
+    "frontend fresher resume format",
+    "javascript developer resume score",
+  ],
+  "business-analyst-resume-score": [
+    "business analyst resume format india",
+    "ba resume checker online",
+    "business analyst fresher resume",
+    "resume for requirement analyst",
+    "ba resume not getting shortlisted",
+    "business analyst cv sample india",
+    "data to business analyst resume switch",
+    "business analyst interview call resume",
+  ],
+  "career-switch-resume-guide": [
+    "career change resume format",
+    "resume for career switch to tech",
+    "resume for non tech to tech switch",
+    "how to show transferable skills resume",
+    "career switch resume not shortlisted",
+    "job change resume summary",
+    "resume for domain change",
+    "career transition cv india",
+  ],
+  "resume-improvement-plan-30-days": [
+    "resume improvement plan",
+    "how to improve resume for job quickly",
+    "resume update checklist india",
+    "resume correction service online",
+    "resume optimization in 30 days",
+    "resume kaise improve kare",
+    "resume shortlist increase tips",
+    "daily resume improvement steps",
+  ],
+  "resume-headline-for-job-portals": [
+    "resume headline for naukri",
+    "linkedin headline for job seekers",
+    "best resume headline for freshers",
+    "resume headline for experienced candidates",
+    "job portal profile headline examples",
+    "naukri profile headline for job switch",
+    "resume headline kaise likhe",
+    "headline for more recruiter calls",
+  ],
+  "naukri-profile-summary-optimization": [
+    "naukri profile summary for freshers",
+    "naukri profile summary for experienced",
+    "naukri summary format for job switch",
+    "how to write naukri profile summary",
+    "naukri profile not getting calls",
+    "best summary for naukri profile",
+    "resume summary for naukri profile",
+    "naukri recruiter search profile tips",
+  ],
+  "linkedin-about-section-jobseekers": [
+    "linkedin about section for freshers",
+    "linkedin about section examples for jobs",
+    "linkedin summary for job switch",
+    "linkedin profile not getting recruiter messages",
+    "about section for software engineer linkedin",
+    "linkedin about me for experienced professionals",
+    "linkedin profile optimize for jobs india",
+    "linkedin about section kaise likhe",
+  ],
+  "resume-for-2-years-experience-job-switch": [
+    "resume format for 2 years experience",
+    "job switch resume 2 years experience",
+    "resume for 2 years experience software engineer",
+    "2 years experience resume not shortlisted",
+    "resume for immediate joiner 2 years experience",
+    "resume for product company switch 2 years",
+    "best cv format 2 years experience india",
+    "2 years experience resume checker",
+  ],
+  "resume-for-3-years-experience-job-change": [
+    "resume format for 3 years experience",
+    "resume for 3 years experience job change",
+    "3 years experience resume for salary hike",
+    "best cv for 3 years experienced candidate",
+    "3 years experience resume not getting calls",
+    "resume for role switch 3 years experience",
+    "naukri profile for 3 years experience",
+    "resume score check 3 years experience",
+  ],
+  "manual-tester-resume-checker": [
+    "manual tester resume format india",
+    "qa manual tester resume sample",
+    "manual testing resume for freshers",
+    "resume for manual tester 2 years experience",
+    "manual tester resume not getting interview",
+    "software tester resume checker",
+    "qa testing resume keywords",
+    "manual qa resume review free",
+  ],
+  "qa-automation-resume-checker": [
+    "qa automation resume format",
+    "sdet resume checker",
+    "automation tester resume sample",
+    "selenium tester resume review",
+    "qa automation resume for 3 years experience",
+    "automation testing resume keywords",
+    "sdet resume not shortlisted",
+    "api automation tester resume",
+  ],
+  "devops-engineer-resume-checker": [
+    "devops engineer resume format india",
+    "devops resume checker",
+    "aws devops resume review",
+    "kubernetes devops resume keywords",
+    "devops resume not getting calls",
+    "resume for devops engineer 2 years experience",
+    "ci cd resume sample",
+    "platform engineer resume score",
+  ],
+  "cloud-engineer-resume-score": [
+    "cloud engineer resume format india",
+    "aws cloud engineer resume sample",
+    "azure cloud engineer resume review",
+    "cloud resume not getting shortlisted",
+    "cloud migration resume points",
+    "cloud devops resume score",
+    "cloud architect resume keywords",
+    "cloud engineer fresher resume",
+  ],
+  "hr-recruiter-resume-optimization": [
+    "hr recruiter resume format india",
+    "talent acquisition resume sample",
+    "recruiter resume with hiring metrics",
+    "hr recruiter resume checker online",
+    "recruitment resume not getting calls",
+    "naukri recruiter profile resume tips",
+    "ta specialist resume format",
+    "hr executive to recruiter resume switch",
+  ],
+  "accountant-resume-checker": [
+    "accountant resume format india",
+    "accounts executive resume sample",
+    "gst accountant resume format",
+    "tally accountant resume checker",
+    "accounting resume not shortlisted",
+    "resume for accounts payable role",
+    "finance and accounts resume review",
+    "accountant cv format for experienced",
+  ],
+  "customer-support-resume-checker": [
+    "customer support resume format india",
+    "customer service resume checker",
+    "support executive resume sample",
+    "customer support resume for freshers",
+    "customer support resume not getting calls",
+    "email support resume format",
+    "chat support resume keywords",
+    "customer care resume review",
+  ],
+  "bpo-call-center-resume-guide": [
+    "bpo resume format for freshers",
+    "call center resume sample india",
+    "voice process resume format",
+    "international bpo resume format",
+    "bpo resume not getting interview",
+    "customer support bpo cv sample",
+    "call center resume kaise banaye",
+    "bpo job resume keywords",
+  ],
+  "internship-to-full-time-resume-guide": [
+    "internship to full time resume",
+    "resume after internship for job",
+    "internship experience resume format",
+    "resume for first full time job",
+    "internship resume not getting interview",
+    "fresher resume with internship experience",
+    "resume for ppo conversion",
+    "internship project resume points",
+  ],
+  "resume-format-for-freshers-without-experience": [
+    "resume format for freshers without experience",
+    "cv format for freshers without experience",
+    "fresher resume without internship",
+    "first job resume format for freshers",
+    "how to make resume without experience",
+    "fresher resume template india",
+    "resume for college students without experience",
+    "entry level resume sample india",
+  ],
+  "resume-for-immediate-joiner-jobs": [
+    "resume for immediate joiner jobs",
+    "immediate joiner resume format",
+    "resume for immediate joining in it",
+    "immediate joiner profile not getting calls",
+    "notice period zero resume tips",
+    "urgent hiring resume format",
+    "resume headline immediate joiner",
+    "immediate joiner naukri resume",
+  ],
+  "resume-for-better-salary-hike": [
+    "resume for better salary hike",
+    "salary hike resume format",
+    "resume for high package switch",
+    "job switch resume for salary increase",
+    "how to write resume for better offer",
+    "resume for higher ctc jobs",
+    "salary negotiation resume proof",
+    "impact resume for salary hike",
+  ],
+  "java-developer-resume-checker": [
+    "java developer resume checker",
+    "java resume format india",
+    "spring boot resume review",
+    "java backend resume score",
+    "java developer resume not shortlisted",
+    "resume for java developer 2 years experience",
+    "microservices java resume points",
+    "java full stack resume checker",
+  ],
+  "python-developer-resume-checker": [
+    "python developer resume checker",
+    "python resume format india",
+    "django developer resume review",
+    "python backend resume score",
+    "python resume not getting interview",
+    "resume for python developer fresher",
+    "flask developer resume sample",
+    "python automation resume tips",
+  ],
+  "react-developer-resume-checker": [
+    "react developer resume checker",
+    "react js resume format india",
+    "frontend react resume review",
+    "react developer resume not shortlisted",
+    "resume for react developer 2 years experience",
+    "next js react resume score",
+    "react project resume points",
+    "javascript react cv sample",
+  ],
+  "data-scientist-resume-checker": [
+    "data scientist resume checker",
+    "data science resume format india",
+    "machine learning resume review",
+    "data scientist cv not shortlisted",
+    "resume for data scientist fresher",
+    "ml project resume points",
+    "python ml resume keywords",
+    "data science interview call resume",
+  ],
+  "ui-ux-designer-resume-checker": [
+    "ui ux designer resume checker",
+    "ui ux resume format india",
+    "ux designer resume review",
+    "ui designer cv sample india",
+    "design resume not getting interview",
+    "figma designer resume tips",
+    "ux case study resume points",
+    "product designer fresher resume",
+  ],
+  "operations-manager-resume-checker": [
+    "operations manager resume checker",
+    "operations resume format india",
+    "ops manager cv sample",
+    "operations resume not shortlisted",
+    "supply chain operations resume review",
+    "process improvement resume points",
+    "operations executive to manager resume",
+    "operations manager resume with metrics",
+  ],
+  "mba-fresher-resume-guide": [
+    "mba fresher resume guide",
+    "mba fresher resume format india",
+    "mba resume for marketing fresher",
+    "mba finance fresher resume sample",
+    "mba hr fresher resume format",
+    "resume for mba campus placements",
+    "mba internship resume points",
+    "mba fresher cv for job switch",
+  ],
+  "non-tech-to-tech-resume-guide": [
+    "non tech to tech resume guide",
+    "resume for non tech to tech switch",
+    "career transition resume to tech",
+    "transferable skills resume for tech jobs",
+    "non it to it resume format",
+    "switch to tech resume not shortlisted",
+    "tech resume for beginners with projects",
+    "career change to software resume",
+  ],
+  "resume-not-getting-interview-calls-fix": [
+    "resume not getting interview calls fix",
+    "why resume not getting shortlisted",
+    "no interview calls after applying jobs",
+    "how to increase interview calls from resume",
+    "resume rejected again and again",
+    "resume improve for more callbacks",
+    "resume audit for interview calls",
+    "shortlist chance improve resume",
+  ],
+};
+
+export const getKeywordVariantsBySlug = (slug: string) => {
+  return keywordVariantsBySlug[slug] || [];
+};
+
+export const getPopularIndianJobSeekerKeywords = (limit = 60) => {
+  const flattened = indianJobSeekerKeywordClusters.flatMap((cluster) => cluster.phrases);
+  return flattened.slice(0, limit);
+};
+
+export const getSeoLandingPageBySlug = (slug: string) => {
+  return seoLandingPages.find((item) => item.slug === slug);
+};
+
+export const getRelatedSeoLandingPages = (slug: string, limit = 3) => {
+  const currentIndex = seoLandingPages.findIndex((item) => item.slug === slug);
+  if (currentIndex === -1) return seoLandingPages.slice(0, limit);
+
+  const rotated = [...seoLandingPages.slice(currentIndex + 1), ...seoLandingPages.slice(0, currentIndex)];
+  return rotated.slice(0, limit);
+};

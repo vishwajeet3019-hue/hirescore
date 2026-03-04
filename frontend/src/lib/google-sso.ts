@@ -43,27 +43,47 @@ type GoogleWindow = Window & {
 let googleScriptPromise: Promise<void> | null = null;
 
 const GOOGLE_IDENTITY_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
+const GOOGLE_BUTTON_MIN_WIDTH = 220;
+const GOOGLE_BUTTON_DEFAULT_WIDTH = 340;
+
+const resolveGoogleButtonWidth = (container: HTMLElement, preferredWidth?: number) => {
+  const normalizedPreferred =
+    typeof preferredWidth === "number" && Number.isFinite(preferredWidth)
+      ? Math.max(GOOGLE_BUTTON_MIN_WIDTH, Math.round(preferredWidth))
+      : GOOGLE_BUTTON_DEFAULT_WIDTH;
+  const containerWidth = Math.round(container.getBoundingClientRect().width || container.clientWidth || 0);
+  const responsiveWidth = containerWidth > 0 ? Math.min(containerWidth, normalizedPreferred) : normalizedPreferred;
+  return Math.max(GOOGLE_BUTTON_MIN_WIDTH, responsiveWidth);
+};
 
 const injectGoogleFallbackButton = (container: HTMLElement, onClick: () => void) => {
+  if (container.querySelector("[data-google-fallback='true']")) return;
+  container.innerHTML = "";
   const button = document.createElement("button");
   button.type = "button";
+  button.dataset.googleFallback = "true";
   button.setAttribute("aria-label", "Continue with Google");
   button.textContent = "Continue with Google";
-  button.style.width = "min(320px, 100%)";
-  button.style.minHeight = "42px";
+  button.style.width = "100%";
+  button.style.maxWidth = "100%";
+  button.style.minHeight = "44px";
   button.style.borderRadius = "999px";
-  button.style.border = "1px solid rgba(186, 230, 253, 0.55)";
-  button.style.background = "rgba(8, 35, 63, 0.88)";
-  button.style.color = "#e6f6ff";
+  button.style.border = "1px solid rgba(186, 230, 253, 0.28)";
+  button.style.background = "rgba(11, 19, 33, 0.92)";
+  button.style.color = "#eaf5ff";
   button.style.fontSize = "14px";
   button.style.fontWeight = "600";
   button.style.cursor = "pointer";
-  button.style.transition = "background-color 160ms ease";
+  button.style.touchAction = "manipulation";
+  button.style.setProperty("-webkit-tap-highlight-color", "transparent");
+  button.style.transition = "background-color 160ms ease, border-color 160ms ease";
   button.addEventListener("mouseover", () => {
-    button.style.background = "rgba(14, 58, 96, 0.92)";
+    button.style.background = "rgba(18, 31, 49, 0.95)";
+    button.style.borderColor = "rgba(186, 230, 253, 0.44)";
   });
   button.addEventListener("mouseout", () => {
-    button.style.background = "rgba(8, 35, 63, 0.88)";
+    button.style.background = "rgba(11, 19, 33, 0.92)";
+    button.style.borderColor = "rgba(186, 230, 253, 0.28)";
   });
   button.addEventListener("click", onClick);
   container.appendChild(button);
@@ -117,6 +137,11 @@ export const renderGoogleSignInButton = async ({
 }: RenderGoogleSignInButtonOptions) => {
   const normalizedClientId = clientId.trim();
   container.innerHTML = "";
+  container.style.width = "100%";
+  container.style.maxWidth = typeof width === "number" && Number.isFinite(width) ? `${Math.max(GOOGLE_BUTTON_MIN_WIDTH, Math.round(width))}px` : "100%";
+  container.style.marginInline = "auto";
+  container.style.display = "flex";
+  container.style.justifyContent = "center";
   if (!normalizedClientId) {
     onError?.("Google sign-in is not configured.");
     return;
@@ -152,28 +177,49 @@ export const renderGoogleSignInButton = async ({
 
   const buttonOptions: GoogleButtonOptions = {
     type: "standard",
-    theme: "outline",
+    theme: "filled_black",
     size: "large",
     text,
     shape: "pill",
     logo_alignment: "left",
   };
-  if (width && Number.isFinite(width)) {
-    buttonOptions.width = String(Math.max(220, Math.round(width)));
+  const resolvedWidth = resolveGoogleButtonWidth(container, width);
+  if (resolvedWidth && Number.isFinite(resolvedWidth)) {
+    buttonOptions.width = String(resolvedWidth);
   }
-  let hasRenderedButton = false;
-  try {
-    googleId.renderButton(container, buttonOptions);
-    hasRenderedButton = container.childElementCount > 0;
-  } catch {
-    hasRenderedButton = false;
-  }
+  const isVisibleElement = (element: Element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width >= 40 && rect.height >= 20;
+  };
 
-  if (!hasRenderedButton) {
+  const hasVisibleGoogleUi = () => {
+    const children = Array.from(container.children);
+    if (!children.length) return false;
+    if (children.some((child) => isVisibleElement(child))) return true;
+    const nested = container.querySelectorAll("iframe, div, button");
+    return Array.from(nested).some((node) => isVisibleElement(node));
+  };
+
+  const ensureFallbackIfHidden = () => {
+    if (hasVisibleGoogleUi()) return;
     injectGoogleFallbackButton(container, () => {
       googleId.prompt();
     });
+  };
+
+  try {
+    googleId.renderButton(container, buttonOptions);
+  } catch {
+    ensureFallbackIfHidden();
+    return;
   }
+
+  ensureFallbackIfHidden();
+  window.setTimeout(ensureFallbackIfHidden, 220);
+  window.setTimeout(ensureFallbackIfHidden, 700);
 
   googleId.prompt((notification) => {
     if (notification.isNotDisplayed()) {

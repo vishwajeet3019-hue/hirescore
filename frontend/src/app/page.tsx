@@ -1,6 +1,18 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
+import TrackedLink from "./components/tracked-link";
+import { seoLandingPages } from "@/lib/seo-landing-pages";
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
+
+export const metadata: Metadata = {
+  title: "AI Resume Analyzer for Better Shortlisting",
+  description:
+    "Run AI role-fit analysis, see shortlist prediction, and improve your resume with actionable recommendations.",
+  alternates: {
+    canonical: "/",
+  },
+};
 
 const proofStats = [
   { label: "Prediction Layers", value: "12+" },
@@ -85,8 +97,43 @@ const successStories = [
 ];
 
 export default function Home() {
+  const featuredGuides = seoLandingPages.slice(0, 3);
+  const organizationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "HireScore AI",
+    url: SITE_URL,
+    logo: `${SITE_URL}/icon.svg`,
+    sameAs: [],
+  };
+
+  const softwareApplicationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "HireScore AI",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    url: SITE_URL,
+    description:
+      "AI-powered resume analyzer and builder with role-fit scoring, shortlist prediction, and template exports.",
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "INR",
+      availability: "https://schema.org/InStock",
+    },
+  };
+
   return (
     <main className="min-h-screen px-4 pb-20 pt-8 sm:px-6 sm:pt-12 lg:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+      />
       <section className="mx-auto max-w-7xl">
         <div className="premium-panel holo-sheen relative overflow-hidden rounded-[2rem] p-6 sm:rounded-[2.2rem] sm:p-10 lg:p-12">
           <div className="absolute -top-24 right-[-60px] h-72 w-72 rounded-full bg-cyan-200/24 blur-[100px]" />
@@ -112,19 +159,23 @@ export default function Home() {
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3 sm:mt-10 sm:gap-4">
-                <Link
+                <TrackedLink
                   href="/upload"
+                  eventName="cta_check_my_score_click"
+                  eventParams={{ cta_location: "home_hero", cta_label: "Check My Score (Free)" }}
                   className="w-full rounded-2xl border border-cyan-100/40 bg-gradient-to-r from-cyan-300/28 via-cyan-200/30 to-amber-100/20 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
                 >
                   Check My Score (Free)
-                </Link>
+                </TrackedLink>
 
-                <Link
+                <TrackedLink
                   href="/pricing"
+                  eventName="cta_view_premium_plans_click"
+                  eventParams={{ cta_location: "home_hero", cta_label: "View Premium Plans" }}
                   className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
                 >
                   View Premium Plans
-                </Link>
+                </TrackedLink>
               </div>
             </div>
 
@@ -235,24 +286,65 @@ export default function Home() {
       </section>
 
       <section className="mx-auto mt-14 max-w-7xl">
+        <div className="premium-panel rounded-[2rem] p-6 sm:p-10">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.24em]">
+                SEO Guides
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-4xl">
+                Role-Specific Resume Playbooks
+              </h3>
+            </div>
+            <Link
+              href="/resources"
+              className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:w-auto"
+            >
+              Explore All {seoLandingPages.length} Guides
+            </Link>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {featuredGuides.map((guide) => (
+              <article key={guide.slug} className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/62">{guide.roleFocus}</p>
+                <h4 className="mt-2 text-lg font-semibold text-cyan-50">{guide.title}</h4>
+                <p className="mt-2 text-sm leading-relaxed text-cyan-50/72">{guide.metaDescription}</p>
+                <Link
+                  href={`/resources/${guide.slug}`}
+                  className="mt-4 inline-flex rounded-xl border border-cyan-100/28 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/12"
+                >
+                  Read Guide
+                </Link>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto mt-14 max-w-7xl">
         <div className="neon-panel holo-sheen rounded-[2rem] p-6 text-center sm:p-10">
           <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/62 sm:text-xs sm:tracking-[0.26em]">Monetization Promise</p>
           <h3 className="mx-auto mt-3 max-w-3xl text-2xl font-semibold text-cyan-50 sm:text-4xl">
             You are not paying for a resume editor. You are paying for a higher probability of getting shortlisted.
           </h3>
           <div className="mt-8 flex flex-wrap justify-center gap-3 sm:gap-4">
-            <Link
+            <TrackedLink
               href="/pricing"
+              eventName="cta_view_premium_plans_click"
+              eventParams={{ cta_location: "home_monetization", cta_label: "Compare Plans" }}
               className="w-full rounded-2xl border border-cyan-100/40 bg-cyan-200/18 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto sm:px-7 sm:py-3.5"
             >
               Compare Plans
-            </Link>
-            <Link
+            </TrackedLink>
+            <TrackedLink
               href="/upload"
+              eventName="cta_check_my_score_click"
+              eventParams={{ cta_location: "home_monetization", cta_label: "Start Analysis" }}
               className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
             >
               Start Analysis
-            </Link>
+            </TrackedLink>
           </div>
         </div>
       </section>
