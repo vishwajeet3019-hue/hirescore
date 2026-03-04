@@ -213,6 +213,11 @@ type GoalRoadmap = {
 
 type GoalRoadmapPayload = {
   roadmap?: GoalRoadmap | null;
+  roadmaps?: GoalRoadmap[];
+  action?: string;
+  created_new_track?: boolean;
+  added_milestones?: number;
+  count?: number;
   message?: string;
 };
 
@@ -307,6 +312,12 @@ export default function UploadPage() {
   const [showResultModal, setShowResultModal] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState<ResultTabId>("summary");
   const [showRoadmapModal, setShowRoadmapModal] = useState(false);
+  const [showRoadmapDecisionModal, setShowRoadmapDecisionModal] = useState(false);
+  const [roadmapDecisionMode, setRoadmapDecisionMode] = useState<"first" | "update">("first");
+  const [roadmapTracksCount, setRoadmapTracksCount] = useState(0);
+  const [roadmapDecisionLoading, setRoadmapDecisionLoading] = useState(false);
+  const [roadmapDecisionSubmitting, setRoadmapDecisionSubmitting] = useState(false);
+  const [roadmapServerAction, setRoadmapServerAction] = useState("");
   const [roadmapLoading, setRoadmapLoading] = useState(false);
   const [roadmapError, setRoadmapError] = useState("");
   const [roadmapPreview, setRoadmapPreview] = useState<GoalRoadmap | null>(null);
@@ -431,13 +442,13 @@ export default function UploadPage() {
   }, [loading]);
 
   useEffect(() => {
-    if (!loading && !showResultModal && !showRoadmapModal && !showFeedbackModal && !showAuthModal) return;
+    if (!loading && !showResultModal && !showRoadmapModal && !showRoadmapDecisionModal && !showFeedbackModal && !showAuthModal) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [loading, showResultModal, showRoadmapModal, showFeedbackModal, showAuthModal]);
+  }, [loading, showResultModal, showRoadmapModal, showRoadmapDecisionModal, showFeedbackModal, showAuthModal]);
 
   useEffect(() => {
     if (!showResultModal) return;
@@ -714,6 +725,12 @@ export default function UploadPage() {
     setResult(data);
     setActiveResultTab("summary");
     setShowResultModal(true);
+    setShowRoadmapDecisionModal(false);
+    setRoadmapDecisionMode("first");
+    setRoadmapTracksCount(0);
+    setRoadmapDecisionLoading(false);
+    setRoadmapDecisionSubmitting(false);
+    setRoadmapServerAction("");
     setShowRoadmapModal(false);
     setRoadmapLoading(false);
     setRoadmapError("");
@@ -897,6 +914,12 @@ export default function UploadPage() {
     setAuthUserEmail("");
     setWallet(null);
     setResult(null);
+    setShowRoadmapDecisionModal(false);
+    setRoadmapDecisionMode("first");
+    setRoadmapTracksCount(0);
+    setRoadmapDecisionLoading(false);
+    setRoadmapDecisionSubmitting(false);
+    setRoadmapServerAction("");
     setShowRoadmapModal(false);
     setRoadmapLoading(false);
     setRoadmapError("");
@@ -1129,6 +1152,14 @@ export default function UploadPage() {
     () => roadmapPreview?.milestones.find((milestone) => !milestone.completed) || null,
     [roadmapPreview]
   );
+  const roadmapServerActionLabel = useMemo(() => {
+    if (!roadmapServerAction) return "";
+    if (roadmapServerAction === "created_first_track") return "Your first roadmap track is now created.";
+    if (roadmapServerAction === "created_new_track") return "New analysis direction detected. A separate roadmap track was created.";
+    if (roadmapServerAction === "merged_missing_skills") return "Roadmap updated by adding only missing skill milestones.";
+    if (roadmapServerAction === "no_new_missing_skills") return "Roadmap already covered this direction. Existing milestones were kept.";
+    return "Roadmap updated successfully.";
+  }, [roadmapServerAction]);
 
   const navigateResultStep = (direction: "next" | "back") => {
     const delta = direction === "next" ? 1 : -1;
@@ -1302,6 +1333,24 @@ export default function UploadPage() {
       .slice(0, 8);
   };
 
+  const fetchRoadmapTracksMeta = async () => {
+    if (!authToken || !authHeader) return { count: 0, roadmaps: [] as GoalRoadmap[] };
+    const payload = await fetchJsonWithWakeAndRetry<GoalRoadmapPayload>({
+      apiUrl,
+      path: "/roadmap/list?limit=24",
+      init: {
+        headers: {
+          ...authHeader,
+        },
+      },
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: parseApiError,
+      abortErrorMessage: "Roadmap lookup is taking longer than expected. Please try again.",
+    });
+    const tracks = Array.isArray(payload.roadmaps) ? payload.roadmaps : [];
+    return { count: payload.count ?? tracks.length, roadmaps: tracks };
+  };
+
   const upsertRoadmapFromResult = async (analysisResult: AnalysisResult) => {
     if (!authToken || !authHeader) return null;
     const milestones = buildRoadmapMilestones(analysisResult);
@@ -1340,28 +1389,58 @@ export default function UploadPage() {
       abortErrorMessage: "Roadmap creation is taking longer than expected. Please try again.",
     });
 
-    return payload.roadmap || null;
+    return payload;
+  };
+
+  const handleConfirmRoadmapDecision = async () => {
+    if (!result) return;
+    setRoadmapDecisionSubmitting(true);
+    setRoadmapError("");
+    setRoadmapLoading(true);
+    setShowRoadmapModal(true);
+    try {
+      const payload = await upsertRoadmapFromResult(result);
+      const nextRoadmap = payload?.roadmap || null;
+      if (!nextRoadmap) {
+        throw new Error("Unable to prepare roadmap right now.");
+      }
+      setRoadmapPreview(nextRoadmap);
+      setRoadmapServerAction(payload?.action || "");
+      if (Array.isArray(payload?.roadmaps)) {
+        setRoadmapTracksCount(payload.roadmaps.length);
+      }
+      setShowRoadmapDecisionModal(false);
+    } catch (error) {
+      setRoadmapPreview(null);
+      setRoadmapError(error instanceof Error ? error.message : "Unable to prepare roadmap right now.");
+    } finally {
+      setRoadmapLoading(false);
+      setRoadmapDecisionSubmitting(false);
+    }
   };
 
   const handleCloseResultModal = () => {
     setShowResultModal(false);
     setActiveResultTab("summary");
     if (!result || !authToken) return;
-    setShowRoadmapModal(true);
-    setRoadmapLoading(true);
+    setShowRoadmapModal(false);
+    setRoadmapPreview(null);
+    setRoadmapServerAction("");
+    setShowRoadmapDecisionModal(true);
+    setRoadmapDecisionLoading(true);
     setRoadmapError("");
     void (async () => {
       try {
-        const roadmap = await upsertRoadmapFromResult(result);
-        if (!roadmap) {
-          throw new Error("Unable to prepare roadmap right now.");
-        }
-        setRoadmapPreview(roadmap);
+        const payload = await fetchRoadmapTracksMeta();
+        const totalTracks = Math.max(0, payload.count);
+        setRoadmapTracksCount(totalTracks);
+        setRoadmapDecisionMode(totalTracks > 0 ? "update" : "first");
       } catch (error) {
-        setRoadmapPreview(null);
-        setRoadmapError(error instanceof Error ? error.message : "Unable to prepare roadmap right now.");
+        setRoadmapTracksCount(0);
+        setRoadmapDecisionMode("first");
+        setRoadmapError(error instanceof Error ? error.message : "Unable to check roadmap state right now.");
       } finally {
-        setRoadmapLoading(false);
+        setRoadmapDecisionLoading(false);
       }
     })();
   };
@@ -2376,6 +2455,83 @@ export default function UploadPage() {
           </motion.div>
         )}
 
+        {showRoadmapDecisionModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[264] flex items-center justify-center bg-[#020915]/86 px-4 backdrop-blur-xl"
+            onClick={() => {
+              if (roadmapDecisionLoading || roadmapDecisionSubmitting) return;
+              setShowRoadmapDecisionModal(false);
+              setRoadmapError("");
+            }}
+          >
+            <motion.section
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              onClick={(event) => event.stopPropagation()}
+              className="w-full max-w-2xl rounded-[1.8rem] border border-cyan-100/22 bg-[#041427]/96 p-5 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:p-7"
+            >
+              <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Roadmap Decision</p>
+              <h3 className="mt-2 text-2xl font-semibold text-cyan-50">
+                {roadmapDecisionMode === "first" ? "Add this analysis to your roadmap?" : "Update your roadmap with this analysis?"}
+              </h3>
+              <p className="mt-2 text-sm text-cyan-50/76">
+                {roadmapDecisionMode === "first"
+                  ? "This creates your first milestone track based on the analysis you just completed."
+                  : "We will smartly compare against existing roadmap tracks, add only missing-skill milestones, and create a separate track if this direction is different."}
+              </p>
+              {roadmapTracksCount > 0 && (
+                <p className="mt-1 text-xs text-cyan-100/68">
+                  Existing roadmap tracks: <span className="font-semibold text-cyan-50">{roadmapTracksCount}</span>
+                </p>
+              )}
+
+              <div className="mt-4 rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3">
+                <p className="text-xs text-cyan-100/78">
+                  {roadmapDecisionMode === "first"
+                    ? "You can manage milestones later from Dashboard with explicit Mark Complete actions."
+                    : "If no new gaps are found, your existing roadmap stays clean with no duplicate clutter."}
+                </p>
+              </div>
+
+              {roadmapError && (
+                <p className="mt-4 rounded-xl border border-amber-100/34 bg-amber-100/12 px-3 py-2 text-sm text-amber-50">{roadmapError}</p>
+              )}
+
+              {roadmapDecisionLoading && <p className="mt-4 text-sm text-cyan-100/76">Checking your existing roadmap tracks...</p>}
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmRoadmapDecision()}
+                  disabled={roadmapDecisionLoading || roadmapDecisionSubmitting}
+                  className="rounded-xl border border-cyan-100/38 bg-cyan-200/18 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {roadmapDecisionSubmitting
+                    ? "Updating..."
+                    : roadmapDecisionMode === "first"
+                      ? "Add To Roadmap"
+                      : "Yes, Update Smartly"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (roadmapDecisionLoading || roadmapDecisionSubmitting) return;
+                    setShowRoadmapDecisionModal(false);
+                    setRoadmapError("");
+                  }}
+                  disabled={roadmapDecisionLoading || roadmapDecisionSubmitting}
+                  className="rounded-xl border border-cyan-100/24 bg-transparent px-4 py-2 text-sm font-semibold text-cyan-50/82 transition hover:bg-cyan-100/10 disabled:opacity-60"
+                >
+                  Not Now
+                </button>
+              </div>
+            </motion.section>
+          </motion.div>
+        )}
+
         {showRoadmapModal && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -2396,7 +2552,7 @@ export default function UploadPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Goal Roadmap</p>
-                  <h3 className="mt-1 text-2xl font-semibold text-cyan-50">Your Next Milestones Are Ready</h3>
+                  <h3 className="mt-1 text-2xl font-semibold text-cyan-50">Roadmap Preview</h3>
                 </div>
                 <button
                   type="button"
@@ -2408,6 +2564,11 @@ export default function UploadPage() {
                 </button>
               </div>
 
+              {!roadmapLoading && roadmapServerActionLabel && (
+                <p className="mt-3 rounded-xl border border-emerald-100/26 bg-emerald-200/10 px-3 py-2 text-sm text-emerald-50/90">
+                  {roadmapServerActionLabel}
+                </p>
+              )}
               {roadmapLoading && <p className="mt-4 text-sm text-cyan-100/78">Preparing your milestone roadmap...</p>}
               {!roadmapLoading && roadmapError && (
                 <p className="mt-4 rounded-xl border border-amber-100/34 bg-amber-100/12 px-3 py-2 text-sm text-amber-50">{roadmapError}</p>

@@ -2113,7 +2113,8 @@ def init_auth_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_admin_unread ON user_chat_messages (read_by_admin, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_unread ON user_chat_messages (user_id, read_by_user, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_reports_user_time ON analysis_reports (user_id, created_at)")
-            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_goal_roadmap_user_unique ON user_goal_roadmaps (user_id)")
+            cursor.execute("DROP INDEX IF EXISTS idx_goal_roadmap_user_unique")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_roadmap_user_time ON user_goal_roadmaps (user_id, updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_roadmap_updated ON user_goal_roadmaps (updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_updated ON analysis_semantic_cache (updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_learning_memory_track_time ON analysis_learning_memory (role_track, updated_at)")
@@ -7449,10 +7450,27 @@ def user_goal_roadmap(request: Request, auth_token: str | None = None) -> dict[s
     user = require_authenticated_user(request, auth_token)
     connection = auth_db_connection()
     try:
-        roadmap = fetch_goal_roadmap_for_user(connection, int(user["id"]))
+        roadmap = fetch_goal_roadmap_for_user(connection, int(user["id"]), roadmap_id=None)
+        roadmaps = fetch_goal_roadmaps_for_user(connection, int(user["id"]), limit=32)
     finally:
         connection.close()
-    return {"roadmap": roadmap}
+    return {"roadmap": roadmap, "roadmaps": roadmaps}
+
+
+@app.get("/roadmap/list")
+def user_goal_roadmap_list(request: Request, auth_token: str | None = None, limit: int = 32) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    safe_limit = int(clamp_float(float(limit), 1.0, 64.0))
+    connection = auth_db_connection()
+    try:
+        roadmaps = fetch_goal_roadmaps_for_user(connection, int(user["id"]), limit=safe_limit)
+    finally:
+        connection.close()
+    return {
+        "roadmaps": roadmaps,
+        "roadmap": roadmaps[0] if roadmaps else None,
+        "count": len(roadmaps),
+    }
 
 
 @app.post("/roadmap/upsert")
@@ -7467,7 +7485,7 @@ def user_goal_roadmap_upsert(data: GoalRoadmapUpsertRequest, request: Request) -
         try:
             cursor = connection.cursor()
             begin_write_transaction(cursor)
-            roadmap = upsert_goal_roadmap_for_user(connection, int(user["id"]), data)
+            result_payload = upsert_goal_roadmap_for_user(connection, int(user["id"]), data)
             connection.commit()
         except HTTPException:
             connection.rollback()
@@ -7484,15 +7502,22 @@ def user_goal_roadmap_upsert(data: GoalRoadmapUpsertRequest, request: Request) -
         "roadmap_upserted",
         user_id=int(user["id"]),
         meta={
-            "milestones": int(roadmap.get("total_milestones") or 0),
-            "progress_percent": int(roadmap.get("progress_percent") or 0),
+            "action": safe_text(result_payload.get("action")),
+            "created_new_track": bool(result_payload.get("created_new_track")),
+            "added_milestones": int(result_payload.get("added_milestones") or 0),
+            "similarity_score": float(result_payload.get("similarity_score") or 0),
+            "milestones": int((result_payload.get("roadmap") or {}).get("total_milestones") or 0),
+            "progress_percent": int((result_payload.get("roadmap") or {}).get("progress_percent") or 0),
         },
     )
-    return {"roadmap": roadmap, "message": "Roadmap updated."}
+    return {
+        **result_payload,
+        "message": "Roadmap updated.",
+    }
 
 
-@app.post("/roadmap/milestones/{milestone_id}/toggle")
-def user_goal_roadmap_toggle_milestone(
+def toggle_roadmap_milestone_handler(
+    roadmap_id: int | None,
     milestone_id: str,
     data: GoalRoadmapMilestoneToggleRequest,
     request: Request,
@@ -7506,7 +7531,13 @@ def user_goal_roadmap_toggle_milestone(
         try:
             cursor = connection.cursor()
             begin_write_transaction(cursor)
-            roadmap = toggle_goal_roadmap_milestone_for_user(connection, int(user["id"]), milestone_id, bool(data.completed))
+            toggle_payload = toggle_goal_roadmap_milestone_for_user(
+                connection,
+                int(user["id"]),
+                milestone_id,
+                bool(data.completed),
+                roadmap_id=roadmap_id,
+            )
             connection.commit()
         except HTTPException:
             connection.rollback()
@@ -7523,12 +7554,34 @@ def user_goal_roadmap_toggle_milestone(
         "roadmap_milestone_toggled",
         user_id=int(user["id"]),
         meta={
+            "roadmap_id": int((toggle_payload.get("roadmap") or {}).get("id") or 0),
             "milestone_id": sanitize_goal_roadmap_milestone_id(milestone_id, 1),
             "completed": bool(data.completed),
-            "progress_percent": int(roadmap.get("progress_percent") or 0),
+            "progress_percent": int((toggle_payload.get("roadmap") or {}).get("progress_percent") or 0),
         },
     )
-    return {"roadmap": roadmap}
+    return toggle_payload
+
+
+@app.post("/roadmap/{roadmap_id}/milestones/{milestone_id}/toggle")
+def user_goal_roadmap_toggle_milestone_by_track(
+    roadmap_id: int,
+    milestone_id: str,
+    data: GoalRoadmapMilestoneToggleRequest,
+    request: Request,
+) -> dict[str, Any]:
+    if roadmap_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid roadmap id.")
+    return toggle_roadmap_milestone_handler(roadmap_id, milestone_id, data, request)
+
+
+@app.post("/roadmap/milestones/{milestone_id}/toggle")
+def user_goal_roadmap_toggle_milestone(
+    milestone_id: str,
+    data: GoalRoadmapMilestoneToggleRequest,
+    request: Request,
+) -> dict[str, Any]:
+    return toggle_roadmap_milestone_handler(None, milestone_id, data, request)
 
 
 @app.get("/analysis/reports")
@@ -8454,9 +8507,8 @@ def serialize_goal_roadmap_row(row: Any) -> dict[str, Any]:
     }
 
 
-def fetch_goal_roadmap_row_for_user(connection: AuthDBConnection, user_id: int) -> Any:
-    return connection.execute(
-        """
+def fetch_goal_roadmap_rows_for_user(connection: AuthDBConnection, user_id: int, limit: int | None = 24) -> list[Any]:
+    query = """
         SELECT
             id,
             user_id,
@@ -8471,42 +8523,231 @@ def fetch_goal_roadmap_row_for_user(connection: AuthDBConnection, user_id: int) 
             updated_at
         FROM user_goal_roadmaps
         WHERE user_id = ?
-        LIMIT 1
-        """,
-        (int(user_id),),
-    ).fetchone()
+        ORDER BY updated_at DESC, id DESC
+    """
+    params: tuple[Any, ...] = (int(user_id),)
+    if limit is not None:
+        query += "\nLIMIT ?"
+        params = (int(user_id), int(limit))
+    return connection.execute(query, params).fetchall()
 
 
-def fetch_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int) -> dict[str, Any] | None:
-    row = fetch_goal_roadmap_row_for_user(connection, user_id)
+def fetch_goal_roadmap_row_for_user(connection: AuthDBConnection, user_id: int, roadmap_id: int | None = None) -> Any:
+    if roadmap_id is not None and int(roadmap_id) > 0:
+        return connection.execute(
+            """
+            SELECT
+                id,
+                user_id,
+                goal_title,
+                goal_context,
+                target_role,
+                target_industry,
+                target_score,
+                current_score,
+                milestones_json,
+                created_at,
+                updated_at
+            FROM user_goal_roadmaps
+            WHERE user_id = ? AND id = ?
+            LIMIT 1
+            """,
+            (int(user_id), int(roadmap_id)),
+        ).fetchone()
+    rows = fetch_goal_roadmap_rows_for_user(connection, user_id, limit=1)
+    return rows[0] if rows else None
+
+
+def fetch_goal_roadmaps_for_user(connection: AuthDBConnection, user_id: int, limit: int | None = 24) -> list[dict[str, Any]]:
+    rows = fetch_goal_roadmap_rows_for_user(connection, user_id, limit=limit)
+    return [serialize_goal_roadmap_row(row) for row in rows]
+
+
+def fetch_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int, roadmap_id: int | None = None) -> dict[str, Any] | None:
+    row = fetch_goal_roadmap_row_for_user(connection, user_id, roadmap_id)
     if not row:
         return None
     return serialize_goal_roadmap_row(row)
 
 
-def upsert_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int, data: GoalRoadmapUpsertRequest) -> dict[str, Any]:
-    existing_row = fetch_goal_roadmap_row_for_user(connection, user_id)
-    existing_completion: dict[str, dict[str, Any]] = {}
-    if existing_row:
-        existing_payload = serialize_goal_roadmap_row(existing_row)
-        for milestone in existing_payload["milestones"]:
-            existing_completion[safe_text(milestone.get("id"))] = {
-                "completed": bool(milestone.get("completed")),
-                "completed_at": safe_text(milestone.get("completed_at")),
-            }
+def roadmap_focus_skill_tokens(milestones: list[dict[str, Any]]) -> set[str]:
+    tokens: set[str] = set()
+    for milestone in milestones:
+        for skill in milestone.get("focus_skills") or []:
+            normalized = normalize_token(safe_text(str(skill)))
+            if normalized:
+                tokens.add(normalized)
+    return tokens
 
-    milestones = normalize_goal_roadmap_milestones(data.milestones, existing_completion)
+
+def roadmap_text_signature(text: str) -> set[str]:
+    return {
+        token
+        for token in tokenize_keywords(text)
+        if token and token not in STOPWORDS
+    }
+
+
+def jaccard_similarity(left: set[str], right: set[str]) -> float:
+    if not left and not right:
+        return 0.0
+    union = left.union(right)
+    if not union:
+        return 0.0
+    return len(left.intersection(right)) / len(union)
+
+
+def roadmap_direction_similarity(
+    roadmap: dict[str, Any],
+    target_role: str,
+    target_industry: str,
+    incoming_milestones: list[dict[str, Any]],
+) -> float:
+    requested_signature = roadmap_text_signature(f"{target_role} {target_industry}")
+    existing_signature = roadmap_text_signature(f"{roadmap.get('target_role', '')} {roadmap.get('target_industry', '')}")
+    role_similarity = jaccard_similarity(requested_signature, existing_signature)
+
+    incoming_skills = roadmap_focus_skill_tokens(incoming_milestones)
+    existing_skills = roadmap_focus_skill_tokens(roadmap.get("milestones") or [])
+    skill_similarity = jaccard_similarity(incoming_skills, existing_skills)
+
+    score = role_similarity * 0.62 + skill_similarity * 0.38
+    requested_role_norm = normalize_search_text(target_role)
+    existing_role_norm = normalize_search_text(safe_text(roadmap.get("target_role")))
+    if requested_role_norm and existing_role_norm and requested_role_norm == existing_role_norm:
+        score += 0.18
+    return float(clamp_float(score, 0.0, 1.0))
+
+
+def milestone_signature(milestone: dict[str, Any]) -> set[str]:
+    title = safe_text(milestone.get("title"))
+    detail = safe_text(milestone.get("detail"))
+    return roadmap_text_signature(f"{title} {detail}")
+
+
+def merge_goal_roadmap_milestones(
+    existing_milestones: list[dict[str, Any]],
+    incoming_milestones: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    merged: list[dict[str, Any]] = [dict(item) for item in existing_milestones]
+    merged_signatures = [milestone_signature(item) for item in merged]
+    existing_skill_tokens = roadmap_focus_skill_tokens(merged)
+    existing_title_index: dict[str, int] = {
+        normalize_search_text(safe_text(item.get("title"))): index
+        for index, item in enumerate(merged)
+        if safe_text(item.get("title"))
+    }
+    added_count = 0
+
+    for candidate in incoming_milestones:
+        candidate_copy = dict(candidate)
+        candidate_title_key = normalize_search_text(safe_text(candidate_copy.get("title")))
+        candidate_signature = milestone_signature(candidate_copy)
+        candidate_focus = roadmap_focus_skill_tokens([candidate_copy])
+
+        duplicate_index: int | None = None
+        if candidate_title_key and candidate_title_key in existing_title_index:
+            duplicate_index = existing_title_index[candidate_title_key]
+        elif candidate_signature:
+            for index, existing_signature in enumerate(merged_signatures):
+                if jaccard_similarity(candidate_signature, existing_signature) >= 0.68:
+                    duplicate_index = index
+                    break
+
+        if duplicate_index is not None:
+            existing_item = merged[duplicate_index]
+            if not safe_text(existing_item.get("why")) and safe_text(candidate_copy.get("why")):
+                existing_item["why"] = safe_text(candidate_copy.get("why"))
+            if not safe_text(existing_item.get("done_when")) and safe_text(candidate_copy.get("done_when")):
+                existing_item["done_when"] = safe_text(candidate_copy.get("done_when"))
+            if not safe_text(existing_item.get("timeframe")) and safe_text(candidate_copy.get("timeframe")):
+                existing_item["timeframe"] = safe_text(candidate_copy.get("timeframe"))
+            merged_skills = dedupe_preserve_order(
+                [
+                    *[safe_text(skill) for skill in (existing_item.get("focus_skills") or [])],
+                    *[safe_text(skill) for skill in (candidate_copy.get("focus_skills") or [])],
+                ]
+            )[:5]
+            existing_item["focus_skills"] = merged_skills
+            existing_skill_tokens.update(roadmap_focus_skill_tokens([existing_item]))
+            merged_signatures[duplicate_index] = milestone_signature(existing_item)
+            continue
+
+        has_new_focus_skill = bool(candidate_focus - existing_skill_tokens)
+        candidate_is_distinct = jaccard_similarity(candidate_signature, set().union(*merged_signatures) if merged_signatures else set()) < 0.34
+        if not has_new_focus_skill and not candidate_is_distinct:
+            continue
+
+        merged.append(candidate_copy)
+        merged_signatures.append(candidate_signature)
+        if candidate_title_key:
+            existing_title_index[candidate_title_key] = len(merged) - 1
+        existing_skill_tokens.update(candidate_focus)
+        added_count += 1
+
+    return merged[:18], added_count
+
+
+def pick_goal_roadmap_for_update(
+    existing_roadmaps: list[dict[str, Any]],
+    target_role: str,
+    target_industry: str,
+    incoming_milestones: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, float]:
+    if not existing_roadmaps:
+        return None, 0.0
+
+    best_match: dict[str, Any] | None = None
+    best_score = 0.0
+    for roadmap in existing_roadmaps:
+        score = roadmap_direction_similarity(roadmap, target_role, target_industry, incoming_milestones)
+        if score > best_score:
+            best_score = score
+            best_match = roadmap
+    if best_match is None:
+        return None, 0.0
+    if best_score < 0.42:
+        return None, best_score
+    return best_match, best_score
+
+
+def upsert_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int, data: GoalRoadmapUpsertRequest) -> dict[str, Any]:
     goal_title = safe_text(data.goal_title).strip() or "Reach your target role"
     goal_context = safe_text(data.goal_context).strip()
     target_role = safe_text(data.target_role).strip()
     target_industry = safe_text(data.target_industry).strip()
     target_score = normalize_goal_roadmap_score(data.target_score)
     current_score = normalize_goal_roadmap_score(data.current_score)
+    incoming_milestones = normalize_goal_roadmap_milestones(data.milestones, None)
     now = now_utc_iso()
-    milestones_json = json.dumps(milestones, ensure_ascii=False, separators=(",", ":"), default=str)
-    cursor = connection.cursor()
 
-    if existing_row:
+    existing_roadmaps = fetch_goal_roadmaps_for_user(connection, int(user_id), limit=32)
+    matched_roadmap, similarity_score = pick_goal_roadmap_for_update(
+        existing_roadmaps,
+        target_role,
+        target_industry,
+        incoming_milestones,
+    )
+
+    cursor = connection.cursor()
+    action = "created_first_track"
+    created_new_track = False
+    added_milestones = len(incoming_milestones)
+    roadmap_id: int
+
+    if matched_roadmap:
+        existing_completion: dict[str, dict[str, Any]] = {}
+        for milestone in matched_roadmap.get("milestones") or []:
+            existing_completion[safe_text(milestone.get("id"))] = {
+                "completed": bool(milestone.get("completed")),
+                "completed_at": safe_text(milestone.get("completed_at")),
+            }
+
+        merged_raw, added_milestones = merge_goal_roadmap_milestones(matched_roadmap.get("milestones") or [], incoming_milestones)
+        merged_milestones = normalize_goal_roadmap_milestones(merged_raw, existing_completion)
+        roadmap_id = int(matched_roadmap["id"])
+        action = "merged_missing_skills" if added_milestones > 0 else "no_new_missing_skills"
+
         cursor.execute(
             """
             UPDATE user_goal_roadmaps
@@ -8519,21 +8760,24 @@ def upsert_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int, dat
                 current_score = ?,
                 milestones_json = ?,
                 updated_at = ?
-            WHERE user_id = ?
+            WHERE user_id = ? AND id = ?
             """,
             (
-                goal_title,
-                goal_context,
-                target_role,
-                target_industry,
-                target_score,
-                current_score,
-                milestones_json,
+                goal_title or safe_text(matched_roadmap.get("goal_title")),
+                goal_context or safe_text(matched_roadmap.get("goal_context")),
+                target_role or safe_text(matched_roadmap.get("target_role")),
+                target_industry or safe_text(matched_roadmap.get("target_industry")),
+                target_score if target_score is not None else matched_roadmap.get("target_score"),
+                current_score if current_score is not None else matched_roadmap.get("current_score"),
+                json.dumps(merged_milestones, ensure_ascii=False, separators=(",", ":"), default=str),
                 now,
                 int(user_id),
+                roadmap_id,
             ),
         )
     else:
+        created_new_track = bool(existing_roadmaps)
+        action = "created_new_track" if created_new_track else "created_first_track"
         cursor.execute(
             """
             INSERT INTO user_goal_roadmaps (
@@ -8558,16 +8802,25 @@ def upsert_goal_roadmap_for_user(connection: AuthDBConnection, user_id: int, dat
                 target_industry,
                 target_score,
                 current_score,
-                milestones_json,
+                json.dumps(incoming_milestones, ensure_ascii=False, separators=(",", ":"), default=str),
                 now,
                 now,
             ),
         )
+        roadmap_id = inserted_row_id(connection, cursor)
 
-    roadmap = fetch_goal_roadmap_for_user(connection, int(user_id))
+    roadmap = fetch_goal_roadmap_for_user(connection, int(user_id), roadmap_id=roadmap_id)
     if not roadmap:
         raise HTTPException(status_code=500, detail="Unable to persist roadmap right now.")
-    return roadmap
+    roadmaps = fetch_goal_roadmaps_for_user(connection, int(user_id), limit=32)
+    return {
+        "roadmap": roadmap,
+        "roadmaps": roadmaps,
+        "action": action,
+        "created_new_track": created_new_track,
+        "added_milestones": int(max(0, added_milestones)),
+        "similarity_score": round(float(similarity_score), 3),
+    }
 
 
 def toggle_goal_roadmap_milestone_for_user(
@@ -8575,8 +8828,9 @@ def toggle_goal_roadmap_milestone_for_user(
     user_id: int,
     milestone_id: str,
     completed: bool,
+    roadmap_id: int | None = None,
 ) -> dict[str, Any]:
-    existing_row = fetch_goal_roadmap_row_for_user(connection, user_id)
+    existing_row = fetch_goal_roadmap_row_for_user(connection, user_id, roadmap_id=roadmap_id)
     if not existing_row:
         raise HTTPException(status_code=404, detail="Roadmap not found for this account.")
 
@@ -8605,19 +8859,23 @@ def toggle_goal_roadmap_milestone_for_user(
         """
         UPDATE user_goal_roadmaps
         SET milestones_json = ?, updated_at = ?
-        WHERE user_id = ?
+        WHERE user_id = ? AND id = ?
         """,
         (
             json.dumps(roadmap["milestones"], ensure_ascii=False, separators=(",", ":"), default=str),
             now,
             int(user_id),
+            int(roadmap["id"]),
         ),
     )
 
-    refreshed = fetch_goal_roadmap_for_user(connection, int(user_id))
+    refreshed = fetch_goal_roadmap_for_user(connection, int(user_id), roadmap_id=int(roadmap["id"]))
     if not refreshed:
         raise HTTPException(status_code=500, detail="Unable to refresh roadmap right now.")
-    return refreshed
+    return {
+        "roadmap": refreshed,
+        "roadmaps": fetch_goal_roadmaps_for_user(connection, int(user_id), limit=32),
+    }
 
 
 def save_analysis_report(

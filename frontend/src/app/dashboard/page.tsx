@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 
 type CreditWallet = {
@@ -68,6 +69,11 @@ type GoalRoadmap = {
 
 type GoalRoadmapPayload = {
   roadmap?: GoalRoadmap | null;
+  roadmaps?: GoalRoadmap[];
+  count?: number;
+  action?: string;
+  created_new_track?: boolean;
+  added_milestones?: number;
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
@@ -92,10 +98,12 @@ export default function DashboardPage() {
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
   const [reports, setReports] = useState<AnalysisReportSummary[]>([]);
   const [reportsError, setReportsError] = useState("");
-  const [roadmap, setRoadmap] = useState<GoalRoadmap | null>(null);
+  const [roadmaps, setRoadmaps] = useState<GoalRoadmap[]>([]);
   const [roadmapError, setRoadmapError] = useState("");
   const [roadmapUpdatingMilestoneId, setRoadmapUpdatingMilestoneId] = useState<string | null>(null);
-  const [roadmapFilter, setRoadmapFilter] = useState<"active" | "completed" | "all">("active");
+  const [selectedRoadmapId, setSelectedRoadmapId] = useState<number | null>(null);
+  const [showAllRoadmapMilestones, setShowAllRoadmapMilestones] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState<"roadmaps" | "reports">("roadmaps");
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -125,7 +133,7 @@ export default function DashboardPage() {
               Authorization: `Bearer ${authToken}`,
             },
           }),
-          fetch(apiUrl("/roadmap/current"), {
+          fetch(apiUrl("/roadmap/list?limit=24"), {
             headers: {
               Authorization: `Bearer ${authToken}`,
             },
@@ -148,7 +156,13 @@ export default function DashboardPage() {
             setRoadmapError("Unable to load your roadmap right now.");
           } else {
             const roadmapPayload = (await roadmapResult.value.json()) as GoalRoadmapPayload;
-            setRoadmap(roadmapPayload.roadmap || null);
+            const roadmapTracks = Array.isArray(roadmapPayload.roadmaps)
+              ? roadmapPayload.roadmaps
+              : roadmapPayload.roadmap
+                ? [roadmapPayload.roadmap]
+                : [];
+            setRoadmaps(roadmapTracks);
+            setSelectedRoadmapId(roadmapTracks[0]?.id ?? null);
           }
         } else {
           setRoadmapError("Unable to load your roadmap right now.");
@@ -200,10 +214,15 @@ export default function DashboardPage() {
       setError("Login required to update roadmap.");
       return;
     }
+    const activeRoadmap = roadmaps.find((item) => item.id === selectedRoadmapId) || roadmaps[0];
+    if (!activeRoadmap) {
+      setRoadmapError("No roadmap track selected.");
+      return;
+    }
     setRoadmapError("");
     setRoadmapUpdatingMilestoneId(milestoneId);
     try {
-      const response = await fetch(apiUrl(`/roadmap/milestones/${encodeURIComponent(milestoneId)}/toggle`), {
+      const response = await fetch(apiUrl(`/roadmap/${activeRoadmap.id}/milestones/${encodeURIComponent(milestoneId)}/toggle`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -216,10 +235,16 @@ export default function DashboardPage() {
         throw new Error(payload?.detail || "Unable to update this milestone.");
       }
       const payload = (await response.json()) as GoalRoadmapPayload;
-      if (!payload.roadmap) {
+      const nextTracks = Array.isArray(payload.roadmaps)
+        ? payload.roadmaps
+        : payload.roadmap
+          ? [payload.roadmap]
+          : [];
+      if (!nextTracks.length) {
         throw new Error("Roadmap payload missing.");
       }
-      setRoadmap(payload.roadmap);
+      setRoadmaps(nextTracks);
+      setSelectedRoadmapId(payload.roadmap?.id || activeRoadmap.id);
     } catch (err) {
       setRoadmapError(err instanceof Error ? err.message : "Unable to update this milestone.");
     } finally {
@@ -227,19 +252,25 @@ export default function DashboardPage() {
     }
   };
 
-  const roadmapMilestones = useMemo(() => roadmap?.milestones || [], [roadmap]);
+  const activeRoadmap = useMemo(
+    () => roadmaps.find((item) => item.id === selectedRoadmapId) || roadmaps[0] || null,
+    [roadmaps, selectedRoadmapId]
+  );
+  const roadmapMilestones = useMemo(() => activeRoadmap?.milestones || [], [activeRoadmap]);
   const nextMilestone = useMemo(
     () => roadmapMilestones.find((milestone) => !milestone.completed) || null,
     [roadmapMilestones]
   );
   const visibleRoadmapMilestones = useMemo(() => {
-    if (roadmapFilter === "all") return roadmapMilestones;
-    if (roadmapFilter === "completed") return roadmapMilestones.filter((milestone) => milestone.completed);
-    return roadmapMilestones.filter((milestone) => !milestone.completed);
-  }, [roadmapFilter, roadmapMilestones]);
+    if (showAllRoadmapMilestones) return roadmapMilestones;
+    const pending = roadmapMilestones.filter((milestone) => !milestone.completed).slice(0, 3);
+    const latestCompleted = roadmapMilestones.filter((milestone) => milestone.completed).slice(0, 1);
+    return [...pending, ...latestCompleted];
+  }, [showAllRoadmapMilestones, roadmapMilestones]);
+  const hiddenMilestonesCount = Math.max(0, roadmapMilestones.length - visibleRoadmapMilestones.length);
   const scoreGap =
-    roadmap && typeof roadmap.target_score === "number" && typeof roadmap.current_score === "number"
-      ? Math.max(0, roadmap.target_score - roadmap.current_score)
+    activeRoadmap && typeof activeRoadmap.target_score === "number" && typeof activeRoadmap.current_score === "number"
+      ? Math.max(0, activeRoadmap.target_score - activeRoadmap.current_score)
       : null;
 
   const priorityToneClass = (priority?: string | null) => {
@@ -303,17 +334,57 @@ export default function DashboardPage() {
 
         {!loading && !error && (
           <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
-            <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Goal Roadmap</p>
-            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Roadmap Tracker</h2>
-            <p className="mt-1 text-sm text-cyan-50/70">
-              Clear checklist, detailed steps, and explicit completion actions for desktop and mobile.
-            </p>
+            <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Dashboard Workspaces</p>
+            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Choose What You Want To Work On</h2>
+            <p className="mt-1 text-sm text-cyan-50/70">Interactive cards keep roadmap tracking and report downloads cleanly separated.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {[
+                {
+                  id: "roadmaps" as const,
+                  title: "Roadmap Tracking",
+                  subtitle: "Manage milestones and mark progress clearly",
+                  meta: `${roadmaps.length} track${roadmaps.length === 1 ? "" : "s"}`,
+                },
+                {
+                  id: "reports" as const,
+                  title: "Report Downloads",
+                  subtitle: "Access and download past analysis PDFs",
+                  meta: `${reports.length} report${reports.length === 1 ? "" : "s"}`,
+                },
+              ].map((card) => (
+                <motion.button
+                  key={card.id}
+                  type="button"
+                  whileHover={{ y: -3, scale: 1.01 }}
+                  whileTap={{ scale: 0.995 }}
+                  onClick={() => setActiveWorkspace(card.id)}
+                  className={`relative overflow-hidden rounded-2xl border p-4 text-left transition ${
+                    activeWorkspace === card.id
+                      ? "border-cyan-100/50 bg-cyan-200/18"
+                      : "border-cyan-100/20 bg-[#041634]/55 hover:bg-[#072042]/62"
+                  }`}
+                >
+                  <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-cyan-300/18 blur-2xl" />
+                  <p className="text-sm font-semibold text-cyan-50">{card.title}</p>
+                  <p className="mt-1 text-xs text-cyan-50/72">{card.subtitle}</p>
+                  <p className="mt-3 text-xs uppercase tracking-[0.12em] text-cyan-100/82">{card.meta}</p>
+                </motion.button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {!loading && !error && activeWorkspace === "roadmaps" && (
+          <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
+            <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Roadmap Tracking</p>
+            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Focused Milestone Workspace</h2>
+            <p className="mt-1 text-sm text-cyan-50/70">No clutter. Use explicit action buttons to update progress.</p>
 
             {roadmapError && <p className="mt-3 text-xs text-amber-100">{roadmapError}</p>}
 
-            {!roadmap ? (
+            {!activeRoadmap ? (
               <div className="mt-4 rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
-                <p className="text-sm text-cyan-50/76">No roadmap generated yet. Run your first analysis and close the report to auto-create it.</p>
+                <p className="text-sm text-cyan-50/76">No roadmap generated yet. Run analysis and choose Add To Roadmap when prompted.</p>
                 <Link
                   href="/upload"
                   className="mt-3 inline-flex rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
@@ -323,37 +394,57 @@ export default function DashboardPage() {
               </div>
             ) : (
               <>
+                {roadmaps.length > 1 && (
+                  <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                    {roadmaps.map((track, index) => (
+                      <button
+                        key={track.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRoadmapId(track.id);
+                          setShowAllRoadmapMilestones(false);
+                        }}
+                        className={`shrink-0 rounded-lg border px-3 py-2 text-left text-xs transition ${
+                          selectedRoadmapId === track.id
+                            ? "border-cyan-100/50 bg-cyan-200/18 text-cyan-50"
+                            : "border-cyan-100/24 bg-cyan-100/8 text-cyan-100/80 hover:bg-cyan-100/12"
+                        }`}
+                      >
+                        <p className="font-semibold">Track {index + 1}</p>
+                        <p className="mt-0.5 text-[11px]">{track.target_role || "Role track"}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
                   <div className="rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
-                    <p className="text-sm font-semibold text-cyan-50">{roadmap.goal_title}</p>
-                    {roadmap.goal_context && <p className="mt-1 text-xs text-cyan-50/72">{roadmap.goal_context}</p>}
+                    <p className="text-sm font-semibold text-cyan-50">{activeRoadmap.goal_title}</p>
+                    {activeRoadmap.goal_context && <p className="mt-1 text-xs text-cyan-50/72">{activeRoadmap.goal_context}</p>}
                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-100/72">
-                      {roadmap.target_role && <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Role: {roadmap.target_role}</span>}
-                      {roadmap.target_industry && (
-                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Industry: {roadmap.target_industry}</span>
+                      {activeRoadmap.target_role && <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Role: {activeRoadmap.target_role}</span>}
+                      {activeRoadmap.target_industry && (
+                        <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">Industry: {activeRoadmap.target_industry}</span>
                       )}
                       <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1">
-                        {roadmap.progress_percent}% complete
+                        {activeRoadmap.progress_percent}% complete
                       </span>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-cyan-100/7">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200 transition-all duration-500"
-                        style={{ width: `${roadmap.progress_percent}%` }}
+                        style={{ width: `${activeRoadmap.progress_percent}%` }}
                       />
                     </div>
                     <p className="mt-2 text-xs text-cyan-100/70">
-                      {roadmap.completed_milestones}/{roadmap.total_milestones} milestones completed.
+                      {activeRoadmap.completed_milestones}/{activeRoadmap.total_milestones} milestones completed.
                     </p>
                   </div>
 
                   <div className="rounded-xl border border-emerald-100/22 bg-emerald-200/8 p-4">
                     <p className="text-xs uppercase tracking-[0.12em] text-emerald-100/82">How To Update Progress</p>
                     <p className="mt-2 text-sm text-emerald-50/88">
-                      Use the <span className="font-semibold">Mark Complete</span> button on each milestone card.
-                    </p>
-                    <p className="mt-1 text-xs text-emerald-50/78">
-                      No more numeric tap guesswork. Each action has a clear completion button.
+                      Click <span className="font-semibold">Mark Complete</span> on each milestone card.
                     </p>
                     {nextMilestone && (
                       <div className="mt-3 rounded-lg border border-emerald-100/28 bg-emerald-200/12 p-2.5">
@@ -369,35 +460,14 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {[
-                    { id: "active" as const, label: `Active (${roadmap.milestones.filter((item) => !item.completed).length})` },
-                    { id: "completed" as const, label: `Completed (${roadmap.milestones.filter((item) => item.completed).length})` },
-                    { id: "all" as const, label: `All (${roadmap.milestones.length})` },
-                  ].map((filter) => (
-                    <button
-                      key={filter.id}
-                      type="button"
-                      onClick={() => setRoadmapFilter(filter.id)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                        roadmapFilter === filter.id
-                          ? "border-cyan-100/50 bg-cyan-200/18 text-cyan-50"
-                          : "border-cyan-100/24 bg-cyan-100/8 text-cyan-100/80 hover:bg-cyan-100/12"
-                      }`}
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
-                </div>
-
                 {!visibleRoadmapMilestones.length ? (
                   <p className="mt-4 rounded-xl border border-cyan-100/16 bg-[#041634]/55 px-3 py-2 text-sm text-cyan-50/76">
-                    No milestones in this filter yet.
+                    No milestones available yet for this track.
                   </p>
                 ) : (
                   <ol className="mt-4 space-y-3">
                     {visibleRoadmapMilestones.map((milestone, index) => {
-                      const originalIndex = roadmap.milestones.findIndex((item) => item.id === milestone.id);
+                      const originalIndex = roadmapMilestones.findIndex((item) => item.id === milestone.id);
                       const stepIndex = originalIndex >= 0 ? originalIndex + 1 : index + 1;
                       const updating = roadmapUpdatingMilestoneId === milestone.id;
                       return (
@@ -430,23 +500,9 @@ export default function DashboardPage() {
                                 </div>
                               )}
 
-                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                {milestone.why && (
-                                  <div className="rounded-lg border border-cyan-100/18 bg-cyan-100/7 p-2.5">
-                                    <p className="text-[11px] uppercase tracking-[0.1em] text-cyan-100/72">Why this matters</p>
-                                    <p className="mt-1 text-xs text-cyan-50/78">{milestone.why}</p>
-                                  </div>
-                                )}
-                                {milestone.done_when && (
-                                  <div className="rounded-lg border border-emerald-100/20 bg-emerald-200/8 p-2.5">
-                                    <p className="text-[11px] uppercase tracking-[0.1em] text-emerald-100/78">Done when</p>
-                                    <p className="mt-1 text-xs text-emerald-50/82">{milestone.done_when}</p>
-                                  </div>
-                                )}
-                              </div>
-
+                              {milestone.done_when && <p className="mt-2 text-xs text-emerald-100/82">Done when: {milestone.done_when}</p>}
                               {milestone.completed_at && (
-                                <p className="mt-2 text-[11px] text-emerald-100/80">Completed on {formatReportDate(milestone.completed_at)}</p>
+                                <p className="mt-1 text-[11px] text-emerald-100/80">Completed on {formatReportDate(milestone.completed_at)}</p>
                               )}
                             </div>
 
@@ -471,12 +527,22 @@ export default function DashboardPage() {
                     })}
                   </ol>
                 )}
+
+                {(hiddenMilestonesCount > 0 || showAllRoadmapMilestones) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllRoadmapMilestones((prev) => !prev)}
+                    className="mt-4 rounded-xl border border-cyan-100/28 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14"
+                  >
+                    {showAllRoadmapMilestones ? "Show Focused View" : `Show All Milestones (+${hiddenMilestonesCount})`}
+                  </button>
+                )}
               </>
             )}
           </section>
         )}
 
-        {!loading && !error && (
+        {!loading && !error && activeWorkspace === "reports" && (
           <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
             <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Saved Analysis Reports</p>
             <h2 className="mt-2 text-xl font-semibold text-cyan-50">Download Your Past Reports</h2>
