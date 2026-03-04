@@ -133,7 +133,7 @@ export default function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-cyan-100/12 bg-[#030c1b]/78 backdrop-blur-2xl">
+    <header className="sticky top-0 z-50 border-b border-cyan-100/12 bg-[#030c1b]/90 backdrop-blur-[2px]">
       <div className="border-b border-cyan-100/8 px-3 py-2 sm:px-6 sm:py-2.5">
         <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-50/70 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
           <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.9)]" />
@@ -255,7 +255,7 @@ export default function SiteHeader() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[14px]"
+                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[6px]"
                   onClick={(event) => {
                     if (event.target !== event.currentTarget) return;
                     setShowStudioLockModal(false);

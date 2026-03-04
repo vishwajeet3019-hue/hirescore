@@ -2181,7 +2181,7 @@ export default function UploadPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="fixed inset-0 z-[190] flex items-start justify-center overflow-y-auto bg-[#020915]/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-xl sm:items-center"
+            className="fixed inset-0 z-[190] flex items-start justify-center overflow-y-auto bg-[#020915]/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center"
             onClick={(event) => {
               if (event.target !== event.currentTarget) return;
               if (authLoading || googleAuthLoading) return;
@@ -2339,7 +2339,7 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[320] flex items-center justify-center bg-[#030412]/58 px-4 backdrop-blur-lg"
+            className="fixed inset-0 z-[320] flex items-center justify-center bg-[#030412]/58 px-4 backdrop-blur-sm"
           >
             <div className="auth-live-shell w-full max-w-md rounded-[1.8rem] p-6 sm:p-7">
               <div className="auth-live-stage relative flex items-center justify-center">
@@ -2375,7 +2375,7 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-[#010716]/86 px-4 backdrop-blur-xl"
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-[#010716]/86 px-4 backdrop-blur-sm"
           >
             <div className="analysis-live-shell w-full max-w-3xl rounded-[2rem] p-6 sm:p-8">
               <div className="analysis-live-stage relative flex items-center justify-center">
@@ -2436,7 +2436,7 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[260] flex items-center justify-center bg-[#020915]/88 p-1 backdrop-blur-2xl sm:p-4"
+            className="fixed inset-0 z-[260] flex items-center justify-center bg-[#020915]/88 p-1 backdrop-blur-sm sm:p-4"
             onClick={handleCloseResultModal}
           >
             <motion.section
@@ -2994,7 +2994,7 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[264] flex items-center justify-center bg-[#020915]/86 px-4 backdrop-blur-xl"
+            className="fixed inset-0 z-[264] flex items-center justify-center bg-[#020915]/86 px-4 backdrop-blur-sm"
             onClick={() => {
               if (roadmapDecisionLoading || roadmapDecisionSubmitting) return;
               setShowRoadmapDecisionModal(false);
@@ -3083,7 +3083,7 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[265] flex items-center justify-center bg-[#020915]/88 px-4 backdrop-blur-xl"
+            className="fixed inset-0 z-[265] flex items-center justify-center bg-[#020915]/88 px-4 backdrop-blur-sm"
             onClick={() => {
               if (roadmapLoading) return;
               setShowRoadmapModal(false);
@@ -3205,7 +3205,7 @@ export default function UploadPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="fixed inset-0 z-[140] flex items-center justify-center bg-[#020915]/90 px-4 backdrop-blur-xl"
+            className="fixed inset-0 z-[140] flex items-center justify-center bg-[#020915]/90 px-4 backdrop-blur-sm"
           >
             <motion.section
               initial={{ opacity: 0, y: 14, scale: 0.98 }}

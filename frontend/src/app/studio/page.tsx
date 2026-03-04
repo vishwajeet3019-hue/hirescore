@@ -1463,7 +1463,7 @@ export default function StudioPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[180] flex items-center justify-center bg-[#010715]/64 px-4 backdrop-blur-2xl"
+            className="fixed inset-0 z-[180] flex items-center justify-center bg-[#010715]/64 px-4 backdrop-blur-sm"
           >
             <div className="analysis-live-shell w-full max-w-3xl rounded-[2rem] p-6 sm:p-8">
               <div className="analysis-live-stage relative flex items-center justify-center">
@@ -1527,7 +1527,7 @@ export default function StudioPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[14px]"
+                    className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[6px]"
                     onClick={(event) => {
                       if (event.target !== event.currentTarget) return;
                       setShowStudioGateModal(false);

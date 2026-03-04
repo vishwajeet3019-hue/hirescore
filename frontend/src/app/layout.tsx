@@ -94,10 +94,10 @@ export default function RootLayout({
           </>
         ) : null}
         <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden">
-          <div className="futuristic-grid animate-grid-drift" />
-          <div className="animate-orbital absolute -left-28 top-10 h-80 w-80 rounded-full bg-cyan-400/20 blur-[110px]" />
-          <div className="animate-orbital absolute -right-20 top-56 h-96 w-96 rounded-full bg-sky-400/20 blur-[140px]" />
-          <div className="animate-drift absolute bottom-[-180px] left-1/3 h-[360px] w-[360px] rounded-full bg-amber-200/16 blur-[130px]" />
+          <div className="futuristic-grid" />
+          <div className="absolute -left-20 top-12 h-64 w-64 rounded-full bg-cyan-400/14 blur-[72px]" />
+          <div className="absolute -right-16 top-52 h-72 w-72 rounded-full bg-sky-400/14 blur-[78px]" />
+          <div className="absolute bottom-[-140px] left-1/3 h-[260px] w-[260px] rounded-full bg-amber-200/12 blur-[76px]" />
         </div>
         <AppChrome>{children}</AppChrome>
       </body>

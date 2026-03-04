@@ -90,13 +90,11 @@ export default function FloatingSupportChat() {
     const onStorage = () => syncAuth();
     window.addEventListener("storage", onStorage);
     window.addEventListener("focus", onStorage);
-    const tokenPoll = window.setInterval(syncAuth, 1500);
     const saved = Number(window.localStorage.getItem(LAST_SEEN_KEY) || "0");
     if (Number.isFinite(saved) && saved > 0) {
       setLastSeenId(saved);
     }
     return () => {
-      window.clearInterval(tokenPoll);
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onStorage);
     };

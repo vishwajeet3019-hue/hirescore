@@ -474,7 +474,7 @@ export default function DashboardPage() {
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="absolute inset-0 bg-[#020a18]/72 backdrop-blur-md"
+              className="absolute inset-0 bg-[#020a18]/72 backdrop-blur-[4px]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
