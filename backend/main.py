@@ -7368,6 +7368,9 @@ def signup(data: AuthRequest) -> dict[str, Any]:
 
 @app.post("/auth/signup/request-otp")
 def request_signup_otp(data: SignupOtpRequest) -> dict[str, Any]:
+    if not EMAIL_OTP_REQUIRED:
+        return signup(AuthRequest(email=data.email, password=data.password))
+
     email = normalize_email(data.email)
     password = safe_text(data.password)
 
