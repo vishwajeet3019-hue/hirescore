@@ -2462,7 +2462,7 @@ export default function UploadPage() {
                 </div>
               </div>
               <div className="min-h-0 flex flex-1 flex-col lg:flex-row">
-                <aside className="hidden h-full w-[290px] shrink-0 border-r border-cyan-100/12 bg-cyan-100/4 px-4 py-5 lg:block">
+                <aside className="hidden h-full w-[290px] shrink-0 overflow-y-auto border-r border-cyan-100/12 bg-cyan-100/4 px-4 py-5 pb-24 lg:block">
                   <div className="rounded-2xl border border-cyan-100/20 bg-cyan-100/6 p-4">
                     <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Score</p>
                     <div className="mt-2 flex items-end gap-2">
@@ -2504,7 +2504,7 @@ export default function UploadPage() {
                   </div>
                 </aside>
 
-                <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+                <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-5 sm:pb-28">
                   <div className="mx-auto w-full max-w-5xl">
                     <div className="rounded-2xl border border-cyan-100/20 bg-cyan-100/7 p-3 sm:p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
