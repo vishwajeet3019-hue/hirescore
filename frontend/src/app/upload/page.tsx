@@ -2436,95 +2436,114 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[260] overflow-y-auto bg-[#020915]/88 px-1 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-6 sm:pb-6 sm:pt-24"
+            className="fixed inset-0 z-[260] flex items-center justify-center bg-[#020915]/88 p-1 backdrop-blur-2xl sm:p-4"
             onClick={handleCloseResultModal}
           >
             <motion.section
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="mx-auto my-0 flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:max-h-[calc(100dvh-7rem)] sm:rounded-[2rem]"
+              className="mx-auto my-0 flex h-[calc(100dvh-0.75rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:h-[calc(100dvh-2rem)] sm:rounded-[2rem]"
             >
-              <div className="sticky top-0 z-20 flex justify-end border-b border-cyan-100/14 bg-[#041427]/96 px-3 py-2.5 sm:px-6 sm:py-3">
-                <button
-                  type="button"
-                  onClick={handleCloseResultModal}
-                  className="rounded-xl border border-cyan-100/28 bg-[#082640]/78 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50/90 transition hover:bg-[#0d3358]"
-                >
-                  Close
-                </button>
-              </div>
               <div className="border-b border-cyan-100/14 px-3 py-3 sm:px-6 sm:py-4">
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Analysis Complete</p>
                     <h3 className="mt-1 text-lg font-semibold text-cyan-50 sm:text-2xl">{result.shortlist_prediction || "Shortlist Analysis Report"}</h3>
                     <p className="text-[13px] text-cyan-50/72 sm:text-sm">{scoreInsight}</p>
                   </div>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-cyan-100/20 bg-cyan-100/7 p-3 sm:p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">
-                      Step {resultStepIndex + 1} of {RESULT_STEPS.length}
-                    </p>
-                    <p className="text-sm font-semibold text-cyan-50">{activeResultStep.label}</p>
-                  </div>
-                  <p className="mt-2 text-xs text-cyan-50/74 sm:text-sm">{activeResultStep.description}</p>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/8">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${resultProgress}%` }}
-                      transition={{ duration: 0.35, ease: "easeOut" }}
-                      className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
-                    />
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigateResultStep("back")}
-                      disabled={resultStepIndex === 0}
-                      className="rounded-xl border border-cyan-100/26 bg-cyan-100/7 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      Back
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigateResultStep("next")}
-                      disabled={resultStepIndex >= RESULT_STEPS.length - 1}
-                      className="rounded-xl border border-cyan-100/36 bg-cyan-200/18 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      Next
-                    </button>
-                    <span className="text-[11px] text-cyan-100/68">
-                      {resultStepIndex >= RESULT_STEPS.length - 1 ? "Final section" : `Up next: ${nextResultStep.label}`}
-                    </span>
-                  </div>
-                  <div className="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {RESULT_STEPS.map((step) => {
-                      const active = activeResultTab === step.id;
-                      return (
-                        <button
-                          key={step.id}
-                          type="button"
-                          onClick={() => setActiveResultTab(step.id)}
-                          className={`shrink-0 rounded-xl border px-2.5 py-1 text-xs font-semibold transition ${
-                            active
-                              ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                              : "border-cyan-100/20 bg-cyan-100/5 text-cyan-50/75 hover:bg-cyan-100/12"
-                          }`}
-                        >
-                          {step.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-2 text-[11px] text-cyan-100/66">Focused mode: open one section at a time using Back/Next or these step chips.</p>
+                  <button
+                    type="button"
+                    onClick={handleCloseResultModal}
+                    className="rounded-xl border border-cyan-100/28 bg-[#082640]/78 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50/90 transition hover:bg-[#0d3358]"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
+              <div className="min-h-0 flex flex-1 flex-col lg:flex-row">
+                <aside className="hidden h-full w-[290px] shrink-0 border-r border-cyan-100/12 bg-cyan-100/4 px-4 py-5 lg:block">
+                  <div className="rounded-2xl border border-cyan-100/20 bg-cyan-100/6 p-4">
+                    <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Score</p>
+                    <div className="mt-2 flex items-end gap-2">
+                      <p className="text-3xl font-semibold text-cyan-50">{result.overall_score}%</p>
+                      {typeof result.confidence === "number" && <p className="mb-1 text-xs text-cyan-100/72">Confidence {result.confidence}%</p>}
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-cyan-100/8">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${result.overall_score}%` }}
+                        transition={{ duration: 0.55, ease: "easeOut" }}
+                        className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/5 p-3">
+                    <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/70">Sections</p>
+                    <div className="mt-2 space-y-1.5">
+                      {RESULT_STEPS.map((step, stepIndex) => {
+                        const active = step.id === activeResultTab;
+                        return (
+                          <button
+                            key={step.id}
+                            type="button"
+                            onClick={() => setActiveResultTab(step.id)}
+                            className={`w-full rounded-xl border px-2.5 py-2 text-left transition ${
+                              active
+                                ? "border-cyan-100/45 bg-cyan-200/18"
+                                : "border-cyan-100/16 bg-cyan-100/5 hover:bg-cyan-100/12"
+                            }`}
+                          >
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-100/72">Step {stepIndex + 1}</p>
+                            <p className="mt-0.5 text-sm font-semibold text-cyan-50">{step.label}</p>
+                            <p className="mt-0.5 text-[11px] text-cyan-50/68">{step.description}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </aside>
 
-              <div className="flex-1 overflow-y-auto p-3 sm:p-5">
-                <motion.div key={activeResultTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
+                <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+                  <div className="mx-auto w-full max-w-5xl">
+                    <div className="rounded-2xl border border-cyan-100/20 bg-cyan-100/7 p-3 sm:p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">
+                          Step {resultStepIndex + 1} of {RESULT_STEPS.length}
+                        </p>
+                        <p className="text-sm font-semibold text-cyan-50">{activeResultStep.label}</p>
+                      </div>
+                      <p className="mt-2 text-xs text-cyan-50/74 sm:text-sm">{activeResultStep.description}</p>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/8">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${resultProgress}%` }}
+                          transition={{ duration: 0.35, ease: "easeOut" }}
+                          className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
+                        />
+                      </div>
+                      <div className="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden">
+                        {RESULT_STEPS.map((step) => {
+                          const active = activeResultTab === step.id;
+                          return (
+                            <button
+                              key={step.id}
+                              type="button"
+                              onClick={() => setActiveResultTab(step.id)}
+                              className={`shrink-0 rounded-xl border px-2.5 py-1 text-xs font-semibold transition ${
+                                active
+                                  ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
+                                  : "border-cyan-100/20 bg-cyan-100/5 text-cyan-50/75 hover:bg-cyan-100/12"
+                              }`}
+                            >
+                              {step.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <motion.div key={activeResultTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }} className="mt-4">
                 {activeResultTab === "summary" && (
                   <div className="space-y-4 sm:space-y-5">
                     <div className="grid gap-4 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
@@ -2937,8 +2956,34 @@ export default function UploadPage() {
                     </div>
                   </div>
                 )}
-                </motion.div>
-
+                    </motion.div>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t border-cyan-100/14 bg-[#031628]/96 px-3 py-3 sm:px-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-cyan-100/68">
+                    {resultStepIndex >= RESULT_STEPS.length - 1 ? "Final section" : `Up next: ${nextResultStep.label}`}
+                  </p>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigateResultStep("back")}
+                      disabled={resultStepIndex === 0}
+                      className="rounded-xl border border-cyan-100/26 bg-cyan-100/7 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateResultStep("next")}
+                      disabled={resultStepIndex >= RESULT_STEPS.length - 1}
+                      className="rounded-xl border border-cyan-100/36 bg-cyan-200/18 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             </motion.section>
           </motion.div>
