@@ -7,7 +7,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://ap
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
 type GuardAction =
-  | "right_click_blocked"
   | "copy_shortcut_blocked"
   | "save_shortcut_blocked"
   | "print_shortcut_blocked"
@@ -16,7 +15,6 @@ type GuardAction =
   | "print_attempt_blocked";
 
 const ACTION_MESSAGE: Record<GuardAction, string> = {
-  right_click_blocked: "Right-click is disabled on protected content.",
   copy_shortcut_blocked: "Copy shortcut is disabled on protected content.",
   save_shortcut_blocked: "Save shortcut is disabled on protected content.",
   print_shortcut_blocked: "Print shortcut is disabled on protected content.",
@@ -72,10 +70,6 @@ export default function CaptureDeterrence() {
       reportAction(action, detail);
     };
 
-    const handleContextMenu = (event: MouseEvent) => {
-      block(event, "right_click_blocked");
-    };
-
     const handleBeforePrint = (event: Event) => {
       block(event, "print_attempt_blocked");
     };
@@ -103,7 +97,6 @@ export default function CaptureDeterrence() {
       }
     };
 
-    document.addEventListener("contextmenu", handleContextMenu);
     window.addEventListener("beforeprint", handleBeforePrint);
     window.addEventListener("keydown", handleKeyDown, { capture: true });
 
@@ -111,7 +104,6 @@ export default function CaptureDeterrence() {
       if (dismissRef.current) {
         window.clearTimeout(dismissRef.current);
       }
-      document.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("beforeprint", handleBeforePrint);
       window.removeEventListener("keydown", handleKeyDown, { capture: true });
       document.body.classList.remove("capture-deterrence-active");
