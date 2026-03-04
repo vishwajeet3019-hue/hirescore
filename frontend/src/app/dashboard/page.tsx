@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 
 type CreditWallet = {
@@ -76,6 +76,15 @@ type GoalRoadmapPayload = {
   added_milestones?: number;
 };
 
+type RoadmapCelebration = {
+  kind: "milestone" | "goal";
+  milestoneTitle: string;
+  goalTitle: string;
+  progressPercent: number;
+  completedMilestones: number;
+  totalMilestones: number;
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 const formatReportDate = (value: string) => {
@@ -105,6 +114,7 @@ export default function DashboardPage() {
   const [showAllRoadmapMilestones, setShowAllRoadmapMilestones] = useState(false);
   const [activeWorkspace, setActiveWorkspace] = useState<"roadmaps" | "reports">("roadmaps");
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
+  const [roadmapCelebration, setRoadmapCelebration] = useState<RoadmapCelebration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -176,6 +186,17 @@ export default function DashboardPage() {
     void loadDashboard();
   }, []);
 
+  useEffect(() => {
+    if (!roadmapCelebration) return;
+    const timeoutMs = roadmapCelebration.kind === "goal" ? 4200 : 2800;
+    const timer = window.setTimeout(() => {
+      setRoadmapCelebration(null);
+    }, timeoutMs);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [roadmapCelebration]);
+
   const handleDownloadReport = async (reportId: number) => {
     if (!token) {
       setError("Login required to download reports.");
@@ -243,8 +264,34 @@ export default function DashboardPage() {
       if (!nextTracks.length) {
         throw new Error("Roadmap payload missing.");
       }
+
+      const resolvedRoadmapId = payload.roadmap?.id || activeRoadmap.id;
+      const refreshedActiveRoadmap = nextTracks.find((item) => item.id === resolvedRoadmapId) || nextTracks[0];
+
+      if (completed && refreshedActiveRoadmap) {
+        const previousCompletedCount = activeRoadmap.completed_milestones;
+        const nextCompletedCount = refreshedActiveRoadmap.completed_milestones;
+        if (nextCompletedCount > previousCompletedCount) {
+          const milestoneTitle =
+            activeRoadmap.milestones.find((item) => item.id === milestoneId)?.title ||
+            refreshedActiveRoadmap.milestones.find((item) => item.id === milestoneId)?.title ||
+            "Milestone completed";
+          const goalReached =
+            refreshedActiveRoadmap.total_milestones > 0 &&
+            refreshedActiveRoadmap.completed_milestones >= refreshedActiveRoadmap.total_milestones;
+          setRoadmapCelebration({
+            kind: goalReached ? "goal" : "milestone",
+            milestoneTitle,
+            goalTitle: refreshedActiveRoadmap.goal_title || "Goal completed",
+            progressPercent: refreshedActiveRoadmap.progress_percent,
+            completedMilestones: refreshedActiveRoadmap.completed_milestones,
+            totalMilestones: refreshedActiveRoadmap.total_milestones,
+          });
+        }
+      }
+
       setRoadmaps(nextTracks);
-      setSelectedRoadmapId(payload.roadmap?.id || activeRoadmap.id);
+      setSelectedRoadmapId(resolvedRoadmapId);
     } catch (err) {
       setRoadmapError(err instanceof Error ? err.message : "Unable to update this milestone.");
     } finally {
@@ -293,6 +340,82 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <AnimatePresence>
+        {roadmapCelebration && (
+          <motion.div
+            className="pointer-events-none fixed inset-0 z-[160] flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="absolute inset-0 bg-[#020a18]/72 backdrop-blur-md"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+            <motion.div
+              className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-cyan-100/38 bg-[linear-gradient(150deg,rgba(8,27,52,0.96),rgba(4,18,38,0.95))] shadow-[0_28px_80px_rgba(2,9,24,0.68)]"
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 16 }}
+              transition={{ duration: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
+            >
+              <motion.div
+                className="absolute -left-14 -top-12 h-44 w-44 rounded-full bg-cyan-300/28 blur-3xl"
+                animate={{ scale: [1, 1.25, 1], opacity: [0.6, 1, 0.6] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <motion.div
+                className="absolute -bottom-16 -right-10 h-52 w-52 rounded-full bg-emerald-200/22 blur-3xl"
+                animate={{ scale: [1.15, 0.95, 1.15], opacity: [0.5, 0.9, 0.5] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <motion.div
+                className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-100/80 to-transparent"
+                animate={{ opacity: [0.25, 1, 0.25], scaleX: [0.75, 1, 0.75] }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+              />
+
+              <div className="relative z-10 p-5 sm:p-6">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/76">
+                  {roadmapCelebration.kind === "goal" ? "Goal Achieved" : "Milestone Completed"}
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-cyan-50 sm:text-2xl">
+                  {roadmapCelebration.kind === "goal" ? roadmapCelebration.goalTitle : roadmapCelebration.milestoneTitle}
+                </h3>
+                <p className="mt-2 text-sm text-cyan-50/76">
+                  {roadmapCelebration.kind === "goal"
+                    ? `All ${roadmapCelebration.totalMilestones} milestones are complete. Your target roadmap is now fully executed.`
+                    : `${roadmapCelebration.completedMilestones} of ${roadmapCelebration.totalMilestones} milestones are now complete.`}
+                </p>
+
+                <div className="mt-4 overflow-hidden rounded-xl border border-cyan-100/24 bg-cyan-100/8 p-3">
+                  <div className="relative h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-[#051730]">
+                    <motion.div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, Math.max(0, roadmapCelebration.progressPercent))}%` }}
+                      transition={{ duration: 0.7, ease: [0.23, 1, 0.32, 1] }}
+                    />
+                    <motion.div
+                      className="absolute inset-y-0 w-20 bg-gradient-to-r from-transparent via-cyan-50/70 to-transparent"
+                      animate={{ x: ["-110%", "220%"] }}
+                      transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.12em] text-cyan-100/78">
+                    <span>
+                      Progress: {roadmapCelebration.completedMilestones}/{roadmapCelebration.totalMilestones}
+                    </span>
+                    <span>{roadmapCelebration.progressPercent}%</span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <section className="mx-auto max-w-6xl">
         <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">User Dashboard</p>
         <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-4xl">Your Progress Hub</h1>
@@ -378,7 +501,6 @@ export default function DashboardPage() {
           <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
             <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Roadmap Tracking</p>
             <h2 className="mt-2 text-xl font-semibold text-cyan-50">Focused Milestone Workspace</h2>
-            <p className="mt-1 text-sm text-cyan-50/70">No clutter. Use explicit action buttons to update progress.</p>
 
             {roadmapError && <p className="mt-3 text-xs text-amber-100">{roadmapError}</p>}
 
