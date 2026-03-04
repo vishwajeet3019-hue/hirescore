@@ -500,7 +500,7 @@ export default function DashboardPage() {
         {!loading && !error && activeWorkspace === "roadmaps" && (
           <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
             <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Roadmap Tracking</p>
-            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Focused Milestone Workspace</h2>
+            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Roadmap Action Center</h2>
 
             {roadmapError && <p className="mt-3 text-xs text-amber-100">{roadmapError}</p>}
 
