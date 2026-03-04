@@ -461,7 +461,8 @@ export default function DashboardPage() {
     return `${sign}${normalized}${suffix}`;
   };
 
-  const cardClass = "rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5";
+  const cardClass =
+    "rounded-3xl border border-cyan-100/20 bg-[linear-gradient(150deg,rgba(7,28,52,0.9),rgba(6,20,40,0.86))] p-5 shadow-[0_22px_50px_rgba(2,8,22,0.42)]";
 
   return (
     <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
@@ -541,10 +542,12 @@ export default function DashboardPage() {
           </motion.div>
         )}
       </AnimatePresence>
-      <section className="mx-auto max-w-6xl">
-        <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">User Dashboard</p>
-        <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-4xl">Your Progress Hub</h1>
-        <p className="mt-2 text-sm text-cyan-50/72">Track wallet usage and continue from the right next step.</p>
+      <section className="mx-auto max-w-[1240px]">
+        <p className="text-xs uppercase tracking-[0.18em] text-cyan-100/74">Logged In Workspace</p>
+        <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">HireScore Command Center</h1>
+        <p className="mt-2 max-w-2xl text-sm text-cyan-50/72">
+          One place for execution, downloads, progress tracking, and your next highest-impact move.
+        </p>
 
         {loading && <p className="mt-5 text-sm text-cyan-100/76">Loading your dashboard...</p>}
 
@@ -560,24 +563,60 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {!loading && !error && wallet && (
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <article className={cardClass}>
-              <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Signed In As</p>
-              <p className="mt-2 text-sm font-semibold text-cyan-50">{email || "User"}</p>
-              <p className="mt-2 text-xs text-cyan-50/64">Session token active: {token ? "Yes" : "No"}</p>
-            </article>
-            <article className={cardClass}>
-              <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Wallet Balance</p>
-              <p className="mt-2 text-3xl font-semibold text-emerald-100">{wallet.credits}</p>
-              <p className="mt-1 text-xs text-cyan-50/66">Analyze cost: {wallet.pricing.analyze} credits</p>
-            </article>
-            <article className={cardClass}>
-              <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Estimated Uses Left</p>
-              <p className="mt-2 text-3xl font-semibold text-cyan-50">{Math.floor(wallet.credits / Math.max(1, wallet.pricing.analyze))}</p>
-              <p className="mt-1 text-xs text-cyan-50/66">Resume AI build: {wallet.pricing.ai_resume_generation} credits</p>
-            </article>
-          </div>
+        {!loading && !error && (
+          <section className="relative mt-6 overflow-hidden rounded-[2rem] border border-cyan-100/24 bg-[linear-gradient(140deg,rgba(7,30,56,0.92),rgba(5,18,38,0.9))] p-5 shadow-[0_30px_80px_rgba(2,8,22,0.5)] sm:p-7">
+            <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(to_right,rgba(153,233,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(153,233,255,0.06)_1px,transparent_1px)] [background-size:36px_36px]" />
+            <div className="relative z-10 grid gap-5 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+              <div>
+                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/74">Active Profile</p>
+                <h2 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">{email || "Logged in user"}</h2>
+                <p className="mt-2 text-sm text-cyan-50/74">
+                  {nextMilestone
+                    ? `Next focus: ${nextMilestone.title}`
+                    : "Run an analysis to unlock your roadmap and execution sequence."}
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-cyan-100/24 bg-cyan-100/8 px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Wallet</p>
+                    <p className="mt-1 text-2xl font-semibold text-emerald-100">{wallet?.credits ?? 0}</p>
+                    <p className="text-[11px] text-cyan-100/68">Credits available</p>
+                  </div>
+                  <div className="rounded-2xl border border-cyan-100/24 bg-cyan-100/8 px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Roadmap</p>
+                    <p className="mt-1 text-2xl font-semibold text-cyan-50">{activeRoadmap?.progress_percent ?? 0}%</p>
+                    <p className="text-[11px] text-cyan-100/68">Execution progress</p>
+                  </div>
+                  <div className="rounded-2xl border border-cyan-100/24 bg-cyan-100/8 px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Reports</p>
+                    <p className="mt-1 text-2xl font-semibold text-cyan-50">{reports.length}</p>
+                    <p className="text-[11px] text-cyan-100/68">Saved analyses</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                <Link
+                  href="/upload"
+                  className="rounded-2xl border border-cyan-100/34 bg-cyan-200/20 px-4 py-3 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
+                >
+                  Run New Analysis
+                </Link>
+                <Link
+                  href="/studio"
+                  className="rounded-2xl border border-cyan-100/30 bg-cyan-100/10 px-4 py-3 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
+                >
+                  Open Resume Studio
+                </Link>
+                <Link
+                  href="/pricing"
+                  className="rounded-2xl border border-cyan-100/30 bg-cyan-100/10 px-4 py-3 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
+                >
+                  Buy Credits
+                </Link>
+              </div>
+            </div>
+          </section>
         )}
 
         {!loading && !error && (
@@ -653,9 +692,9 @@ export default function DashboardPage() {
         )}
 
         {!loading && !error && (
-          <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
-            <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Dashboard Workspaces</p>
-            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Choose What You Want To Work On</h2>
+          <section className="mt-6 rounded-3xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(8,30,56,0.84),rgba(5,18,36,0.82))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
+            <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Dashboard Workspaces</p>
+            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Pick Your Mission</h2>
             <p className="mt-1 text-sm text-cyan-50/70">
               {featureFlags.roadmap_prompt_variant === "B"
                 ? "Switch between roadmap execution and report downloads based on your current objective."
@@ -699,9 +738,9 @@ export default function DashboardPage() {
         )}
 
         {!loading && !error && activeWorkspace === "roadmaps" && (
-          <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
-            <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Roadmap Tracking</p>
-            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Roadmap Action Center</h2>
+          <section className="mt-6 rounded-3xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(8,29,55,0.84),rgba(5,18,36,0.82))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
+            <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Roadmap Tracking</p>
+            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Execution Board</h2>
 
             {roadmapError && <p className="mt-3 text-xs text-amber-100">{roadmapError}</p>}
 
@@ -910,9 +949,9 @@ export default function DashboardPage() {
         )}
 
         {!loading && !error && activeWorkspace === "reports" && (
-          <section className="mt-6 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-5">
-            <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Saved Analysis Reports</p>
-            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Download Your Past Reports</h2>
+          <section className="mt-6 rounded-3xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(8,29,55,0.84),rgba(5,18,36,0.82))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
+            <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Saved Analysis Reports</p>
+            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Intelligence Archive</h2>
             <p className="mt-1 text-sm text-cyan-50/70">Each analysis is auto-saved to your account dashboard.</p>
             {reportsError && <p className="mt-3 text-xs text-amber-100">{reportsError}</p>}
             {!reports.length ? (
@@ -948,28 +987,6 @@ export default function DashboardPage() {
           </section>
         )}
 
-        {!loading && !error && (
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Link
-              href="/upload"
-              className="rounded-2xl border border-cyan-100/34 bg-cyan-200/15 px-4 py-3 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
-            >
-              Run New Analysis
-            </Link>
-            <Link
-              href="/studio"
-              className="rounded-2xl border border-cyan-100/34 bg-cyan-100/10 px-4 py-3 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
-            >
-              Build Resume
-            </Link>
-            <Link
-              href="/pricing"
-              className="rounded-2xl border border-cyan-100/34 bg-cyan-100/10 px-4 py-3 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
-            >
-              Buy Credits
-            </Link>
-          </div>
-        )}
       </section>
     </main>
   );

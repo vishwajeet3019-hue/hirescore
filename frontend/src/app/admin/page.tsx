@@ -102,6 +102,7 @@ type RowEditorState = {
 };
 
 type AdminLoadScope = "users" | "support" | "activity" | "all";
+type AdminAuthMode = "token" | "api_key";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
@@ -134,6 +135,8 @@ export default function AdminPage() {
   const [adminLoginId, setAdminLoginId] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminToken, setAdminToken] = useState("");
+  const [adminApiKey, setAdminApiKey] = useState("");
+  const [adminAuthMode, setAdminAuthMode] = useState<AdminAuthMode>("token");
 
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -166,7 +169,10 @@ export default function AdminPage() {
   const [hasLoadedActivity, setHasLoadedActivity] = useState(false);
   const restoredTokenRef = useRef("");
 
-  const canLoad = useMemo(() => adminToken.trim().length > 0, [adminToken]);
+  const canLoad = useMemo(() => {
+    if (adminAuthMode === "api_key") return adminApiKey.trim().length > 0;
+    return adminToken.trim().length > 0;
+  }, [adminApiKey, adminAuthMode, adminToken]);
 
   useEffect(() => {
     void warmBackend(apiUrl);
@@ -174,9 +180,17 @@ export default function AdminPage() {
 
   useEffect(() => {
     const existingToken = window.localStorage.getItem("hirescore_admin_token");
+    const existingApiKey = window.localStorage.getItem("hirescore_admin_api_key");
+    const existingMode = window.localStorage.getItem("hirescore_admin_auth_mode");
     const existingLogin = window.localStorage.getItem("hirescore_admin_login_id");
+    if (existingMode === "api_key" || existingMode === "token") {
+      setAdminAuthMode(existingMode);
+    }
     if (existingToken) {
       setAdminToken(existingToken);
+    }
+    if (existingApiKey) {
+      setAdminApiKey(existingApiKey);
     }
     if (existingLogin) {
       setAdminLoginId(existingLogin);
@@ -196,18 +210,31 @@ export default function AdminPage() {
   };
 
   const adminFetch = useCallback(
-    async <T,>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> => {
-      const effectiveToken = (tokenOverride ?? adminToken).trim();
+    async <T,>(
+      path: string,
+      init?: RequestInit,
+      credentialOverride?: string,
+      modeOverride?: AdminAuthMode,
+    ): Promise<T> => {
+      const effectiveMode = modeOverride ?? adminAuthMode;
+      const effectiveCredential = (
+        credentialOverride ?? (effectiveMode === "api_key" ? adminApiKey : adminToken)
+      ).trim();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(init?.headers as Record<string, string>),
+      };
+      if (effectiveMode === "api_key") {
+        headers["x-admin-key"] = effectiveCredential;
+      } else {
+        headers.Authorization = `Bearer ${effectiveCredential}`;
+      }
       return fetchJsonWithWakeAndRetry<T>({
         apiUrl,
         path,
         init: {
           ...init,
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${effectiveToken}`,
-            ...(init?.headers || {}),
-          },
+          headers,
         },
         timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
         parseError: async (response) => {
@@ -217,13 +244,16 @@ export default function AdminPage() {
         abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
       });
     },
-    [adminToken],
+    [adminAuthMode, adminApiKey, adminToken],
   );
 
   const loadAdminData = useCallback(
-    async (tokenOverride?: string, scope?: AdminLoadScope) => {
-      const effectiveToken = (tokenOverride ?? adminToken).trim();
-      if (!effectiveToken) return;
+    async (credentialOverride?: string, scope?: AdminLoadScope, modeOverride?: AdminAuthMode) => {
+      const effectiveMode = modeOverride ?? adminAuthMode;
+      const effectiveCredential = (
+        credentialOverride ?? (effectiveMode === "api_key" ? adminApiKey : adminToken)
+      ).trim();
+      if (!effectiveCredential) return;
 
       const effectiveScope = scope ?? workspaceTab;
       const shouldLoadUsers = effectiveScope === "users" || effectiveScope === "all";
@@ -245,11 +275,11 @@ export default function AdminPage() {
         if (search.trim()) chatQuery.set("q", search.trim());
 
         const usersPromise: Promise<{ users: AdminUser[] } | null> = shouldLoadUsers
-          ? adminFetch<{ users: AdminUser[] }>(`/admin/users?${query.toString()}`, undefined, effectiveToken)
+          ? adminFetch<{ users: AdminUser[] }>(`/admin/users?${query.toString()}`, undefined, effectiveCredential, effectiveMode)
           : Promise.resolve(null);
 
         const chatsPromise: Promise<{ threads: AdminChatThread[] } | null> = shouldLoadSupport
-          ? adminFetch<{ threads: AdminChatThread[] }>(`/admin/chats?${chatQuery.toString()}`, undefined, effectiveToken)
+          ? adminFetch<{ threads: AdminChatThread[] }>(`/admin/chats?${chatQuery.toString()}`, undefined, effectiveCredential, effectiveMode)
           : Promise.resolve(null);
 
         const activityPromise: Promise<
@@ -261,9 +291,9 @@ export default function AdminPage() {
           | null
         > = shouldLoadActivity
           ? Promise.all([
-              adminFetch<{ events: AdminEvent[] }>("/admin/events?limit=120", undefined, effectiveToken),
-              adminFetch<{ feedback: AdminFeedback[] }>("/admin/feedback?limit=120", undefined, effectiveToken),
-              adminFetch<{ transactions: AdminCreditTx[] }>("/admin/credit-transactions?limit=120", undefined, effectiveToken),
+              adminFetch<{ events: AdminEvent[] }>("/admin/events?limit=120", undefined, effectiveCredential, effectiveMode),
+              adminFetch<{ feedback: AdminFeedback[] }>("/admin/feedback?limit=120", undefined, effectiveCredential, effectiveMode),
+              adminFetch<{ transactions: AdminCreditTx[] }>("/admin/credit-transactions?limit=120", undefined, effectiveCredential, effectiveMode),
             ]).then(([eventsData, feedbackData, txData]) => ({
               events: eventsData.events || [],
               feedback: feedbackData.feedback || [],
@@ -272,7 +302,7 @@ export default function AdminPage() {
           : Promise.resolve(null);
 
         const [analyticsData, usersData, chatsData, activityData] = await Promise.all([
-          adminFetch<AdminAnalytics>("/admin/analytics", undefined, effectiveToken),
+          adminFetch<AdminAnalytics>("/admin/analytics", undefined, effectiveCredential, effectiveMode),
           usersPromise,
           chatsPromise,
           activityPromise,
@@ -307,35 +337,53 @@ export default function AdminPage() {
         }
 
         setConnected(true);
-        window.localStorage.setItem("hirescore_admin_token", effectiveToken);
+        window.localStorage.setItem("hirescore_admin_auth_mode", effectiveMode);
+        if (effectiveMode === "api_key") {
+          setAdminApiKey(effectiveCredential);
+          window.localStorage.setItem("hirescore_admin_api_key", effectiveCredential);
+          window.localStorage.removeItem("hirescore_admin_token");
+        } else {
+          setAdminToken(effectiveCredential);
+          window.localStorage.setItem("hirescore_admin_token", effectiveCredential);
+          window.localStorage.removeItem("hirescore_admin_api_key");
+        }
         if (adminLoginId.trim()) {
           window.localStorage.setItem("hirescore_admin_login_id", adminLoginId.trim());
         }
       } catch (err) {
         setConnected(false);
         setError(err instanceof Error ? err.message : "Unable to load admin data.");
-        if (err instanceof Error && err.message.toLowerCase().includes("authentication")) {
+        if (
+          err instanceof Error &&
+          /(authentication|admin session|unauthorized|failed)/i.test(err.message)
+        ) {
           setAdminToken("");
+          setAdminApiKey("");
+          setAdminAuthMode("token");
           window.localStorage.removeItem("hirescore_admin_token");
+          window.localStorage.removeItem("hirescore_admin_api_key");
+          window.localStorage.removeItem("hirescore_admin_auth_mode");
         }
       } finally {
         setLoading(false);
       }
     },
-    [adminToken, workspaceTab, search, planFilter, adminFetch, adminLoginId],
+    [adminAuthMode, adminApiKey, adminToken, workspaceTab, search, planFilter, adminFetch, adminLoginId],
   );
 
   useEffect(() => {
-    const token = adminToken.trim();
-    if (!token) {
+    const mode: AdminAuthMode = adminAuthMode === "api_key" ? "api_key" : "token";
+    const credential = (mode === "api_key" ? adminApiKey : adminToken).trim();
+    const restoreKey = `${mode}:${credential}`;
+    if (!credential) {
       restoredTokenRef.current = "";
       return;
     }
     if (connected || loading) return;
-    if (restoredTokenRef.current === token) return;
-    restoredTokenRef.current = token;
-    void loadAdminData(token, "users");
-  }, [adminToken, connected, loading, loadAdminData]);
+    if (restoredTokenRef.current === restoreKey) return;
+    restoredTokenRef.current = restoreKey;
+    void loadAdminData(credential, "users", mode);
+  }, [adminAuthMode, adminApiKey, adminToken, connected, loading, loadAdminData]);
 
   useEffect(() => {
     if (!connected || loading) return;
@@ -351,8 +399,27 @@ export default function AdminPage() {
   const handleAdminLogin = async () => {
     const loginId = adminLoginId.trim();
     const password = adminPassword;
+    const apiKey = adminApiKey.trim();
+    if (apiKey) {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+      try {
+        setAdminAuthMode("api_key");
+        setHasLoadedSupport(false);
+        setHasLoadedActivity(false);
+        await loadAdminData(apiKey, "users", "api_key");
+        setSuccess("Admin connected using API key.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to login with API key.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!loginId || !password) {
-      setError("Enter admin login id and password.");
+      setError("Enter admin login id + password, or paste admin API key.");
       return;
     }
     setLoading(true);
@@ -375,14 +442,18 @@ export default function AdminPage() {
         abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
       });
       if (!payload?.admin_token) throw new Error("Invalid admin login.");
+      setAdminAuthMode("token");
       setAdminToken(payload.admin_token);
+      setAdminApiKey("");
       setAdminPassword("");
       setSuccess("Admin login successful.");
       setHasLoadedSupport(false);
       setHasLoadedActivity(false);
+      window.localStorage.setItem("hirescore_admin_auth_mode", "token");
       window.localStorage.setItem("hirescore_admin_token", payload.admin_token);
+      window.localStorage.removeItem("hirescore_admin_api_key");
       window.localStorage.setItem("hirescore_admin_login_id", loginId);
-      await loadAdminData(payload.admin_token, "users");
+      await loadAdminData(payload.admin_token, "users", "token");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to login.");
     } finally {
@@ -582,18 +653,25 @@ export default function AdminPage() {
   };
 
   const downloadAdminExport = async (path: string, fallbackName: string, key: string) => {
-    const effectiveToken = adminToken.trim();
-    if (!effectiveToken) {
-      setError("Admin session token missing. Please login again.");
+    const effectiveMode: AdminAuthMode = adminAuthMode === "api_key" ? "api_key" : "token";
+    const effectiveCredential = (effectiveMode === "api_key" ? adminApiKey : adminToken).trim();
+    if (!effectiveCredential) {
+      setError("Admin session missing. Please login again.");
       return;
     }
     setExportingKey(key);
     setError("");
     setSuccess("");
     try {
+      const headers: Record<string, string> = {};
+      if (effectiveMode === "api_key") {
+        headers["x-admin-key"] = effectiveCredential;
+      } else {
+        headers.Authorization = `Bearer ${effectiveCredential}`;
+      }
       const response = await fetch(apiUrl(path), {
         method: "GET",
-        headers: { Authorization: `Bearer ${effectiveToken}` },
+        headers,
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
@@ -664,6 +742,17 @@ export default function AdminPage() {
                 placeholder="Password"
                 className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
+              <label className="pt-1 text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Or Admin API Key</label>
+              <input
+                type="password"
+                value={adminApiKey}
+                onChange={(event) => setAdminApiKey(event.target.value)}
+                placeholder="Paste ADMIN_API_KEYS value"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+              />
+              <p className="text-[11px] text-slate-300/66">
+                If login credentials fail, use API key login instead.
+              </p>
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -680,6 +769,8 @@ export default function AdminPage() {
                 onClick={() => {
                   setAdminLoginId("");
                   setAdminPassword("");
+                  setAdminApiKey("");
+                  setAdminAuthMode("token");
                   setError("");
                   setSuccess("");
                   setAdminToken("");
@@ -690,6 +781,8 @@ export default function AdminPage() {
                   setHasLoadedSupport(false);
                   setHasLoadedActivity(false);
                   window.localStorage.removeItem("hirescore_admin_token");
+                  window.localStorage.removeItem("hirescore_admin_api_key");
+                  window.localStorage.removeItem("hirescore_admin_auth_mode");
                 }}
                 className="rounded-xl border border-rose-200/28 bg-rose-300/10 px-3 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-300/16"
               >
@@ -732,6 +825,14 @@ export default function AdminPage() {
                 placeholder="Password"
                 className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
+              <label className="pt-1 text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin API Key (Optional)</label>
+              <input
+                type="password"
+                value={adminApiKey}
+                onChange={(event) => setAdminApiKey(event.target.value)}
+                placeholder="Paste ADMIN_API_KEYS value"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+              />
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -747,7 +848,9 @@ export default function AdminPage() {
                 type="button"
                 onClick={() => {
                   setAdminPassword("");
+                  setAdminApiKey("");
                   setAdminToken("");
+                  setAdminAuthMode("token");
                   setConnected(false);
                   setAnalytics(null);
                   setUsers([]);
@@ -763,6 +866,8 @@ export default function AdminPage() {
                   setError("");
                   setSuccess("");
                   window.localStorage.removeItem("hirescore_admin_token");
+                  window.localStorage.removeItem("hirescore_admin_api_key");
+                  window.localStorage.removeItem("hirescore_admin_auth_mode");
                 }}
                 className="rounded-xl border border-rose-200/28 bg-rose-300/10 px-3 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-300/16"
               >
@@ -771,7 +876,10 @@ export default function AdminPage() {
             </div>
 
             <div className="mt-4 rounded-xl border border-slate-200/16 bg-slate-700/14 px-3 py-2 text-xs text-slate-200/88">
-              Status: <span className="font-semibold text-white">{connected ? "Connected" : "Disconnected"}</span>
+              Status:{" "}
+              <span className="font-semibold text-white">
+                {connected ? `Connected (${adminAuthMode === "api_key" ? "API Key" : "Login"})` : "Disconnected"}
+              </span>
             </div>
 
             {error && <p className="mt-3 rounded-xl border border-rose-200/26 bg-rose-300/12 px-3 py-2 text-xs text-rose-100">{error}</p>}
