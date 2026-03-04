@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import AppChrome from "./components/app-chrome";
+import MotionProvider from "./components/motion-provider";
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
@@ -76,7 +77,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased overflow-x-hidden">
+      <body className="antialiased overflow-x-hidden performance-lite">
         {GA_MEASUREMENT_ID ? (
           <>
             <Script
@@ -95,11 +96,10 @@ export default function RootLayout({
         ) : null}
         <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden">
           <div className="futuristic-grid" />
-          <div className="absolute -left-20 top-12 h-64 w-64 rounded-full bg-cyan-400/14 blur-[72px]" />
-          <div className="absolute -right-16 top-52 h-72 w-72 rounded-full bg-sky-400/14 blur-[78px]" />
-          <div className="absolute bottom-[-140px] left-1/3 h-[260px] w-[260px] rounded-full bg-amber-200/12 blur-[76px]" />
         </div>
-        <AppChrome>{children}</AppChrome>
+        <MotionProvider>
+          <AppChrome>{children}</AppChrome>
+        </MotionProvider>
       </body>
     </html>
   );

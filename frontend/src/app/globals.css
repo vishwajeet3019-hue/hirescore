@@ -18,6 +18,10 @@
   --font-mono: "IBM Plex Mono", "Menlo", "Consolas", monospace;
 }
 
+html {
+  background: #040913;
+}
+
 body {
   background:
     radial-gradient(circle at 10% 15%, rgba(52, 147, 255, 0.24), transparent 36%),
@@ -27,6 +31,7 @@ body {
   color: var(--foreground);
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   min-height: 100vh;
+  overscroll-behavior-y: none;
 }
 
 body::before {
@@ -713,6 +718,54 @@ body::after {
 
 .animate-pulse-ring {
   animation: pulseRing 2.5s cubic-bezier(0.18, 0.86, 0.3, 1) infinite;
+}
+
+body.performance-lite [class*="backdrop-blur"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+body.performance-lite .animate-grid-drift,
+body.performance-lite .animate-orbital,
+body.performance-lite .animate-drift,
+body.performance-lite .animate-pulse-ring,
+body.performance-lite .ring-spin,
+body.performance-lite .signal-line::after,
+body.performance-lite .aurora-strip::after,
+body.performance-lite .analysis-live-shell::before,
+body.performance-lite .analysis-live-shell::after,
+body.performance-lite .analysis-live-grid,
+body.performance-lite .analysis-live-wave,
+body.performance-lite .analysis-live-ring,
+body.performance-lite .analysis-live-beam,
+body.performance-lite .analysis-live-orbit,
+body.performance-lite .analysis-live-core,
+body.performance-lite .analysis-orbit-card::before,
+body.performance-lite .auth-live-shell::before,
+body.performance-lite .auth-live-shell::after,
+body.performance-lite .auth-live-halo,
+body.performance-lite .auth-live-wave,
+body.performance-lite .auth-live-orb,
+body.performance-lite .auth-live-arc,
+body.performance-lite .auth-live-spark,
+body.performance-lite .auth-live-core-dot {
+  animation: none !important;
+}
+
+body.performance-lite .analysis-live-shell::before,
+body.performance-lite .analysis-orbit-card::before,
+body.performance-lite .auth-live-shell::before {
+  filter: none !important;
+}
+
+body.performance-lite .neon-panel,
+body.performance-lite .premium-panel,
+body.performance-lite .studio-bright-panel,
+body.performance-lite .studio-soft-card,
+body.performance-lite .analysis-orbit-card,
+body.performance-lite .analysis-live-shell,
+body.performance-lite .auth-live-shell {
+  box-shadow: none !important;
 }
 
 @keyframes gridDrift {
