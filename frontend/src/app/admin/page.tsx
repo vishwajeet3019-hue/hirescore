@@ -666,7 +666,7 @@ export default function AdminPage() {
               />
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => void handleAdminLogin()}
@@ -734,7 +734,7 @@ export default function AdminPage() {
               />
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => void handleAdminLogin()}
@@ -789,7 +789,7 @@ export default function AdminPage() {
                   type="button"
                   onClick={() => void loadAdminData(undefined, workspaceTab)}
                   disabled={!canLoad || loading}
-                  className="ml-auto rounded-xl border border-sky-300/30 bg-sky-400/14 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
+                  className="w-full rounded-xl border border-sky-300/30 bg-sky-400/14 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60 sm:ml-auto sm:w-auto"
                 >
                   {loading ? "Refreshing..." : "Refresh Data"}
                 </button>
@@ -899,18 +899,18 @@ export default function AdminPage() {
                   <h3 className="mt-1 text-xl font-semibold text-white sm:text-2xl">Search, filter, and manage accounts</h3>
                 </div>
 
-                <div className="ml-auto flex flex-wrap gap-2">
+                <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:flex-wrap">
                   <input
                     type="text"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Search name/email"
-                    className={`${inputClass} w-52`}
+                    className={`${inputClass} w-full sm:w-52`}
                   />
                   <select
                     value={planFilter}
                     onChange={(event) => setPlanFilter(event.target.value as (typeof planOptions)[number])}
-                    className={inputClass}
+                    className={`${inputClass} w-full sm:w-auto`}
                   >
                     {planOptions.map((plan) => (
                       <option key={plan} value={plan} className="bg-slate-900">
@@ -936,17 +936,23 @@ export default function AdminPage() {
                   const isOpen = expandedUserId === user.id;
                   return (
                     <article key={user.id} className="rounded-2xl border border-slate-200/14 bg-slate-800/38 p-4">
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-100">
-                        <span className="font-semibold text-sky-200">#{user.id}</span>
-                        <span className="font-semibold">{user.name || "User"}</span>
-                        <span>{user.email}</span>
-                        <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs uppercase">{user.plan}</span>
-                        <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs">Credits: {user.credits}</span>
-                        <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs">Analyses: {user.analyze_count}</span>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="min-w-0">
+                          <p className="text-sm text-slate-100">
+                            <span className="font-semibold text-sky-200">#{user.id}</span>{" "}
+                            <span className="font-semibold">{user.name || "User"}</span>
+                          </p>
+                          <p className="mt-0.5 break-all text-xs text-slate-300/84">{user.email}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 sm:ml-auto">
+                          <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs uppercase">{user.plan}</span>
+                          <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs">Credits: {user.credits}</span>
+                          <span className="rounded-full border border-slate-200/20 bg-slate-200/6 px-2 py-0.5 text-xs">Analyses: {user.analyze_count}</span>
+                        </div>
                         <button
                           type="button"
                           onClick={() => setExpandedUserId((prev) => (prev === user.id ? null : user.id))}
-                          className="ml-auto rounded-lg border border-slate-200/22 bg-slate-700/20 px-2.5 py-1 text-sm font-semibold text-slate-100 hover:bg-slate-700/30"
+                          className="self-start rounded-lg border border-slate-200/22 bg-slate-700/20 px-2.5 py-1 text-sm font-semibold text-slate-100 hover:bg-slate-700/30 sm:self-auto"
                           aria-label="Open user actions"
                         >
                           ...
@@ -1060,7 +1066,7 @@ export default function AdminPage() {
                   type="button"
                   onClick={() => void loadAdminData(undefined, "support")}
                   disabled={!connected || loading}
-                  className="ml-auto rounded-xl border border-sky-300/28 bg-sky-400/14 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60"
+                  className="w-full rounded-xl border border-sky-300/28 bg-sky-400/14 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-400/24 disabled:opacity-60 sm:ml-auto sm:w-auto"
                 >
                   {loading ? "Refreshing..." : "Refresh Inbox"}
                 </button>
@@ -1080,7 +1086,7 @@ export default function AdminPage() {
                             : "border-slate-200/18 bg-slate-800/36 hover:bg-slate-700/36"
                         }`}
                       >
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
                           <button
                             type="button"
                             onClick={() => void openChatThread(thread)}
@@ -1125,12 +1131,14 @@ export default function AdminPage() {
                           <p className="text-sm font-semibold text-white">{activeChatUser.name}</p>
                           <p className="text-xs text-slate-300/76">{activeChatUser.email}</p>
                         </div>
-                        <span className="ml-auto rounded-full border border-slate-200/18 bg-slate-700/18 px-2 py-1 text-[11px] uppercase text-slate-200/84">
-                          {activeChatUser.plan}
-                        </span>
-                        <span className="rounded-full border border-emerald-200/24 bg-emerald-300/10 px-2 py-1 text-[11px] uppercase text-emerald-100">
-                          Credits {activeChatUser.credits}
-                        </span>
+                        <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto sm:justify-end">
+                          <span className="rounded-full border border-slate-200/18 bg-slate-700/18 px-2 py-1 text-[11px] uppercase text-slate-200/84">
+                            {activeChatUser.plan}
+                          </span>
+                          <span className="rounded-full border border-emerald-200/24 bg-emerald-300/10 px-2 py-1 text-[11px] uppercase text-emerald-100">
+                            Credits {activeChatUser.credits}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="mt-3 h-[310px] space-y-2 overflow-y-auto rounded-xl border border-slate-200/14 bg-[#0a1324] p-3">
@@ -1241,7 +1249,7 @@ export default function AdminPage() {
                   feedbackRows.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
                       <p className="font-semibold text-slate-100">{item.email || `User ${item.user_id}`} • {item.rating}/5</p>
-                      <p className="mt-1 text-slate-300/84">{item.comment}</p>
+                      <p className="mt-1 break-words text-slate-300/84">{item.comment}</p>
                       <p className="mt-1 text-slate-400/78">{item.created_at}</p>
                     </div>
                   ))}
@@ -1250,7 +1258,7 @@ export default function AdminPage() {
                   events.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
                       <p className="font-semibold text-slate-100">{item.event_type} / {item.event_name}</p>
-                      <p className="mt-1 text-slate-300/82">{item.email || "anonymous"} • {item.created_at}</p>
+                      <p className="mt-1 break-all text-slate-300/82">{item.email || "anonymous"} • {item.created_at}</p>
                     </div>
                   ))}
 
@@ -1258,7 +1266,7 @@ export default function AdminPage() {
                   transactions.map((item) => (
                     <div key={item.id} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
                       <p className="font-semibold text-slate-100">{item.action} • {item.delta > 0 ? "+" : ""}{item.delta} • balance {item.balance_after}</p>
-                      <p className="mt-1 text-slate-300/82">{item.email || `user-${item.user_id}`} • {item.created_at}</p>
+                      <p className="mt-1 break-all text-slate-300/82">{item.email || `user-${item.user_id}`} • {item.created_at}</p>
                     </div>
                   ))}
 

@@ -2436,14 +2436,14 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[260] overflow-y-auto bg-[#020915]/88 px-2 pb-2 pt-14 backdrop-blur-xl sm:px-6 sm:pb-6 sm:pt-24"
+            className="fixed inset-0 z-[260] overflow-y-auto bg-[#020915]/88 px-1 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-6 sm:pb-6 sm:pt-24"
             onClick={handleCloseResultModal}
           >
             <motion.section
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="mx-auto my-0 flex max-h-[calc(100dvh-3rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1.2rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:max-h-[calc(100dvh-7rem)] sm:rounded-[2rem]"
+              className="mx-auto my-0 flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:max-h-[calc(100dvh-7rem)] sm:rounded-[2rem]"
             >
               <div className="sticky top-0 z-20 flex justify-end border-b border-cyan-100/14 bg-[#041427]/96 px-3 py-2.5 sm:px-6 sm:py-3">
                 <button
@@ -2500,7 +2500,7 @@ export default function UploadPage() {
                       {resultStepIndex >= RESULT_STEPS.length - 1 ? "Final section" : `Up next: ${nextResultStep.label}`}
                     </span>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {RESULT_STEPS.map((step) => {
                       const active = activeResultTab === step.id;
                       return (
@@ -2508,7 +2508,7 @@ export default function UploadPage() {
                           key={step.id}
                           type="button"
                           onClick={() => setActiveResultTab(step.id)}
-                          className={`rounded-xl border px-2.5 py-1 text-xs font-semibold transition ${
+                          className={`shrink-0 rounded-xl border px-2.5 py-1 text-xs font-semibold transition ${
                             active
                               ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
                               : "border-cyan-100/20 bg-cyan-100/5 text-cyan-50/75 hover:bg-cyan-100/12"
@@ -2587,7 +2587,7 @@ export default function UploadPage() {
                         )}
 
                         <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <p className="text-sm font-semibold text-cyan-100">JD Match Scanner</p>
                               <p className="mt-1 text-xs text-cyan-50/72">Upload JD (PDF/image) or paste text when you are ready.</p>
@@ -2595,7 +2595,7 @@ export default function UploadPage() {
                             <button
                               type="button"
                               onClick={() => setShowJdScanner((prev) => !prev)}
-                              className="rounded-xl border border-cyan-100/30 bg-cyan-100/8 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14"
+                              className="w-full rounded-xl border border-cyan-100/30 bg-cyan-100/8 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 sm:w-auto"
                             >
                               {showJdScanner ? "Hide Tool" : "Open Tool"}
                             </button>
@@ -2620,12 +2620,12 @@ export default function UploadPage() {
                                   event.currentTarget.value = "";
                                 }}
                               />
-                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                 <button
                                   type="button"
                                   onClick={() => jdFileInputRef.current?.click()}
                                   disabled={jdFileUploading}
-                                  className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="w-full rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                                 >
                                   {jdFileUploading ? "Extracting..." : "Upload PDF / Image"}
                                 </button>
@@ -2633,7 +2633,7 @@ export default function UploadPage() {
                                   type="button"
                                   onClick={() => void handleRunJdMatch()}
                                   disabled={jdMatchLoading}
-                                  className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="w-full rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                                 >
                                   {jdMatchLoading ? "Matching..." : "Run JD Match"}
                                 </button>
@@ -2886,19 +2886,19 @@ export default function UploadPage() {
                     </div>
 
                     <div className="mt-5 rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm font-semibold text-cyan-100">Interview Prep + Job Apply Kit</p>
                           <p className="mt-1 text-xs text-cyan-50/72">
                             Generate role-targeted mock questions and outreach assets from this analysis.
                           </p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
                           <button
                             type="button"
                             onClick={() => void handleGenerateInterviewPrep()}
                             disabled={interviewPrepLoading}
-                            className="rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60"
+                            className="w-full rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:opacity-60 sm:w-auto"
                           >
                             {interviewPrepLoading ? "Generating..." : "Generate Interview Prep"}
                           </button>
@@ -2906,7 +2906,7 @@ export default function UploadPage() {
                             type="button"
                             onClick={() => void handleGenerateApplicationPack()}
                             disabled={applicationPackLoading}
-                            className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:opacity-60"
+                            className="w-full rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:opacity-60 sm:w-auto"
                           >
                             {applicationPackLoading ? "Generating..." : "Create Job Apply Kit"}
                           </button>
