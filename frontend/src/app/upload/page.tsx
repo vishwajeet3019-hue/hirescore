@@ -1727,7 +1727,7 @@ export default function UploadPage() {
   const handleGenerateApplicationPack = async () => {
     if (!result) return;
     if (!authToken || !authHeader) {
-      setPrepPackError("Login required to generate application pack.");
+      setPrepPackError("Login required to create your job apply kit.");
       return;
     }
     const resumeSource = [
@@ -1739,7 +1739,7 @@ export default function UploadPage() {
       .join("\n")
       .trim();
     if (resumeSource.length < 24) {
-      setPrepPackError("Add your current skills first to generate a personalized application pack.");
+      setPrepPackError("Add your current skills first to create a personalized job apply kit.");
       return;
     }
 
@@ -1769,7 +1769,7 @@ export default function UploadPage() {
       });
       setApplicationPack(payload);
     } catch (error) {
-      setPrepPackError(error instanceof Error ? error.message : "Unable to generate application pack right now.");
+      setPrepPackError(error instanceof Error ? error.message : "Unable to create your job apply kit right now.");
     } finally {
       setApplicationPackLoading(false);
     }
@@ -2883,7 +2883,7 @@ export default function UploadPage() {
                     <div className="mt-5 rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-cyan-100">Interview + Application Pack</p>
+                          <p className="text-sm font-semibold text-cyan-100">Interview Prep + Job Apply Kit</p>
                           <p className="mt-1 text-xs text-cyan-50/72">
                             Generate role-targeted mock questions and outreach assets from this analysis.
                           </p>
@@ -2903,7 +2903,7 @@ export default function UploadPage() {
                             disabled={applicationPackLoading}
                             className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:opacity-60"
                           >
-                            {applicationPackLoading ? "Generating..." : "Generate Application Pack"}
+                            {applicationPackLoading ? "Generating..." : "Create Job Apply Kit"}
                           </button>
                         </div>
                       </div>
@@ -2924,7 +2924,7 @@ export default function UploadPage() {
 
                       {applicationPack && (
                         <div className="mt-4 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
-                          <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/76">Application Pack</p>
+                          <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/76">Job Apply Kit</p>
                           <p className="mt-2 text-xs text-cyan-50/80">Subject: {applicationPack.subject_line}</p>
                           <p className="mt-1 text-xs text-cyan-50/76">LinkedIn: {applicationPack.linkedin_message}</p>
                         </div>
