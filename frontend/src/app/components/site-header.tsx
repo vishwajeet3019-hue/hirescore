@@ -141,7 +141,7 @@ export default function SiteHeader() {
       <div className="border-b border-cyan-100/10 px-3 py-2 sm:px-6 sm:py-2.5">
         <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-100/72 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
           <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.88)]" />
-          Precision shortlist prediction platform for every role
+          Resume assessment and optimization platform for every role
         </p>
       </div>
 
@@ -149,7 +149,7 @@ export default function SiteHeader() {
         <Link href="/" className="group">
           <BrandLogo
             intro
-            subtitle="Interview Calls Made Easier"
+            subtitle="Professional Resume Assessment"
             titleClassName="font-mono text-sm tracking-wide sm:text-xl"
             subtitleClassName="text-[10px] tracking-[0.16em] sm:text-xs sm:tracking-[0.26em]"
           />
@@ -208,13 +208,13 @@ export default function SiteHeader() {
               onClick={() => {
                 trackEvent("cta_check_my_score_click", {
                   cta_location: "header",
-                  cta_label: "Check My Score (Free)",
+                  cta_label: "Start Assessment",
                 });
               }}
               className="rounded-xl border border-cyan-100/44 bg-gradient-to-r from-cyan-300/22 via-cyan-200/20 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-50 shadow-[0_10px_26px_rgba(21,128,255,0.24)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
             >
               <span className="sm:hidden">Analyze</span>
-              <span className="hidden sm:inline">Check My Score (Free)</span>
+              <span className="hidden sm:inline">Start Assessment</span>
             </Link>
           )}
         </div>

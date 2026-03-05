@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Space_Grotesk } from "next/font/google";
 import AppChrome from "./components/app-chrome";
 import MotionProvider from "./components/motion-provider";
+import PerformanceAdapter from "./components/performance-adapter";
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
@@ -85,6 +86,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${spaceGrotesk.variable} antialiased overflow-x-hidden`}>
+        <PerformanceAdapter />
         {GA_MEASUREMENT_ID ? (
           <>
             <Script

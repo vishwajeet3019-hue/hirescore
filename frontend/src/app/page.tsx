@@ -143,37 +143,37 @@ export default function Home() {
             <div>
               <p className="inline-flex items-center gap-2 rounded-full glow-chip px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-cyan-100/82 sm:px-4 sm:text-xs sm:tracking-[0.28em]">
                 <span className="live-dot" />
-                AI Conversion Intelligence
+                Professional Resume Assessment
               </p>
 
               <h1 className="mt-5 text-3xl font-semibold leading-[1.06] text-cyan-50 sm:mt-6 sm:text-5xl lg:text-6xl">
-                Turn Resume Noise
+                Make Resume Quality
                 <span className="block bg-gradient-to-r from-cyan-100 via-cyan-300 to-amber-100 bg-clip-text text-transparent">
-                  Into Interview Signals
+                  Measurable and Actionable
                 </span>
               </h1>
 
               <p className="mt-6 max-w-2xl text-sm leading-relaxed text-cyan-50/74 sm:text-base">
-                Know where your profile wins, where it leaks conversion, and what exact moves increase shortlist probability in your target market.
+                Evaluate role-fit, identify high-impact gaps, and follow a clear improvement plan for stronger shortlisting outcomes.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3 sm:mt-10 sm:gap-4">
                 <TrackedLink
                   href="/upload"
                   eventName="cta_check_my_score_click"
-                  eventParams={{ cta_location: "home_hero", cta_label: "Run Live Analysis" }}
+                  eventParams={{ cta_location: "home_hero", cta_label: "Start Assessment" }}
                   className="w-full rounded-2xl border border-cyan-100/40 bg-gradient-to-r from-cyan-300/30 via-cyan-200/28 to-amber-100/18 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
                 >
-                  Run Live Analysis
+                  Start Assessment
                 </TrackedLink>
 
                 <TrackedLink
                   href="/pricing"
                   eventName="cta_view_premium_plans_click"
-                  eventParams={{ cta_location: "home_hero", cta_label: "See Premium Stack" }}
+                  eventParams={{ cta_location: "home_hero", cta_label: "View Plans" }}
                   className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
                 >
-                  See Premium Stack
+                  View Plans
                 </TrackedLink>
               </div>
 
@@ -356,7 +356,7 @@ export default function Home() {
 
       <section className="mx-auto mt-14 max-w-7xl">
         <div className="neon-panel holo-sheen rounded-[2rem] p-6 text-center sm:p-10">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/62 sm:text-xs sm:tracking-[0.26em]">Monetization Promise</p>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/62 sm:text-xs sm:tracking-[0.26em]">Platform Value</p>
           <h3 className="mx-auto mt-3 max-w-3xl text-2xl font-semibold text-cyan-50 sm:text-4xl">
             You are not paying for a resume editor. You are paying for a higher probability of getting shortlisted.
           </h3>

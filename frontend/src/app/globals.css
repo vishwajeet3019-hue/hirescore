@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #05070d;
-  --foreground: #e7f1ff;
-  --surface: rgba(10, 16, 30, 0.82);
-  --surface-strong: rgba(6, 12, 24, 0.94);
-  --line: rgba(93, 121, 169, 0.18);
-  --accent: #29dfd0;
-  --accent-warm: #ffd18f;
-  --accent-rich: #5f9dff;
+  --background: #f3f5f8;
+  --foreground: #0f172a;
+  --surface: rgba(255, 255, 255, 0.9);
+  --surface-strong: rgba(255, 255, 255, 0.97);
+  --line: rgba(51, 65, 85, 0.1);
+  --accent: #2563eb;
+  --accent-warm: #475569;
+  --accent-rich: #1e293b;
 }
 
 @theme inline {
@@ -16,29 +16,29 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans-ui), "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-mono: "IBM Plex Mono", "Menlo", "Consolas", monospace;
-  --color-cyan-50: #eef8ff;
-  --color-cyan-100: #c9ebff;
-  --color-cyan-200: #95ddff;
-  --color-cyan-300: #56c8ff;
-  --color-cyan-400: #2baeff;
-  --color-amber-50: #fff3d8;
-  --color-amber-100: #ffdca6;
-  --color-amber-200: #ffc879;
-  --color-emerald-50: #e2fff3;
-  --color-emerald-100: #9af4d3;
-  --color-emerald-200: #54e0b7;
+  --color-cyan-50: #0f172a;
+  --color-cyan-100: #334155;
+  --color-cyan-200: #475569;
+  --color-cyan-300: #64748b;
+  --color-cyan-400: #94a3b8;
+  --color-amber-50: #1f2937;
+  --color-amber-100: #4b5563;
+  --color-amber-200: #6b7280;
+  --color-emerald-50: #14532d;
+  --color-emerald-100: #166534;
+  --color-emerald-200: #047857;
 }
 
 html {
-  background: #05070d;
+  background: #f3f5f8;
 }
 
 body {
   background:
-    radial-gradient(circle at 12% 10%, rgba(69, 111, 191, 0.25), transparent 36%),
-    radial-gradient(circle at 88% 8%, rgba(41, 223, 208, 0.18), transparent 34%),
-    radial-gradient(circle at 78% 88%, rgba(255, 209, 143, 0.13), transparent 36%),
-    linear-gradient(142deg, #04060c 0%, #071122 48%, #040811 100%);
+    radial-gradient(circle at 12% 10%, rgba(148, 163, 184, 0.25), transparent 36%),
+    radial-gradient(circle at 88% 8%, rgba(191, 219, 254, 0.22), transparent 34%),
+    radial-gradient(circle at 78% 88%, rgba(226, 232, 240, 0.5), transparent 36%),
+    linear-gradient(142deg, #f8fafc 0%, #eef2f7 46%, #e2e8f0 100%);
   color: var(--foreground);
   font-family: var(--font-sans-ui), "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   min-height: 100vh;
@@ -50,9 +50,9 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.26;
-  background-image: radial-gradient(rgba(170, 211, 255, 0.19) 0.8px, transparent 0.8px);
-  background-size: 9px 9px;
+  opacity: 0.12;
+  background-image: radial-gradient(rgba(71, 85, 105, 0.14) 0.7px, transparent 0.7px);
+  background-size: 10px 10px;
   z-index: -2;
 }
 
@@ -61,9 +61,8 @@ body::after {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at 30% 30%, rgba(139, 183, 255, 0.06), transparent 45%);
-  animation: ambientOrbit 18s ease-in-out infinite;
-  opacity: 0.95;
+  background: radial-gradient(circle at 24% 24%, rgba(148, 163, 184, 0.16), transparent 48%);
+  opacity: 0.8;
   z-index: -1;
 }
 
@@ -75,24 +74,20 @@ body::after {
     linear-gradient(to bottom, var(--line) 1px, transparent 1px);
   background-size: 68px 68px;
   transform: perspective(900px) rotateX(62deg);
-  opacity: 0.22;
-  animation: gridBreath 18s ease-in-out infinite;
+  opacity: 0.12;
 }
 
 .neon-panel {
   background: linear-gradient(
     150deg,
-    rgba(14, 23, 40, 0.9) 0%,
-    rgba(10, 18, 33, 0.92) 54%,
-    rgba(8, 15, 30, 0.94) 100%
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(248, 250, 252, 0.96) 54%,
+    rgba(241, 245, 249, 0.96) 100%
   );
-  border: 1px solid rgba(122, 175, 255, 0.24);
+  border: 1px solid rgba(148, 163, 184, 0.28);
   box-shadow:
-    inset 0 0 0 1px rgba(170, 223, 255, 0.08),
-    0 20px 52px rgba(1, 6, 18, 0.58),
-    0 0 55px rgba(36, 152, 255, 0.12);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 18px 42px rgba(15, 23, 42, 0.09);
   transform: translateZ(0);
   backface-visibility: hidden;
   contain: paint;
@@ -101,16 +96,13 @@ body::after {
 
 .premium-panel {
   background:
-    radial-gradient(circle at 14% 18%, rgba(89, 143, 255, 0.2), transparent 36%),
-    radial-gradient(circle at 88% 14%, rgba(255, 209, 143, 0.14), transparent 38%),
-    linear-gradient(145deg, rgba(9, 17, 31, 0.94) 0%, rgba(7, 14, 27, 0.94) 58%, rgba(5, 11, 22, 0.95) 100%);
-  border: 1px solid rgba(118, 175, 255, 0.27);
+    radial-gradient(circle at 14% 18%, rgba(148, 163, 184, 0.18), transparent 36%),
+    radial-gradient(circle at 88% 14%, rgba(191, 219, 254, 0.2), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 58%, rgba(241, 245, 249, 0.97) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.3);
   box-shadow:
-    inset 0 0 0 1px rgba(184, 230, 255, 0.08),
-    0 24px 60px rgba(1, 7, 20, 0.62),
-    0 0 60px rgba(48, 154, 255, 0.13);
-  -webkit-backdrop-filter: blur(9px);
-  backdrop-filter: blur(9px);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
+    0 22px 56px rgba(15, 23, 42, 0.1);
   transform: translateZ(0);
   backface-visibility: hidden;
   contain: paint;
@@ -119,16 +111,13 @@ body::after {
 
 .studio-bright-panel {
   background:
-    radial-gradient(circle at 12% 18%, rgba(77, 149, 255, 0.19), transparent 34%),
-    radial-gradient(circle at 88% 16%, rgba(255, 211, 156, 0.14), transparent 36%),
-    linear-gradient(145deg, rgba(15, 26, 44, 0.93) 0%, rgba(10, 19, 34, 0.92) 52%, rgba(8, 16, 30, 0.93) 100%);
-  border: 1px solid rgba(128, 182, 255, 0.3);
+    radial-gradient(circle at 12% 18%, rgba(203, 213, 225, 0.36), transparent 34%),
+    radial-gradient(circle at 88% 16%, rgba(191, 219, 254, 0.28), transparent 36%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 52%, rgba(241, 245, 249, 0.97) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.3);
   box-shadow:
-    inset 0 0 0 1px rgba(194, 232, 255, 0.08),
-    0 22px 52px rgba(2, 8, 23, 0.56),
-    0 0 60px rgba(76, 169, 255, 0.12);
-  -webkit-backdrop-filter: blur(9px);
-  backdrop-filter: blur(9px);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
+    0 20px 46px rgba(15, 23, 42, 0.08);
   transform: translateZ(0);
   backface-visibility: hidden;
   contain: paint;
@@ -136,11 +125,11 @@ body::after {
 }
 
 .studio-soft-card {
-  background: linear-gradient(150deg, rgba(12, 23, 40, 0.9), rgba(8, 18, 34, 0.9));
-  border: 1px solid rgba(119, 176, 255, 0.22);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.95));
+  border: 1px solid rgba(148, 163, 184, 0.26);
   box-shadow:
-    inset 0 0 0 1px rgba(190, 230, 255, 0.08),
-    0 18px 38px rgba(2, 8, 20, 0.5);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
+    0 14px 34px rgba(15, 23, 42, 0.08);
 }
 
 .holo-sheen {
@@ -157,15 +146,15 @@ body::after {
 .aurora-strip {
   position: relative;
   overflow: hidden;
-  background: rgba(70, 163, 255, 0.16);
-  box-shadow: 0 0 14px rgba(41, 223, 208, 0.24);
+  background: rgba(148, 163, 184, 0.2);
+  box-shadow: 0 0 10px rgba(148, 163, 184, 0.2);
 }
 
 .aurora-strip::after {
   content: "";
   position: absolute;
   inset: -120% -45%;
-  background: linear-gradient(90deg, rgba(67, 121, 255, 0.04), rgba(255, 209, 143, 0.45), rgba(41, 223, 208, 0.1));
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.02), rgba(148, 163, 184, 0.36), rgba(148, 163, 184, 0.02));
   transform: translateX(-34%);
   animation: auroraPulse10 6.2s linear infinite alternate;
   will-change: transform, opacity;
@@ -181,10 +170,10 @@ body::after {
   right: 8px;
   height: 24px;
   border-radius: 0.8rem;
-  background: linear-gradient(180deg, rgba(184, 231, 255, 0.78), rgba(71, 155, 255, 0.22));
+  background: linear-gradient(180deg, rgba(226, 232, 240, 0.86), rgba(148, 163, 184, 0.24));
   box-shadow:
-    0 0 24px rgba(58, 153, 255, 0.36),
-    inset 0 0 12px rgba(255, 255, 255, 0.35);
+    0 0 20px rgba(148, 163, 184, 0.22),
+    inset 0 0 12px rgba(255, 255, 255, 0.45);
   animation: beamSweepDown 5.2s ease-in-out infinite;
   pointer-events: none;
 }
@@ -203,7 +192,7 @@ body::after {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(circle at 82% 18%, rgba(157, 239, 255, 0.14), transparent 38%);
+  background: radial-gradient(circle at 82% 18%, rgba(148, 163, 184, 0.2), transparent 42%);
   animation: statCardBreathe 6.4s ease-in-out infinite;
   transform-origin: center;
   will-change: transform, opacity;
@@ -219,15 +208,15 @@ body::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(155, 245, 255, 0.45) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.32) 50%, transparent 100%);
   transform: translateX(-100%);
   animation: signalSweep 3s ease-in-out infinite;
 }
 
 .glow-chip {
-  border: 1px solid rgba(128, 179, 255, 0.34);
-  background: rgba(9, 21, 38, 0.72);
-  box-shadow: inset 0 0 26px rgba(67, 145, 255, 0.13);
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 0 18px rgba(148, 163, 184, 0.12);
 }
 
 .live-dot {
@@ -235,7 +224,7 @@ body::after {
   height: 10px;
   border-radius: 999px;
   background: var(--accent);
-  box-shadow: 0 0 16px rgba(41, 223, 208, 0.82);
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.45);
 }
 
 .hero-radar {
@@ -243,15 +232,14 @@ body::after {
   width: min(100%, 420px);
   aspect-ratio: 1 / 1;
   border-radius: 999px;
-  border: 1px solid rgba(122, 183, 255, 0.26);
+  border: 1px solid rgba(148, 163, 184, 0.3);
   background:
-    radial-gradient(circle at center, rgba(41, 223, 208, 0.22), transparent 40%),
-    radial-gradient(circle at 20% 18%, rgba(95, 157, 255, 0.22), transparent 45%),
-    linear-gradient(150deg, rgba(7, 15, 29, 0.86), rgba(9, 20, 38, 0.92));
+    radial-gradient(circle at center, rgba(191, 219, 254, 0.45), transparent 40%),
+    radial-gradient(circle at 20% 18%, rgba(226, 232, 240, 0.7), transparent 45%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.96));
   box-shadow:
-    inset 0 0 0 1px rgba(182, 227, 255, 0.1),
-    0 28px 70px rgba(2, 8, 22, 0.6),
-    0 0 70px rgba(37, 132, 255, 0.16);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
+    0 20px 42px rgba(15, 23, 42, 0.1);
   overflow: hidden;
 }
 
@@ -261,19 +249,19 @@ body::after {
   position: absolute;
   inset: 10%;
   border-radius: inherit;
-  border: 1px solid rgba(152, 206, 255, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.4);
   pointer-events: none;
 }
 
 .hero-radar::after {
   inset: 28%;
-  border-color: rgba(255, 208, 142, 0.38);
+  border-color: rgba(148, 163, 184, 0.46);
 }
 
 .hero-radar-sweep {
   position: absolute;
   inset: -34%;
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(110, 196, 255, 0.44) 18deg, transparent 74deg);
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(59, 130, 246, 0.22) 18deg, transparent 74deg);
   animation: radarSpin 5.2s linear infinite;
   pointer-events: none;
 }
@@ -286,17 +274,17 @@ body::after {
   height: 18px;
   border-radius: 999px;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.96) 0%, rgba(41, 223, 208, 0.95) 52%, rgba(95, 157, 255, 0.88) 100%);
-  box-shadow: 0 0 24px rgba(41, 223, 208, 0.72), 0 0 54px rgba(95, 157, 255, 0.5);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.96) 0%, rgba(96, 165, 250, 0.9) 60%, rgba(30, 58, 138, 0.72) 100%);
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.5), 0 0 32px rgba(59, 130, 246, 0.34);
   animation: radarPulse 2.6s ease-in-out infinite;
 }
 
 .hero-floating-chip {
   position: absolute;
   min-width: 134px;
-  border: 1px solid rgba(129, 188, 255, 0.36);
-  background: linear-gradient(145deg, rgba(16, 30, 53, 0.94), rgba(8, 17, 35, 0.92));
-  box-shadow: 0 14px 36px rgba(2, 8, 22, 0.46);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.96));
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
   border-radius: 0.9rem;
   padding: 0.65rem 0.7rem;
   animation: chipFloat 4.8s ease-in-out infinite;
@@ -316,22 +304,21 @@ body::after {
 
 .premium-hover-card:hover {
   transform: translateY(-5px);
-  border-color: rgba(139, 206, 255, 0.42);
-  box-shadow: 0 20px 46px rgba(2, 8, 22, 0.58), 0 0 34px rgba(48, 154, 255, 0.16);
+  border-color: rgba(100, 116, 139, 0.42);
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
 }
 
 .cockpit-surface {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(124, 184, 255, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.28);
   background:
-    radial-gradient(circle at 14% 12%, rgba(111, 178, 255, 0.2), transparent 36%),
-    radial-gradient(circle at 86% 16%, rgba(255, 214, 150, 0.12), transparent 40%),
-    linear-gradient(145deg, rgba(9, 19, 35, 0.94) 0%, rgba(7, 15, 30, 0.94) 54%, rgba(6, 12, 24, 0.95) 100%);
+    radial-gradient(circle at 14% 12%, rgba(226, 232, 240, 0.8), transparent 36%),
+    radial-gradient(circle at 86% 16%, rgba(191, 219, 254, 0.42), transparent 40%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 54%, rgba(241, 245, 249, 0.97) 100%);
   box-shadow:
-    inset 0 0 0 1px rgba(186, 231, 255, 0.08),
-    0 24px 60px rgba(2, 8, 22, 0.56),
-    0 0 56px rgba(46, 149, 255, 0.12);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 18px 42px rgba(15, 23, 42, 0.1);
   isolation: isolate;
 }
 
@@ -339,7 +326,7 @@ body::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(118deg, transparent 10%, rgba(194, 240, 255, 0.1) 48%, transparent 86%);
+  background: linear-gradient(118deg, transparent 10%, rgba(148, 163, 184, 0.12) 48%, transparent 86%);
   transform: translate3d(-128%, 0, 0);
   animation: cockpitSweep 8.6s linear infinite;
   pointer-events: none;
@@ -348,16 +335,16 @@ body::after {
 .cockpit-kpi-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(134, 193, 255, 0.28);
-  background: linear-gradient(154deg, rgba(15, 31, 54, 0.86), rgba(8, 18, 35, 0.9));
-  box-shadow: 0 18px 38px rgba(2, 8, 21, 0.48);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(154deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
 }
 
 .cockpit-kpi-card::after {
   content: "";
   position: absolute;
   inset: -120% -48%;
-  background: linear-gradient(96deg, rgba(95, 156, 255, 0.03), rgba(255, 211, 142, 0.26), rgba(41, 223, 208, 0.06));
+  background: linear-gradient(96deg, rgba(148, 163, 184, 0.04), rgba(203, 213, 225, 0.3), rgba(148, 163, 184, 0.04));
   transform: translateX(-26%);
   animation: cockpitKpiFloat 6.4s ease-in-out infinite;
   pointer-events: none;
@@ -366,9 +353,9 @@ body::after {
 .cockpit-action-tile {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(127, 189, 255, 0.32);
-  background: linear-gradient(150deg, rgba(14, 29, 50, 0.88), rgba(8, 18, 34, 0.92));
-  box-shadow: 0 16px 34px rgba(2, 7, 20, 0.46);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.97), rgba(241, 245, 249, 0.95));
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
   transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
 }
 
@@ -376,14 +363,14 @@ body::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 86% 18%, rgba(172, 229, 255, 0.14), transparent 48%);
+  background: radial-gradient(circle at 86% 18%, rgba(203, 213, 225, 0.26), transparent 48%);
   pointer-events: none;
 }
 
 .cockpit-action-tile:hover {
   transform: translateY(-4px);
-  border-color: rgba(152, 215, 255, 0.46);
-  box-shadow: 0 22px 46px rgba(2, 8, 22, 0.56), 0 0 28px rgba(47, 152, 255, 0.16);
+  border-color: rgba(100, 116, 139, 0.42);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.12);
 }
 
 .analysis-live-shell {
@@ -415,7 +402,7 @@ body::after {
     rgba(133, 255, 226, 0.14),
     rgba(129, 239, 255, 0.1)
   );
-  filter: blur(14px);
+  filter: blur(10px);
   animation: analysisShellSpin 22s linear infinite;
   pointer-events: none;
   will-change: transform;
@@ -621,7 +608,7 @@ body::after {
     rgba(93, 208, 255, 0.28),
     rgba(116, 232, 255, 0.34)
   );
-  filter: blur(18px);
+  filter: blur(12px);
   opacity: 0.24;
   transform: rotate(0deg);
   animation: orbitTint 26s linear infinite;
@@ -666,7 +653,7 @@ body::after {
     rgba(255, 220, 137, 0.1),
     rgba(123, 236, 255, 0.12)
   );
-  filter: blur(14px);
+  filter: blur(10px);
   animation: authShellSpin 22s linear infinite;
   transform: translateZ(0);
   will-change: transform;
@@ -701,7 +688,7 @@ body::after {
   width: 150px;
   height: 150px;
   background: radial-gradient(circle, rgba(118, 240, 255, 0.2) 0%, rgba(255, 125, 217, 0.1) 45%, transparent 72%);
-  filter: blur(2px);
+  filter: blur(1px);
   animation: authHaloBreathe 6.2s ease-in-out infinite;
 }
 
@@ -807,6 +794,8 @@ body::after {
 }
 
 @media (max-width: 1024px), (hover: none), (pointer: coarse) {
+  body::after,
+  .futuristic-grid,
   .analysis-live-shell::before,
   .analysis-live-shell::after,
   .analysis-live-grid,
@@ -824,6 +813,11 @@ body::after {
   .auth-live-arc,
   .auth-live-spark,
   .auth-live-core-dot,
+  .hero-radar-sweep,
+  .hero-radar-core,
+  .hero-floating-chip,
+  .cockpit-surface::before,
+  .cockpit-kpi-card::after,
   .aurora-strip::after,
   .signal-line::after,
   .ring-spin {
@@ -884,6 +878,8 @@ body.performance-lite .animate-orbital,
 body.performance-lite .animate-drift,
 body.performance-lite .animate-pulse-ring,
 body.performance-lite .ring-spin,
+body.performance-lite::after,
+body.performance-lite .futuristic-grid,
 body.performance-lite .signal-line::after,
 body.performance-lite .aurora-strip::after,
 body.performance-lite .analysis-live-shell::before,
@@ -902,8 +898,21 @@ body.performance-lite .auth-live-wave,
 body.performance-lite .auth-live-orb,
 body.performance-lite .auth-live-arc,
 body.performance-lite .auth-live-spark,
-body.performance-lite .auth-live-core-dot {
+body.performance-lite .auth-live-core-dot,
+body.performance-lite .hero-radar-sweep,
+body.performance-lite .hero-radar-core,
+body.performance-lite .hero-floating-chip,
+body.performance-lite .cockpit-surface::before,
+body.performance-lite .cockpit-kpi-card::after {
   animation: none !important;
+}
+
+body.performance-lite::after {
+  opacity: 0.58 !important;
+}
+
+body.performance-lite .futuristic-grid {
+  opacity: 0.14 !important;
 }
 
 body.performance-lite .analysis-live-shell::before,
@@ -919,7 +928,9 @@ body.performance-lite .studio-soft-card,
 body.performance-lite .analysis-orbit-card,
 body.performance-lite .analysis-live-shell,
 body.performance-lite .auth-live-shell {
-  box-shadow: none !important;
+  box-shadow: 0 12px 30px rgba(2, 8, 22, 0.35) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 @keyframes ambientOrbit {
@@ -1543,7 +1554,7 @@ body.performance-lite .auth-live-shell {
     rgba(52, 211, 153, 0.26),
     rgba(164, 243, 255, 0.1)
   );
-  filter: blur(14px);
+  filter: blur(10px);
   opacity: 0;
   pointer-events: none;
   animation: logoIntroAura 5s linear 1 both;

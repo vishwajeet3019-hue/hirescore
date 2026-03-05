@@ -553,9 +553,9 @@ export default function DashboardPage() {
           <div className="relative z-10 grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/72">Post-Login Experience</p>
-              <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">HireScore Growth Cockpit</h1>
+              <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">HireScore Candidate Dashboard</h1>
               <p className="mt-2 max-w-3xl text-sm text-cyan-50/72">
-                Built to persuade action: clear momentum, clear execution, clear ROI.
+                Track analysis results, roadmap progress, and account usage in one professional workspace.
               </p>
               <div className="aurora-strip mt-4 h-1.5 rounded-full" />
             </div>
@@ -600,13 +600,13 @@ export default function DashboardPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded-full border border-cyan-100/35 bg-cyan-100/10 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-100/84">
-                        Conversion Mode
+                        Dashboard View
                       </span>
                       <span className="rounded-full border border-amber-100/34 bg-amber-100/10 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-amber-100/86">
-                        Active Buyer Journey
+                        Professional Workflow
                       </span>
                     </div>
-                    <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Let’s convert profile quality into real interview demand.</h2>
+                    <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Track profile quality and execution progress.</h2>
                     <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cyan-100/74">Profile: {email || "User"}</p>
                     <p className="mt-2 text-sm text-cyan-50/74">
                       {nextMilestone
@@ -634,7 +634,7 @@ export default function DashboardPage() {
                   </div>
 
                   <article className="analysis-live-shell rounded-[1.5rem] p-4 sm:p-5">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/78">Live Signal Engine</p>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/78">Analysis Snapshot</p>
                     <p className="mt-2 text-sm font-semibold text-cyan-50">
                       {analysisComparison?.latest ? `${analysisComparison.latest.role || "Latest role"} forecast` : "Awaiting first run"}
                     </p>
@@ -688,7 +688,7 @@ export default function DashboardPage() {
                     )}
                   </article>
                   <article className="cockpit-kpi-card rounded-2xl p-4">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/80">Upgrade Signal</p>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/80">Usage Insight</p>
                     <p className="mt-1 text-sm font-semibold text-cyan-50">More runs = sharper positioning = higher shortlist odds.</p>
                     <p className="mt-1 text-xs text-cyan-100/74">{premiumNudgeText}</p>
                   </article>
@@ -696,8 +696,8 @@ export default function DashboardPage() {
               </section>
 
               <aside className="cockpit-surface xl:col-span-4 rounded-[2rem] p-5 sm:p-6">
-                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/76">Premium Advantage</p>
-                <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Increase Interview Velocity</h3>
+                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/76">Credit & Usage</p>
+                <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Improve Interview Readiness</h3>
                 <p className="mt-2 text-sm text-cyan-50/82">
                   Purchase credits to run focused analyses weekly, keep roadmap momentum, and improve callback conversion faster.
                 </p>
@@ -836,11 +836,11 @@ export default function DashboardPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Workspace Navigator</p>
-                  <h2 className="mt-2 text-xl font-semibold text-cyan-50">Choose Your Execution Lane</h2>
+                  <h2 className="mt-2 text-xl font-semibold text-cyan-50">Choose Your Workspace</h2>
                   <p className="mt-1 text-sm text-cyan-50/70">
                     {featureFlags.roadmap_prompt_variant === "B"
                       ? "Switch between roadmap execution and report downloads based on your current objective."
-                      : "Use focused workspace modes to keep actions clear and high-converting."}
+                      : "Use focused workspace modes to keep actions clear and measurable."}
                   </p>
                 </div>
                 <div className="flex rounded-xl border border-cyan-100/24 bg-cyan-100/8 p-1">

@@ -14,7 +14,7 @@ export default function BrandLogo({
   className = "",
   titleClassName = "",
   subtitleClassName = "",
-  subtitle = "Interview Calls Made Easier",
+  subtitle = "Professional Resume Assessment",
   intro = false,
 }: BrandLogoProps) {
   const [introActive, setIntroActive] = useState(false);
