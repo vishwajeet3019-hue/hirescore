@@ -466,7 +466,7 @@ export default function DashboardPage() {
     ? `Top ${Math.max(1, 100 - roleBenchmark.percentile)}% gap left to dominate your bracket.`
     : "Get premium role benchmarks and conversion signals with more runs.";
 
-  const cardClass = "premium-hover-card analysis-orbit-card rounded-3xl p-5";
+  const cardClass = "premium-hover-card neon-panel rounded-3xl p-5";
 
   return (
     <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
@@ -832,7 +832,7 @@ export default function DashboardPage() {
               </article>
             </section>
 
-            <section className="mt-6 rounded-[2rem] border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(8,29,55,0.84),rgba(5,18,36,0.82))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
+            <section className="mt-6 rounded-[2rem] border border-cyan-100/22 bg-cyan-100/6 p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Workspace Navigator</p>
@@ -869,7 +869,7 @@ export default function DashboardPage() {
         )}
 
         {!loading && !error && activeWorkspace === "roadmaps" && (
-          <section className="mt-6 rounded-[2rem] border border-emerald-100/24 bg-[linear-gradient(145deg,rgba(8,39,47,0.86),rgba(6,20,30,0.9))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
+          <section className="mt-6 rounded-[2rem] border border-emerald-100/24 bg-emerald-100/6 p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
             <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/80">Roadmap Tracking</p>
             <h2 className="mt-2 text-xl font-semibold text-cyan-50">Growth Roadmap Engine</h2>
 
@@ -1080,7 +1080,7 @@ export default function DashboardPage() {
         )}
 
         {!loading && !error && activeWorkspace === "reports" && (
-          <section className="mt-6 rounded-[2rem] border border-amber-100/28 bg-[linear-gradient(145deg,rgba(45,33,14,0.78),rgba(13,20,33,0.92))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
+          <section className="mt-6 rounded-[2rem] border border-amber-100/28 bg-amber-100/7 p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
             <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/76">Saved Analysis Reports</p>
             <h2 className="mt-2 text-xl font-semibold text-cyan-50">Offer Intelligence Archive</h2>
             <p className="mt-1 text-sm text-cyan-50/70">Each analysis is auto-saved to your account dashboard.</p>

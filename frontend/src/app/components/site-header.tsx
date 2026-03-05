@@ -137,8 +137,8 @@ export default function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-cyan-200/12 bg-[#050a17]/86 backdrop-blur-xl">
-      <div className="border-b border-cyan-100/10 px-3 py-2 sm:px-6 sm:py-2.5">
+    <header className="sticky top-0 z-50 border-b border-cyan-100/18 bg-white/90 backdrop-blur-xl">
+      <div className="border-b border-cyan-100/14 px-3 py-2 sm:px-6 sm:py-2.5">
         <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-100/72 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
           <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.88)]" />
           Resume assessment and optimization platform for every role
@@ -220,7 +220,7 @@ export default function SiteHeader() {
         </div>
       </div>
 
-      <div className="border-t border-cyan-100/10 px-3 py-2 md:hidden">
+      <div className="border-t border-cyan-100/14 px-3 py-2 md:hidden">
         <nav className="mx-auto flex w-full max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-cyan-50/82">
           {navLinks.map((link) => {
             const active = isLinkActive(pathname, hash, link);

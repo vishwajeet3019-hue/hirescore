@@ -376,16 +376,15 @@ body::after {
 .analysis-live-shell {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(150, 232, 255, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.34);
   background:
-    radial-gradient(circle at 12% 8%, rgba(116, 230, 255, 0.18), transparent 40%),
-    radial-gradient(circle at 88% 14%, rgba(121, 150, 255, 0.2), transparent 44%),
-    radial-gradient(circle at 50% 100%, rgba(109, 252, 227, 0.12), transparent 44%),
-    linear-gradient(150deg, rgba(6, 24, 48, 0.95) 0%, rgba(8, 20, 44, 0.94) 48%, rgba(9, 34, 58, 0.95) 100%);
+    radial-gradient(circle at 12% 8%, rgba(203, 213, 225, 0.42), transparent 40%),
+    radial-gradient(circle at 88% 14%, rgba(191, 219, 254, 0.34), transparent 44%),
+    radial-gradient(circle at 50% 100%, rgba(226, 232, 240, 0.35), transparent 44%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 48%, rgba(241, 245, 249, 0.97) 100%);
   box-shadow:
-    inset 0 0 0 1px rgba(202, 244, 255, 0.14),
-    0 34px 90px rgba(2, 8, 22, 0.64),
-    0 0 62px rgba(99, 214, 255, 0.18);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 16px 38px rgba(15, 23, 42, 0.12);
   transform: translateZ(0);
   will-change: transform, opacity;
 }
@@ -396,11 +395,11 @@ body::after {
   inset: -42%;
   background: conic-gradient(
     from 0deg,
-    rgba(129, 239, 255, 0.1),
-    rgba(122, 143, 255, 0.2),
-    rgba(123, 239, 255, 0.1),
-    rgba(133, 255, 226, 0.14),
-    rgba(129, 239, 255, 0.1)
+    rgba(148, 163, 184, 0.08),
+    rgba(148, 163, 184, 0.16),
+    rgba(148, 163, 184, 0.08),
+    rgba(191, 219, 254, 0.16),
+    rgba(148, 163, 184, 0.08)
   );
   filter: blur(10px);
   animation: analysisShellSpin 22s linear infinite;
@@ -412,7 +411,7 @@ body::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(110deg, transparent 12%, rgba(194, 246, 255, 0.2) 50%, transparent 88%);
+  background: linear-gradient(110deg, transparent 12%, rgba(148, 163, 184, 0.18) 50%, transparent 88%);
   transform: translate3d(-124%, 0, 0);
   animation: analysisShellSweep 7.6s linear infinite;
   pointer-events: none;
@@ -427,11 +426,11 @@ body::after {
   position: absolute;
   width: 210px;
   height: 210px;
-  border: 1px solid rgba(162, 236, 255, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.36);
   border-radius: 2rem;
   background-image:
-    linear-gradient(to right, rgba(136, 221, 255, 0.14) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(136, 221, 255, 0.12) 1px, transparent 1px);
+    linear-gradient(to right, rgba(100, 116, 139, 0.18) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(100, 116, 139, 0.16) 1px, transparent 1px);
   background-size: 18px 18px;
   transform: rotate(45deg);
   opacity: 0.32;
@@ -466,7 +465,7 @@ body::after {
 .analysis-live-wave {
   position: absolute;
   border-radius: 999px;
-  border: 1px solid rgba(156, 236, 255, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.42);
   pointer-events: none;
   will-change: transform, opacity;
 }
@@ -486,7 +485,7 @@ body::after {
 .analysis-live-ring {
   position: absolute;
   border-radius: 999px;
-  border: 1px solid rgba(167, 239, 255, 0.46);
+  border: 1px solid rgba(100, 116, 139, 0.42);
   pointer-events: none;
   transform: translateZ(0);
   will-change: transform, opacity;
@@ -501,14 +500,14 @@ body::after {
 .analysis-live-ring-mid {
   width: 102px;
   height: 102px;
-  border-color: rgba(132, 177, 255, 0.66);
+  border-color: rgba(71, 85, 105, 0.52);
   animation: analysisRingCounterSpin 5.4s linear infinite;
 }
 
 .analysis-live-ring-inner {
   width: 66px;
   height: 66px;
-  border-color: rgba(143, 255, 230, 0.72);
+  border-color: rgba(59, 130, 246, 0.5);
   animation: analysisRingSpin 4.2s linear infinite;
 }
 
@@ -517,7 +516,7 @@ body::after {
   width: 146px;
   height: 16px;
   border-radius: 999px;
-  background: linear-gradient(90deg, transparent 0%, rgba(198, 245, 255, 0.95) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(148, 163, 184, 0.7) 50%, transparent 100%);
   opacity: 0;
   animation: analysisBeamSweep 4.4s ease-in-out infinite;
   pointer-events: none;
@@ -529,8 +528,8 @@ body::after {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, rgba(167, 241, 255, 0.96) 48%, rgba(131, 165, 255, 0.92) 100%);
-  box-shadow: 0 0 12px rgba(146, 233, 255, 0.78);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, rgba(148, 163, 184, 0.86) 48%, rgba(71, 85, 105, 0.82) 100%);
+  box-shadow: 0 0 10px rgba(100, 116, 139, 0.38);
   transform-origin: 0 0;
   pointer-events: none;
   will-change: transform;
@@ -552,11 +551,11 @@ body::after {
   width: 62px;
   height: 62px;
   border-radius: 999px;
-  border: 1px solid rgba(171, 242, 255, 0.6);
-  background: radial-gradient(circle, rgba(24, 55, 86, 0.96) 0%, rgba(11, 29, 54, 0.95) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.96) 100%);
   box-shadow:
-    0 0 0 1px rgba(195, 246, 255, 0.12),
-    0 0 22px rgba(127, 228, 255, 0.3);
+    0 0 0 1px rgba(255, 255, 255, 0.5),
+    0 0 16px rgba(148, 163, 184, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -567,7 +566,7 @@ body::after {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: rgba(218, 248, 255, 0.96);
+  color: rgba(30, 41, 59, 0.95);
 }
 
 .analysis-live-step {
@@ -577,22 +576,21 @@ body::after {
 
 .analysis-live-step-active {
   box-shadow:
-    inset 0 0 0 1px rgba(181, 238, 255, 0.2),
-    0 0 22px rgba(95, 202, 255, 0.2);
+    inset 0 0 0 1px rgba(100, 116, 139, 0.24),
+    0 0 16px rgba(148, 163, 184, 0.2);
 }
 
 .analysis-orbit-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(145, 230, 255, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.32);
   background:
-    radial-gradient(circle at 11% 8%, rgba(120, 226, 255, 0.2), transparent 34%),
-    radial-gradient(circle at 90% 14%, rgba(96, 155, 255, 0.2), transparent 40%),
-    linear-gradient(148deg, rgba(9, 33, 58, 0.93) 0%, rgba(10, 25, 52, 0.92) 52%, rgba(15, 38, 67, 0.93) 100%);
+    radial-gradient(circle at 11% 8%, rgba(203, 213, 225, 0.34), transparent 34%),
+    radial-gradient(circle at 90% 14%, rgba(191, 219, 254, 0.28), transparent 40%),
+    linear-gradient(148deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 52%, rgba(241, 245, 249, 0.97) 100%);
   box-shadow:
-    inset 0 0 0 1px rgba(189, 241, 255, 0.15),
-    0 24px 58px rgba(3, 12, 28, 0.56),
-    0 0 44px rgba(112, 197, 255, 0.2);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 14px 30px rgba(15, 23, 42, 0.08);
   isolation: isolate;
 }
 
@@ -602,11 +600,11 @@ body::after {
   inset: -60%;
   background: conic-gradient(
     from 0deg at 50% 50%,
-    rgba(116, 232, 255, 0.34),
-    rgba(120, 156, 255, 0.16),
-    rgba(116, 232, 255, 0.05),
-    rgba(93, 208, 255, 0.28),
-    rgba(116, 232, 255, 0.34)
+    rgba(148, 163, 184, 0.26),
+    rgba(148, 163, 184, 0.12),
+    rgba(148, 163, 184, 0.04),
+    rgba(191, 219, 254, 0.22),
+    rgba(148, 163, 184, 0.26)
   );
   filter: blur(12px);
   opacity: 0.24;
@@ -628,16 +626,15 @@ body::after {
 .auth-live-shell {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(141, 239, 255, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.34);
   background:
-    radial-gradient(circle at 14% 10%, rgba(119, 246, 255, 0.2), transparent 40%),
-    radial-gradient(circle at 88% 14%, rgba(255, 121, 218, 0.2), transparent 42%),
-    radial-gradient(circle at 50% 92%, rgba(255, 212, 124, 0.17), transparent 44%),
-    linear-gradient(154deg, rgba(9, 20, 42, 0.96) 0%, rgba(22, 13, 46, 0.95) 52%, rgba(17, 22, 45, 0.96) 100%);
+    radial-gradient(circle at 14% 10%, rgba(203, 213, 225, 0.36), transparent 40%),
+    radial-gradient(circle at 88% 14%, rgba(191, 219, 254, 0.32), transparent 42%),
+    radial-gradient(circle at 50% 92%, rgba(226, 232, 240, 0.34), transparent 44%),
+    linear-gradient(154deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 52%, rgba(241, 245, 249, 0.97) 100%);
   box-shadow:
-    inset 0 0 0 1px rgba(200, 246, 255, 0.16),
-    0 30px 64px rgba(3, 6, 20, 0.58),
-    0 0 46px rgba(123, 203, 255, 0.2);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 16px 36px rgba(15, 23, 42, 0.1);
   transform: translateZ(0);
   will-change: transform, opacity;
 }
@@ -648,10 +645,10 @@ body::after {
   inset: -40%;
   background: conic-gradient(
     from 0deg,
-    rgba(123, 236, 255, 0.12),
-    rgba(255, 126, 227, 0.24),
-    rgba(255, 220, 137, 0.1),
-    rgba(123, 236, 255, 0.12)
+    rgba(148, 163, 184, 0.14),
+    rgba(148, 163, 184, 0.22),
+    rgba(191, 219, 254, 0.14),
+    rgba(148, 163, 184, 0.14)
   );
   filter: blur(10px);
   animation: authShellSpin 22s linear infinite;
@@ -664,7 +661,7 @@ body::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(108deg, transparent 8%, rgba(177, 243, 255, 0.24) 50%, transparent 92%);
+  background: linear-gradient(108deg, transparent 8%, rgba(148, 163, 184, 0.2) 50%, transparent 92%);
   transform: translate3d(-120%, 0, 0);
   will-change: transform, opacity;
   animation: authShellSweep 7.2s linear infinite;

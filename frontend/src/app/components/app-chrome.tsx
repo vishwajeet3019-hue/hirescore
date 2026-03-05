@@ -26,7 +26,7 @@ export default function AppChrome({ children }: AppChromeProps) {
 
       <main className="relative">{children}</main>
 
-      <footer className="mt-20 border-t border-cyan-100/12 bg-[linear-gradient(180deg,rgba(5,10,20,0.72),rgba(4,8,16,0.9))] px-4 py-10 sm:mt-24 sm:px-6 sm:py-12">
+      <footer className="mt-20 border-t border-cyan-100/18 bg-[linear-gradient(180deg,rgba(248,250,252,0.95),rgba(241,245,249,0.98))] px-4 py-10 sm:mt-24 sm:px-6 sm:py-12">
         <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-3">
           <div>
             <BrandLogo
@@ -35,7 +35,7 @@ export default function AppChrome({ children }: AppChromeProps) {
               subtitleClassName="text-[10px] tracking-[0.16em]"
             />
             <p className="mt-3 text-sm text-cyan-50/72">
-              Premium resume intelligence platform focused on one outcome: increasing your interview conversion.
+              Professional resume assessment platform focused on measurable shortlist improvement.
             </p>
           </div>
 
