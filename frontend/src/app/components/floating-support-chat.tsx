@@ -213,42 +213,42 @@ export default function FloatingSupportChat() {
   return (
     <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+0.8rem)] right-4 z-[90] sm:bottom-6 sm:right-6">
       {isOpen && (
-        <section className="fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+5.2rem)] top-[11.25rem] flex flex-col overflow-hidden rounded-[1.55rem] border border-slate-200/20 bg-[#0b1624]/96 shadow-[0_18px_52px_rgba(2,8,23,0.58)] sm:absolute sm:inset-x-auto sm:bottom-[calc(100%+0.6rem)] sm:right-0 sm:top-auto sm:h-[min(70vh,540px)] sm:w-[min(92vw,356px)]">
-          <header className="flex items-center gap-3 border-b border-slate-100/12 bg-gradient-to-r from-[#15352d] to-[#0f2b24] px-4 py-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-100/38 bg-emerald-100/14 text-sm font-bold text-emerald-50">HS</span>
+        <section className="fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+5.2rem)] top-[11.25rem] flex flex-col overflow-hidden rounded-[1.55rem] border border-slate-300/70 bg-white/95 shadow-[0_18px_52px_rgba(15,23,42,0.16)] sm:absolute sm:inset-x-auto sm:bottom-[calc(100%+0.6rem)] sm:right-0 sm:top-auto sm:h-[min(70vh,540px)] sm:w-[min(92vw,356px)]">
+          <header className="flex items-center gap-3 border-b border-slate-300/70 bg-gradient-to-r from-slate-100 via-slate-50 to-white px-4 py-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-400/55 bg-slate-200/80 text-sm font-bold text-slate-900">HS</span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">HireScore Support</p>
-              <p className="text-[11px] text-emerald-100/90">Chat with admin</p>
+              <p className="truncate text-sm font-semibold text-slate-900">HireScore Support</p>
+              <p className="text-[11px] text-slate-600">Chat with admin</p>
             </div>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="ml-auto rounded-full border border-emerald-100/26 bg-emerald-100/12 px-2 py-1 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-100/22"
+              className="ml-auto rounded-full border border-slate-300/80 bg-white/80 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
               aria-label="Close chat"
             >
               Close
             </button>
           </header>
 
-          <div className="relative flex-1 overflow-hidden bg-[linear-gradient(160deg,rgba(7,17,31,0.98)_0%,rgba(10,38,33,0.92)_56%,rgba(7,15,28,0.98)_100%)]">
-            <div className="pointer-events-none absolute inset-0 opacity-22 [background-image:radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.55)_1px,transparent_0)] [background-size:22px_22px]" />
+          <div className="relative flex-1 overflow-hidden bg-[linear-gradient(160deg,rgba(255,255,255,0.98)_0%,rgba(248,250,252,0.96)_56%,rgba(241,245,249,0.98)_100%)]">
+            <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.4)_1px,transparent_0)] [background-size:22px_22px]" />
 
             <div ref={listRef} className="relative z-10 h-full space-y-2 overflow-y-auto px-3 py-3">
-              {loading && <p className="text-xs text-slate-100/88">Loading chat...</p>}
-              {!loading && !messages.length && <p className="text-xs text-slate-100/88">Start the conversation. Admin replies will appear here.</p>}
+              {loading && <p className="text-xs text-slate-600">Loading chat...</p>}
+              {!loading && !messages.length && <p className="text-xs text-slate-600">Start the conversation. Admin replies will appear here.</p>}
               {messages.map((message) => {
                 const byUser = message.sender_role === "user";
                 return (
                   <div key={message.id} className={`flex ${byUser ? "justify-end" : "justify-start"}`}>
                     <article
-                      className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-[0_6px_18px_rgba(2,8,23,0.26)] ${
+                      className={`max-w-[86%] rounded-2xl px-3 py-2 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.12)] ${
                         byUser
-                          ? "rounded-br-sm border border-emerald-300/32 bg-[#0f5342] text-emerald-50"
-                          : "rounded-bl-sm border border-slate-200/22 bg-slate-100/95 text-slate-900"
+                          ? "rounded-br-sm border border-slate-500/50 bg-slate-700 text-white"
+                          : "rounded-bl-sm border border-slate-300/75 bg-white/96 text-slate-900"
                       }`}
                     >
                       <p className="whitespace-pre-wrap leading-relaxed">{message.message}</p>
-                      <p className={`mt-1 text-[10px] ${byUser ? "text-emerald-100/78" : "text-slate-500"}`}>{formatTime(message.created_at)}</p>
+                      <p className={`mt-1 text-[10px] ${byUser ? "text-slate-200/88" : "text-slate-500"}`}>{formatTime(message.created_at)}</p>
                     </article>
                   </div>
                 );
@@ -256,7 +256,7 @@ export default function FloatingSupportChat() {
             </div>
           </div>
 
-          <footer className="border-t border-slate-200/14 bg-[#0d1927] p-3">
+          <footer className="border-t border-slate-300/75 bg-slate-50 p-3">
             <div className="flex items-end gap-2">
               <textarea
                 value={draft}
@@ -269,18 +269,18 @@ export default function FloatingSupportChat() {
                 }}
                 placeholder={token ? "Type a message" : "Login required"}
                 disabled={!token || sending}
-                className="h-10 min-h-10 flex-1 resize-none rounded-2xl border border-slate-200/18 bg-[#081321] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-300/45 outline-none transition focus:border-emerald-300/44 disabled:opacity-60"
+                className="h-10 min-h-10 flex-1 resize-none rounded-2xl border border-slate-300/80 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-500/60 disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={() => void sendMessage()}
                 disabled={!token || sending}
-                className="rounded-2xl border border-emerald-200/34 bg-emerald-300/18 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-300/28 disabled:opacity-60"
+                className="rounded-2xl border border-slate-500/60 bg-slate-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
               >
                 {sending ? "..." : "Send"}
               </button>
             </div>
-            {error ? <p className="mt-2 text-xs text-rose-200">{error}</p> : null}
+            {error ? <p className="mt-2 text-xs text-rose-700">{error}</p> : null}
           </footer>
         </section>
       )}
@@ -288,7 +288,7 @@ export default function FloatingSupportChat() {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="group relative flex h-12 min-w-12 items-center justify-center gap-2 rounded-full border border-emerald-200/34 bg-gradient-to-br from-[#1f6f5b] to-[#145645] px-3.5 text-white shadow-[0_12px_28px_rgba(4,120,87,0.36)] transition hover:brightness-110"
+        className="group relative flex h-12 min-w-12 items-center justify-center gap-2 rounded-full border border-slate-400/70 bg-gradient-to-br from-white to-slate-200 px-3.5 text-slate-900 shadow-[0_12px_28px_rgba(15,23,42,0.18)] transition hover:brightness-95"
         aria-label="Open support chat"
       >
         <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5 fill-current">
@@ -296,7 +296,7 @@ export default function FloatingSupportChat() {
         </svg>
         <span className="text-sm font-semibold">Chat</span>
         {unreadCount > 0 && !isOpen ? (
-          <span className="absolute -right-1 -top-1 rounded-full border border-white/70 bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+          <span className="absolute -right-1 -top-1 rounded-full border border-white bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         ) : null}

@@ -77,7 +77,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased overflow-x-hidden performance-lite">
+      <body className="antialiased overflow-x-hidden">
         {GA_MEASUREMENT_ID ? (
           <>
             <Script

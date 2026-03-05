@@ -115,7 +115,7 @@ export default function CaptureDeterrence() {
   return (
     <>
       {flashMessage && (
-        <div className="pointer-events-none fixed top-4 left-1/2 z-[240] w-[min(92vw,620px)] -translate-x-1/2 rounded-xl border border-rose-200/30 bg-[#3f121a]/88 px-4 py-2 text-center text-xs font-semibold text-rose-100 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur">
+        <div className="pointer-events-none fixed left-1/2 top-4 z-[240] w-[min(92vw,620px)] -translate-x-1/2 rounded-xl border border-rose-300/60 bg-rose-100/95 px-4 py-2 text-center text-xs font-semibold text-rose-800 shadow-[0_16px_36px_rgba(15,23,42,0.14)] backdrop-blur">
           {flashMessage}
         </div>
       )}

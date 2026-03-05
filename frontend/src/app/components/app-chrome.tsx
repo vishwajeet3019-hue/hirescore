@@ -26,7 +26,7 @@ export default function AppChrome({ children }: AppChromeProps) {
 
       <main className="relative">{children}</main>
 
-      <footer className="mt-20 border-t border-cyan-50/10 px-4 py-10 sm:mt-24 sm:px-6 sm:py-12">
+      <footer className="mt-20 border-t border-slate-300/65 bg-white/55 px-4 py-10 sm:mt-24 sm:px-6 sm:py-12">
         <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-3">
           <div>
             <BrandLogo
@@ -34,26 +34,26 @@ export default function AppChrome({ children }: AppChromeProps) {
               titleClassName="text-lg"
               subtitleClassName="text-[10px] tracking-[0.16em]"
             />
-            <p className="mt-3 text-sm text-cyan-50/72">
+            <p className="mt-3 text-sm text-slate-600">
               Premium resume intelligence platform focused on one outcome: increasing your interview conversion.
             </p>
           </div>
 
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">Platform</p>
-            <div className="mt-3 space-y-2 text-sm text-cyan-50/72">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500 sm:tracking-[0.28em]">Platform</p>
+            <div className="mt-3 space-y-2 text-sm text-slate-600">
               <p>Shortlist prediction by role intent</p>
               <p>Actionable improvement roadmaps</p>
               <p>In-platform resume building</p>
-              <Link href="/resources" className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50">
+              <Link href="/resources" className="inline-block font-semibold text-slate-800 transition hover:text-slate-950">
                 Resume Optimization Guides
               </Link>
             </div>
           </div>
 
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">Trust Signal</p>
-            <div className="mt-3 space-y-2 text-sm text-cyan-50/72">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500 sm:tracking-[0.28em]">Trust Signal</p>
+            <div className="mt-3 space-y-2 text-sm text-slate-600">
               <p>Role-specific scoring for technical and non-technical careers</p>
               <p>Transparent confidence and prediction logic</p>
               <p>Built for freshers and experienced professionals</p>
@@ -61,12 +61,12 @@ export default function AppChrome({ children }: AppChromeProps) {
           </div>
         </div>
 
-        <p className="mx-auto mt-10 max-w-7xl text-center text-[11px] uppercase tracking-[0.12em] text-cyan-50/46 sm:text-xs sm:tracking-[0.2em]">
+        <p className="mx-auto mt-10 max-w-7xl text-center text-[11px] uppercase tracking-[0.12em] text-slate-500 sm:text-xs sm:tracking-[0.2em]">
           Built for candidates who want measurable shortlist outcomes
         </p>
-        <p className="mx-auto mt-3 max-w-7xl text-center text-sm text-cyan-50/68">
+        <p className="mx-auto mt-3 max-w-7xl text-center text-sm text-slate-600">
           Support:{" "}
-          <a href="mailto:contact@hirescore.in" className="font-semibold text-cyan-100 hover:text-cyan-50">
+          <a href="mailto:contact@hirescore.in" className="font-semibold text-slate-900 hover:text-slate-700">
             contact@hirescore.in
           </a>
         </p>

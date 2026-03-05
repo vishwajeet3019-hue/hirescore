@@ -137,10 +137,10 @@ export default function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-cyan-100/12 bg-[#030c1b]/90 backdrop-blur-[2px]">
-      <div className="border-b border-cyan-100/8 px-3 py-2 sm:px-6 sm:py-2.5">
-        <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-50/70 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
-          <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.9)]" />
+    <header className="sticky top-0 z-50 border-b border-slate-300/55 bg-white/88 backdrop-blur-md">
+      <div className="border-b border-slate-300/50 px-3 py-2 sm:px-6 sm:py-2.5">
+        <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-slate-600 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
+          <span className="h-2 w-2 rounded-full bg-slate-700 shadow-[0_0_10px_rgba(51,65,85,0.35)]" />
           Precision shortlist prediction platform for every role
         </p>
       </div>
@@ -155,7 +155,7 @@ export default function SiteHeader() {
           />
         </Link>
 
-        <nav className="hidden items-center gap-4 text-sm font-medium text-cyan-50/78 md:flex">
+        <nav className="hidden items-center gap-4 text-sm font-medium text-slate-600 md:flex">
           {navLinks.map((link) => {
             const active = isLinkActive(pathname, hash, link);
             const isStudioLink = link.href === "/studio";
@@ -166,8 +166,8 @@ export default function SiteHeader() {
                 onClick={isStudioLink ? handleStudioNavClick : undefined}
                 className={`rounded-full border px-3 py-1.5 transition ${
                   active
-                    ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
-                    : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
+                    ? "border-slate-400/70 bg-slate-200/75 text-slate-900"
+                    : "border-transparent text-slate-600 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
                 {link.label}
@@ -181,11 +181,11 @@ export default function SiteHeader() {
             <>
               <Link
                 href="/dashboard"
-                className="hidden rounded-xl border border-cyan-200/35 bg-cyan-200/14 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/22 sm:inline"
+                className="hidden rounded-xl border border-slate-400/55 bg-slate-200/75 px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-300/65 sm:inline"
               >
                 Dashboard
               </Link>
-              <span className="rounded-xl border border-emerald-200/36 bg-emerald-200/14 px-2.5 py-1.5 text-xs font-semibold text-emerald-100">
+              <span className="rounded-xl border border-slate-400/55 bg-white/80 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                 Wallet: {wallet.credits}
               </span>
               <button
@@ -197,7 +197,7 @@ export default function SiteHeader() {
                   setStudioUnlocked(false);
                   window.localStorage.removeItem("hirescore_auth_token");
                 }}
-                className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 sm:inline"
+                className="hidden rounded-xl border border-slate-300/70 bg-transparent px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200/75 sm:inline"
               >
                 Sign Out
               </button>
@@ -211,7 +211,7 @@ export default function SiteHeader() {
                   cta_label: "Check My Score (Free)",
                 });
               }}
-              className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
+              className="rounded-xl border border-slate-400/60 bg-gradient-to-r from-white via-slate-100 to-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.1)] transition hover:brightness-95 sm:px-4 sm:py-2 sm:text-sm"
             >
               <span className="sm:hidden">Analyze</span>
               <span className="hidden sm:inline">Check My Score (Free)</span>
@@ -220,8 +220,8 @@ export default function SiteHeader() {
         </div>
       </div>
 
-      <div className="border-t border-cyan-100/8 px-3 py-2 md:hidden">
-        <nav className="mx-auto flex w-full max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-cyan-50/80">
+      <div className="border-t border-slate-300/50 px-3 py-2 md:hidden">
+        <nav className="mx-auto flex w-full max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-slate-700">
           {navLinks.map((link) => {
             const active = isLinkActive(pathname, hash, link);
             const isStudioLink = link.href === "/studio";
@@ -232,8 +232,8 @@ export default function SiteHeader() {
                 onClick={isStudioLink ? handleStudioNavClick : undefined}
                 className={`rounded-lg border px-3 py-1.5 transition ${
                   active
-                    ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                    : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
+                    ? "border-slate-400/65 bg-slate-200/80 text-slate-900"
+                    : "border-slate-300/80 bg-white/85 text-slate-700 hover:bg-slate-100"
                 }`}
               >
                 {link.label}
@@ -243,7 +243,7 @@ export default function SiteHeader() {
           {authToken && (
             <Link
               href="/dashboard"
-              className="rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 font-semibold text-emerald-100"
+              className="rounded-lg border border-slate-400/60 bg-white/90 px-3 py-1.5 font-semibold text-slate-700"
             >
               Wallet {wallet?.credits ?? 0}
             </Link>
@@ -259,7 +259,7 @@ export default function SiteHeader() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[6px]"
+                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-slate-900/24 px-4 py-6 backdrop-blur-[6px]"
                   onClick={(event) => {
                     if (event.target !== event.currentTarget) return;
                     setShowStudioLockModal(false);
@@ -269,19 +269,19 @@ export default function SiteHeader() {
                     initial={{ opacity: 0, y: 18, scale: 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.97 }}
-                    className="relative my-auto w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_24px_70px_rgba(2,8,20,0.55)]"
+                    className="relative my-auto w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-slate-300/75 bg-white/95 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
                   >
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_42%,rgba(253,230,138,0.08))]" />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.7),rgba(241,245,249,0)_42%,rgba(226,232,240,0.7))]" />
 
                     <div className="relative">
                       <StudioLockVisual compact />
-                      <p className="text-center text-xs uppercase tracking-[0.18em] text-cyan-100/72">Resume Studio Gate</p>
-                      <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Let&apos;s Analyze Your Skills First</h3>
-                      <p className="mt-3 text-center text-sm text-cyan-50/80">
+                      <p className="text-center text-xs uppercase tracking-[0.18em] text-slate-500">Resume Studio Gate</p>
+                      <h3 className="mt-2 text-center text-2xl font-semibold text-slate-900 sm:text-3xl">Let&apos;s Analyze Your Skills First</h3>
+                      <p className="mt-3 text-center text-sm text-slate-600">
                         Complete your first analysis on Analyze page to unlock Build Resume.
                       </p>
-                      <p className="mt-2 text-center text-xs text-cyan-100/72">
-                        Analysis runs completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
+                      <p className="mt-2 text-center text-xs text-slate-500">
+                        Analysis runs completed: <span className="font-semibold text-slate-900">{analysisCount}</span>
                       </p>
 
                       <div className="mt-5 grid gap-2 sm:grid-cols-2">
@@ -295,14 +295,14 @@ export default function SiteHeader() {
                             });
                             router.push("/upload");
                           }}
-                          className="rounded-xl border border-cyan-100/35 bg-cyan-200/18 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
+                          className="rounded-xl border border-slate-400/65 bg-slate-200/80 px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-300/70"
                         >
                           Go To Analyze
                         </button>
                         <button
                           type="button"
                           onClick={() => setShowStudioLockModal(false)}
-                          className="rounded-xl border border-cyan-100/22 bg-transparent px-4 py-2.5 text-sm font-semibold text-cyan-50/86 transition hover:bg-cyan-100/8"
+                          className="rounded-xl border border-slate-300/70 bg-transparent px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                         >
                           Not Now
                         </button>
