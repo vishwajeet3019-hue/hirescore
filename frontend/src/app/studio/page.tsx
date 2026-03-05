@@ -1016,10 +1016,10 @@ export default function StudioPage() {
   };
 
   const fieldClass =
-    "w-full rounded-2xl border border-cyan-100/38 bg-white/90 px-4 py-3.5 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100 focus:shadow-[0_0_0_3px_rgba(146,238,255,0.24)]";
+    "w-full rounded-2xl border border-cyan-100/38 bg-[#0b1f37]/88 px-4 py-3.5 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100 focus:shadow-[0_0_0_3px_rgba(146,238,255,0.24)]";
   const textAreaClass = `${fieldClass} min-h-28 leading-relaxed`;
   const fieldLabelClass = "mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-100/72";
-  const sectionCardClass = "rounded-2xl border border-cyan-100/24 bg-white/88 p-4 sm:p-5";
+  const sectionCardClass = "rounded-2xl border border-cyan-100/24 bg-[#0a1d34]/86 p-4 sm:p-5";
   const workflowModes = [
     { id: "build", title: "AI Architect", subtitle: "Create a fresh resume draft from structured inputs." },
     { id: "polish", title: "Resume Refinery", subtitle: "Refine existing resume text or uploaded PDF." },
@@ -1033,11 +1033,11 @@ export default function StudioPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="relative overflow-hidden rounded-[2.2rem] border border-cyan-100/30 bg-[linear-gradient(145deg,rgba(255,255,255,0.96)_0%,rgba(248,250,252,0.94)_48%,rgba(226,232,240,0.92)_100%)] p-5 shadow-[0_26px_64px_rgba(15,23,42,0.14)] sm:p-8"
+          className="premium-panel relative overflow-hidden rounded-[2.2rem] p-5 sm:p-8"
         >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_18%,rgba(255,255,255,0.72),transparent_34%),radial-gradient(circle_at_88%_14%,rgba(203,213,225,0.38),transparent_38%)]" />
-          <div className="absolute -left-14 top-2 h-52 w-52 rounded-full bg-slate-300/20 blur-[95px]" />
-          <div className="absolute bottom-2 right-[-38px] h-56 w-56 rounded-full bg-slate-400/18 blur-[105px]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_18%,rgba(83,142,255,0.28),transparent_34%),radial-gradient(circle_at_88%_14%,rgba(255,214,149,0.16),transparent_38%)]" />
+          <div className="absolute -left-14 top-2 h-52 w-52 rounded-full bg-cyan-300/20 blur-[95px]" />
+          <div className="absolute bottom-2 right-[-38px] h-56 w-56 rounded-full bg-amber-100/14 blur-[105px]" />
 
           <div className="relative z-10 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-5">
@@ -1056,17 +1056,17 @@ export default function StudioPage() {
               </p>
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-cyan-100/18 bg-white/85 p-4">
+                <div className="rounded-2xl border border-cyan-100/18 bg-[#0c2039]/84 p-4">
                   <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Studio Access</p>
                   <p className="mt-2 text-lg font-semibold text-cyan-50">{studioLockedByFirstAnalysis ? "Locked" : "Unlocked"}</p>
                   <p className="mt-1 text-xs text-cyan-100/68">{studioLockedByFirstAnalysis ? "First analysis pending" : "Ready for resume work"}</p>
                 </div>
-                <div className="rounded-2xl border border-cyan-100/18 bg-white/85 p-4">
+                <div className="rounded-2xl border border-cyan-100/18 bg-[#0c2039]/84 p-4">
                   <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Analyses Completed</p>
                   <p className="mt-2 text-lg font-semibold text-cyan-50">{analysisCount}</p>
                   <p className="mt-1 text-xs text-cyan-100/68">Used for role-fit and roadmap inputs</p>
                 </div>
-                <div className="rounded-2xl border border-cyan-100/18 bg-white/85 p-4">
+                <div className="rounded-2xl border border-cyan-100/18 bg-[#0c2039]/84 p-4">
                   <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">AI Draft Runs</p>
                   <p className="mt-2 text-lg font-semibold text-cyan-50">{authToken && wallet ? remainingGeneration : "-"}</p>
                   <p className="mt-1 text-xs text-cyan-100/68">{authToken && wallet ? "Available with current wallet" : "Sign in to view usage"}</p>
@@ -1074,7 +1074,7 @@ export default function StudioPage() {
               </div>
             </div>
 
-            <div className="rounded-[1.6rem] border border-cyan-100/24 bg-white/90 p-4 shadow-[inset_0_0_0_1px_rgba(181,236,255,0.08)] sm:p-5">
+            <div className="rounded-[1.6rem] border border-cyan-100/24 bg-[#0b1f37]/88 p-4 shadow-[inset_0_0_0_1px_rgba(181,236,255,0.08)] sm:p-5">
               {authToken && wallet ? (
                 <>
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1145,7 +1145,7 @@ export default function StudioPage() {
                       value={authEmail}
                       onChange={(event) => setAuthEmail(event.target.value)}
                       placeholder="Email"
-                      className="w-full rounded-2xl border border-cyan-100/38 bg-white/90 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                      className="w-full rounded-2xl border border-cyan-100/38 bg-[#0b1f37]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
                     />
                     {forgotPasswordMode ? (
                       forgotOtpRequested ? (
@@ -1154,14 +1154,14 @@ export default function StudioPage() {
                           value={forgotOtp}
                           onChange={(event) => setForgotOtp(event.target.value)}
                           placeholder="Reset OTP"
-                          className="w-full rounded-2xl border border-cyan-100/38 bg-white/90 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                          className="w-full rounded-2xl border border-cyan-100/38 bg-[#0b1f37]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
                         />
                       ) : (
                         <input
                           disabled
                           value=""
                           placeholder="OTP will be sent to this email"
-                          className="w-full rounded-2xl border border-cyan-100/38 bg-white/90 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 opacity-70"
+                          className="w-full rounded-2xl border border-cyan-100/38 bg-[#0b1f37]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 opacity-70"
                         />
                       )
                     ) : signupOtpRequired ? (
@@ -1170,7 +1170,7 @@ export default function StudioPage() {
                         value={signupOtp}
                         onChange={(event) => setSignupOtp(event.target.value)}
                         placeholder="Signup OTP"
-                        className="w-full rounded-2xl border border-cyan-100/38 bg-white/90 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                        className="w-full rounded-2xl border border-cyan-100/38 bg-[#0b1f37]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
                       />
                     ) : (
                       <input
@@ -1178,7 +1178,7 @@ export default function StudioPage() {
                         value={authPassword}
                         onChange={(event) => setAuthPassword(event.target.value)}
                         placeholder="Password"
-                        className="w-full rounded-2xl border border-cyan-100/38 bg-white/90 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                        className="w-full rounded-2xl border border-cyan-100/38 bg-[#0b1f37]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
                       />
                     )}
                   </div>
@@ -1189,7 +1189,7 @@ export default function StudioPage() {
                         value={forgotNewPassword}
                         onChange={(event) => setForgotNewPassword(event.target.value)}
                         placeholder="New password"
-                        className="w-full rounded-2xl border border-cyan-100/38 bg-white/90 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
+                        className="w-full rounded-2xl border border-cyan-100/38 bg-[#0b1f37]/88 px-4 py-3 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100"
                       />
                     </div>
                   )}
@@ -1705,7 +1705,7 @@ export default function StudioPage() {
                       initial={{ opacity: 0, y: 24, scale: 0.96 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 12, scale: 0.96 }}
-                      className="relative my-auto w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/24 bg-white/95 p-6 shadow-[0_30px_90px_rgba(2,8,20,0.58)] sm:p-8"
+                      className="relative my-auto w-full max-w-2xl overflow-hidden rounded-[2rem] border border-cyan-100/24 bg-[#0a1a30]/92 p-6 shadow-[0_30px_90px_rgba(2,8,20,0.58)] sm:p-8"
                     >
                       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_44%,rgba(253,230,138,0.08))]" />
 
@@ -1795,7 +1795,7 @@ export default function StudioPage() {
                         active ? "ring-1 ring-cyan-100/65" : "hover:brightness-110"
                       }`}
                     >
-                      <div className="mb-3 overflow-hidden rounded-xl border border-cyan-100/20 bg-slate-100/92 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]">
+                      <div className="mb-3 overflow-hidden rounded-xl border border-cyan-100/20 bg-[#09172a]/92 shadow-[inset_0_0_0_1px_rgba(164,220,255,0.16)]">
                         <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[10px]">
                           <Image
                             src={template.previewSrc}
@@ -1820,7 +1820,7 @@ export default function StudioPage() {
             <textarea
               value={editableResume}
               onChange={(event) => setEditableResume(event.target.value)}
-              className="min-h-[380px] w-full rounded-2xl border border-cyan-100/18 bg-white/95 p-4 text-sm leading-relaxed text-cyan-50/85 outline-none transition focus:border-cyan-200/45"
+              className="min-h-[380px] w-full rounded-2xl border border-cyan-100/18 bg-[#0a1a30]/92 p-4 text-sm leading-relaxed text-cyan-50/85 outline-none transition focus:border-cyan-200/45"
             />
           </motion.section>
         )}

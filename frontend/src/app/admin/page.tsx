@@ -734,7 +734,7 @@ export default function AdminPage() {
   const metricCardClass =
     "rounded-2xl border border-slate-200/16 bg-gradient-to-br from-slate-900/82 via-slate-900/70 to-indigo-900/36 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.4)]";
   const inputClass =
-    "rounded-xl border border-slate-300/18 bg-white/95 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-300/45 outline-none transition focus:border-sky-300/65";
+    "rounded-xl border border-slate-300/18 bg-[#0a1a30]/92 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-300/45 outline-none transition focus:border-sky-300/65";
 
   const metricRows = analytics
     ? [
@@ -1036,7 +1036,7 @@ export default function AdminPage() {
             </section>
 
             {workspaceTab === "users" && (
-            <section className="rounded-[2rem] border border-slate-200/14 bg-white/95 p-5 sm:p-6">
+            <section className="rounded-[2rem] border border-slate-200/14 bg-[#0a1a30]/92 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">User Management</p>
@@ -1200,7 +1200,7 @@ export default function AdminPage() {
             )}
 
             {workspaceTab === "support" && (
-            <section className="rounded-[2rem] border border-slate-200/14 bg-white/95 p-5 sm:p-6">
+            <section className="rounded-[2rem] border border-slate-200/14 bg-[#0a1a30]/92 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Support Inbox</p>
@@ -1344,7 +1344,7 @@ export default function AdminPage() {
             )}
 
             {workspaceTab === "activity" && (
-            <section className="rounded-[1.8rem] border border-slate-200/14 bg-white/95 p-5 sm:p-6">
+            <section className="rounded-[1.8rem] border border-slate-200/14 bg-[#0a1a30]/92 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Activity Stream</p>

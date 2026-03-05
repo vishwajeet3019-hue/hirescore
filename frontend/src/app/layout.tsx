@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Space_Grotesk } from "next/font/google";
 import AppChrome from "./components/app-chrome";
 import MotionProvider from "./components/motion-provider";
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-sans-ui",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -77,7 +84,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased overflow-x-hidden">
+      <body className={`${spaceGrotesk.variable} antialiased overflow-x-hidden`}>
         {GA_MEASUREMENT_ID ? (
           <>
             <Script

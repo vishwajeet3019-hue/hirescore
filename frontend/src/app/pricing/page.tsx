@@ -863,7 +863,7 @@ export default function PricingPage() {
                   value={authEmail}
                   onChange={(event) => setAuthEmail(event.target.value)}
                   placeholder="Email"
-                  className="w-full rounded-2xl border border-cyan-200/35 bg-white/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
+                  className="w-full rounded-2xl border border-cyan-200/35 bg-[#08192d]/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
                 />
                 {forgotPasswordMode ? (
                   forgotOtpRequested ? (
@@ -872,14 +872,14 @@ export default function PricingPage() {
                       value={forgotOtp}
                       onChange={(event) => setForgotOtp(event.target.value)}
                       placeholder="Reset OTP"
-                      className="w-full rounded-2xl border border-cyan-200/35 bg-white/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
+                      className="w-full rounded-2xl border border-cyan-200/35 bg-[#08192d]/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
                     />
                   ) : (
                     <input
                       disabled
                       value=""
                       placeholder="OTP will be sent to this email"
-                      className="w-full rounded-2xl border border-cyan-200/35 bg-white/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 opacity-70"
+                      className="w-full rounded-2xl border border-cyan-200/35 bg-[#08192d]/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 opacity-70"
                     />
                   )
                 ) : signupOtpRequired ? (
@@ -888,7 +888,7 @@ export default function PricingPage() {
                     value={signupOtp}
                     onChange={(event) => setSignupOtp(event.target.value)}
                     placeholder="Signup OTP"
-                    className="w-full rounded-2xl border border-cyan-200/35 bg-white/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
+                    className="w-full rounded-2xl border border-cyan-200/35 bg-[#08192d]/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
                   />
                 ) : (
                   <input
@@ -896,7 +896,7 @@ export default function PricingPage() {
                     value={authPassword}
                     onChange={(event) => setAuthPassword(event.target.value)}
                     placeholder="Password"
-                    className="w-full rounded-2xl border border-cyan-200/35 bg-white/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
+                    className="w-full rounded-2xl border border-cyan-200/35 bg-[#08192d]/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
                   />
                 )}
               </div>
@@ -907,7 +907,7 @@ export default function PricingPage() {
                     value={forgotNewPassword}
                     onChange={(event) => setForgotNewPassword(event.target.value)}
                     placeholder="New password"
-                    className="w-full rounded-2xl border border-cyan-200/35 bg-white/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
+                    className="w-full rounded-2xl border border-cyan-200/35 bg-[#08192d]/92 px-4 py-3 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100"
                   />
                 </div>
               )}
