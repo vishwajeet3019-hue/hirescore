@@ -104,8 +104,11 @@ type RowEditorState = {
 type AdminLoadScope = "users" | "support" | "activity" | "all";
 type AdminAuthMode = "token" | "api_key";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
-const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+const apiUrl = (path: string) => {
+  const normalizedPath = `/${path.replace(/^\/+/, "")}`;
+  if (normalizedPath === "/") return "/api/admin-proxy/admin/auth/login";
+  return `/api/admin-proxy${normalizedPath}`;
+};
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
 const defaultRowEditor = (): RowEditorState => ({
