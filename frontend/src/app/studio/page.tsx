@@ -1018,6 +1018,13 @@ export default function StudioPage() {
   const fieldClass =
     "w-full rounded-2xl border border-cyan-100/38 bg-[#08233f]/88 px-4 py-3.5 text-cyan-50 placeholder:text-cyan-50/45 outline-none transition focus:border-cyan-100 focus:shadow-[0_0_0_3px_rgba(146,238,255,0.24)]";
   const textAreaClass = `${fieldClass} min-h-28 leading-relaxed`;
+  const fieldLabelClass = "mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-100/72";
+  const sectionCardClass = "rounded-2xl border border-cyan-100/18 bg-[#071e37]/72 p-4 sm:p-5";
+  const workflowModes = [
+    { id: "build", title: "AI Architect", subtitle: "Create a fresh resume draft from structured inputs." },
+    { id: "polish", title: "Resume Refinery", subtitle: "Refine existing resume text or uploaded PDF." },
+    { id: "compose", title: "Manual Studio", subtitle: "Draft manually, then upgrade quality with AI." },
+  ] as const;
 
   return (
     <main className="relative min-h-screen px-4 pb-20 pt-8 sm:px-6 sm:pt-10 lg:px-8">
@@ -1026,49 +1033,74 @@ export default function StudioPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="studio-bright-panel relative overflow-hidden rounded-[2rem] p-5 sm:p-8"
+          className="relative overflow-hidden rounded-[2.2rem] border border-cyan-100/24 bg-[linear-gradient(145deg,rgba(8,28,54,0.94)_0%,rgba(6,20,41,0.93)_48%,rgba(9,33,58,0.94)_100%)] p-5 shadow-[0_26px_70px_rgba(2,8,22,0.54)] sm:p-8"
         >
-          <div className="absolute -left-10 top-4 h-44 w-44 rounded-full bg-cyan-300/24 blur-[85px]" />
-          <div className="absolute right-[-48px] top-28 h-52 w-52 rounded-full bg-amber-200/18 blur-[95px]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_18%,rgba(107,235,255,0.2),transparent_32%),radial-gradient(circle_at_88%_14%,rgba(255,212,146,0.14),transparent_34%)]" />
+          <div className="absolute -left-14 top-2 h-52 w-52 rounded-full bg-cyan-300/16 blur-[95px]" />
+          <div className="absolute bottom-2 right-[-38px] h-56 w-56 rounded-full bg-sky-300/14 blur-[105px]" />
 
-          <div className="relative z-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-            <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-cyan-100/28 bg-cyan-100/8 px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] text-cyan-100/86 sm:px-4 sm:text-xs sm:tracking-[0.22em]">
+          <div className="relative z-10 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="space-y-5">
+              <p className="inline-flex items-center gap-2 rounded-full border border-cyan-100/30 bg-cyan-100/10 px-3 py-1.5 text-[11px] uppercase tracking-[0.13em] text-cyan-100/86 sm:px-4 sm:text-xs sm:tracking-[0.22em]">
                 <span className="live-dot" />
-                Resume Studio
+                Resume Studio Command Center
               </p>
-              <h1 className="mt-4 text-3xl font-semibold leading-tight text-cyan-50 sm:text-5xl">
-                Build, Polish, And Compose
-                <span className="block bg-gradient-to-r from-cyan-100 via-cyan-300 to-amber-100 bg-clip-text text-transparent">
-                  Interview-Ready Resumes
+              <h1 className="text-3xl font-semibold leading-tight text-cyan-50 sm:text-5xl">
+                Professional Resume Production,
+                <span className="block bg-gradient-to-r from-cyan-100 via-sky-300 to-teal-200 bg-clip-text text-transparent">
+                  From Draft To Final Export
                 </span>
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-relaxed text-cyan-50/80 sm:text-base">
-                A brighter focused workspace for AI builds, polishing existing resumes, and studio drafting with premium templates.
+              <p className="max-w-2xl text-sm leading-relaxed text-cyan-50/80 sm:text-base">
+                Use focused workflows for first-draft generation, existing resume optimization, and manual composition with AI enhancement.
               </p>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-cyan-100/18 bg-[#08233f]/72 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Studio Access</p>
+                  <p className="mt-2 text-lg font-semibold text-cyan-50">{studioLockedByFirstAnalysis ? "Locked" : "Unlocked"}</p>
+                  <p className="mt-1 text-xs text-cyan-100/68">{studioLockedByFirstAnalysis ? "First analysis pending" : "Ready for resume work"}</p>
+                </div>
+                <div className="rounded-2xl border border-cyan-100/18 bg-[#08233f]/72 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Analyses Completed</p>
+                  <p className="mt-2 text-lg font-semibold text-cyan-50">{analysisCount}</p>
+                  <p className="mt-1 text-xs text-cyan-100/68">Used for role-fit and roadmap inputs</p>
+                </div>
+                <div className="rounded-2xl border border-cyan-100/18 bg-[#08233f]/72 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">AI Draft Runs</p>
+                  <p className="mt-2 text-lg font-semibold text-cyan-50">{authToken && wallet ? remainingGeneration : "-"}</p>
+                  <p className="mt-1 text-xs text-cyan-100/68">{authToken && wallet ? "Available with current wallet" : "Sign in to view usage"}</p>
+                </div>
+              </div>
             </div>
 
-            <div className="studio-soft-card rounded-3xl p-4">
+            <div className="rounded-[1.6rem] border border-cyan-100/24 bg-[#081d35]/88 p-4 shadow-[inset_0_0_0_1px_rgba(181,236,255,0.08)] sm:p-5">
               {authToken && wallet ? (
                 <>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Wallet</p>
-                    <p className="text-sm font-semibold text-cyan-50">{authUserEmail || "Signed in"}</p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-50/74">
-                    <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Credits: {wallet.credits}</span>
-                    <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">AI runs left: {remainingGeneration}</span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-50/74">
-                    <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
-                      AI Generate: {wallet.pricing.ai_resume_generation} credits
-                    </span>
-                    <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
-                      PDF Template: {wallet.pricing.template_pdf_download} credits
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Signed In Account</p>
+                      <p className="mt-1 text-sm font-semibold text-cyan-50">{authUserEmail || "Signed in"}</p>
+                    </div>
+                    <span className="rounded-lg border border-cyan-100/24 bg-cyan-100/10 px-2.5 py-1 text-xs font-semibold text-cyan-50">
+                      Credits: {wallet.credits}
                     </span>
                   </div>
+
+                  <div className="mt-4 grid gap-2 text-xs text-cyan-50/78 sm:grid-cols-2">
+                    <div className="rounded-xl border border-cyan-100/20 bg-cyan-100/8 px-3 py-2">
+                      AI Generate: {wallet.pricing.ai_resume_generation} credits/run
+                    </div>
+                    <div className="rounded-xl border border-cyan-100/20 bg-cyan-100/8 px-3 py-2">
+                      PDF Export: {wallet.pricing.template_pdf_download} credits/export
+                    </div>
+                    <div className="rounded-xl border border-cyan-100/20 bg-cyan-100/8 px-3 py-2 sm:col-span-2">
+                      Remaining AI draft runs: {remainingGeneration}
+                    </div>
+                  </div>
+
                   {studioLockedByFirstAnalysis && (
-                    <div className="mt-3 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
+                    <div className="mt-4 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
                       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-50">Studio Locked</p>
                       <p className="mt-1 text-xs text-amber-50/86">{studioLockMessage}</p>
                       <p className="mt-1 text-[11px] text-amber-50/78">Analysis runs completed: {analysisCount}</p>
@@ -1080,7 +1112,8 @@ export default function StudioPage() {
                       </a>
                     </div>
                   )}
-                  <div className="mt-3 flex flex-wrap gap-2">
+
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <a
                       href="/pricing"
                       className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
@@ -1098,13 +1131,13 @@ export default function StudioPage() {
                 </>
               ) : (
                 <>
-                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Login Required</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Sign In To Use AI Actions</p>
                   <p className="mt-2 text-sm text-cyan-50/76">
                     {forgotPasswordMode
                       ? "Reset password via email OTP."
                       : signupOtpRequired
                         ? "Enter the OTP sent to your email to complete signup."
-                        : "AI studio actions are credit-based. Sign up to start."}
+                        : "Resume generation and export are wallet-credit based."}
                   </p>
                   <div className="mt-3 grid gap-3">
                     <input
@@ -1240,222 +1273,356 @@ export default function StudioPage() {
           </div>
         </motion.section>
 
-        <section className="studio-soft-card rounded-[2rem] p-6 sm:p-8">
-          {studioLockedByFirstAnalysis && (
-            <div className="mb-5 rounded-2xl border border-amber-100/34 bg-amber-100/12 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-50">Studio Unlock Required</p>
-              <p className="mt-2 text-sm text-amber-50/86">{studioLockMessage}</p>
-              <a
-                href="/upload"
-                className="mt-3 inline-flex rounded-xl border border-amber-100/40 bg-amber-100/16 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/24"
-              >
-                Go To First Analysis
-              </a>
-            </div>
-          )}
-          <fieldset disabled={studioLockedByFirstAnalysis} className={studioLockedByFirstAnalysis ? "pointer-events-none opacity-55" : ""}>
-            <div className="grid gap-3 md:grid-cols-3">
-            {[
-              { id: "build", title: "Build With AI", text: "Generate from structured details." },
-              { id: "polish", title: "Polish Existing Resume", text: "Paste text or upload a PDF." },
-              { id: "compose", title: "Compose In Studio", text: "Write manually and enhance with AI." },
-            ].map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setMode(item.id as "build" | "polish" | "compose");
-                  setGenerationError("");
-                }}
-                className={`rounded-2xl border p-4 text-left transition ${
-                  mode === item.id
-                    ? "border-cyan-100/55 bg-cyan-200/20"
-                    : "border-cyan-100/20 bg-cyan-100/5 hover:bg-cyan-100/10"
-                }`}
-              >
-                <p className="text-sm font-semibold text-cyan-50">{item.title}</p>
-                <p className="mt-1 text-xs text-cyan-50/66">{item.text}</p>
-              </button>
-            ))}
-          </div>
+        <section className="grid gap-5 xl:grid-cols-[290px_minmax(0,1fr)]">
+          <aside className="studio-soft-card rounded-[2rem] p-5 sm:p-6">
+            <p className="text-xs uppercase tracking-[0.13em] text-cyan-100/70">Workflow Navigator</p>
+            <h2 className="mt-3 text-2xl font-semibold text-cyan-50">Choose Your Resume Path</h2>
+            <p className="mt-2 text-sm text-cyan-50/74">Switch between guided generation, refinement, and manual drafting.</p>
 
-          {generationError && (
-            <div className="mt-5 rounded-xl border border-amber-100/40 bg-amber-100/14 px-4 py-3 text-sm text-amber-50">{generationError}</div>
-          )}
-
-          {mode === "build" && (
-            <div className="mt-6 space-y-4">
-              <h2 className="text-xl font-semibold text-cyan-50 sm:text-2xl">Build Resume With AI</h2>
-              <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className={fieldClass} />
-              <div className="grid gap-4 md:grid-cols-2">
-                <input type="text" placeholder="Target Industry" value={industry} onChange={(e) => setIndustry(e.target.value)} className={fieldClass} />
-                <input type="text" placeholder="Target Role" value={role} onChange={(e) => setRole(e.target.value)} className={fieldClass} />
-              </div>
-              <textarea placeholder="Professional Snapshot (optional)" value={summary} onChange={(e) => setSummary(e.target.value)} className={textAreaClass} />
-              <textarea placeholder="Key Skills" value={skills} onChange={(e) => setSkills(e.target.value)} className={textAreaClass} />
-              <textarea
-                placeholder="Work Experience Highlights (roles, tenure, measurable outcomes)"
-                value={workExperience}
-                onChange={(e) => setWorkExperience(e.target.value)}
-                className={textAreaClass}
-              />
-              <textarea placeholder="Projects" value={projects} onChange={(e) => setProjects(e.target.value)} className={textAreaClass} />
-              <textarea placeholder="Education" value={education} onChange={(e) => setEducation(e.target.value)} className={textAreaClass} />
-
-              <button
-                type="button"
-                onClick={handleBuildResume}
-                disabled={building || !authToken}
-                className="w-full rounded-2xl border border-cyan-100/36 bg-cyan-200/20 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
-              >
-                {building ? "Generating..." : !authToken ? "Login To Continue" : "Generate Resume"}
-              </button>
-            </div>
-          )}
-
-          {mode === "polish" && (
-            <div className="mt-6 space-y-5">
-              <h2 className="text-xl font-semibold text-cyan-50 sm:text-2xl">Polish Existing Resume</h2>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPolishMode("paste");
-                    setUploadedFile(null);
-                  }}
-                  className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-                    polishMode === "paste"
-                      ? "border-cyan-100/45 bg-cyan-200/22 text-cyan-50"
-                      : "border-cyan-100/20 bg-transparent text-cyan-50/75 hover:bg-cyan-200/10"
-                  }`}
+            {studioLockedByFirstAnalysis && (
+              <div className="mt-4 rounded-2xl border border-amber-100/32 bg-amber-100/10 p-3.5">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-50">Studio Unlock Required</p>
+                <p className="mt-2 text-xs text-amber-50/86">{studioLockMessage}</p>
+                <a
+                  href="/upload"
+                  className="mt-3 inline-flex rounded-xl border border-amber-100/40 bg-amber-100/16 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/24"
                 >
-                  Paste Resume Text
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPolishMode("upload")}
-                  className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-                    polishMode === "upload"
-                      ? "border-cyan-100/45 bg-cyan-200/22 text-cyan-50"
-                      : "border-cyan-100/20 bg-transparent text-cyan-50/75 hover:bg-cyan-200/10"
-                  }`}
-                >
-                  Upload PDF
-                </button>
+                  Go To First Analysis
+                </a>
               </div>
+            )}
 
-              {polishMode === "paste" && (
-                <textarea
-                  placeholder="Paste your full resume content here..."
-                  value={polishText}
-                  onChange={(e) => setPolishText(e.target.value)}
-                  className={`${textAreaClass} min-h-[220px]`}
-                />
+            <div className="mt-5 space-y-2.5">
+              {workflowModes.map((item, index) => {
+                const active = mode === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setMode(item.id);
+                      setGenerationError("");
+                    }}
+                    className={`w-full rounded-2xl border p-3.5 text-left transition ${
+                      active
+                        ? "border-cyan-100/55 bg-cyan-200/20 shadow-[0_10px_24px_rgba(20,78,112,0.35)]"
+                        : "border-cyan-100/20 bg-cyan-100/5 hover:bg-cyan-100/10"
+                    }`}
+                  >
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64">{`0${index + 1}`}</p>
+                    <p className="mt-1 text-sm font-semibold text-cyan-50">{item.title}</p>
+                    <p className="mt-1 text-xs text-cyan-50/66">{item.subtitle}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100/72">Pro Tip</p>
+              <p className="mt-2 text-xs leading-relaxed text-cyan-50/72">
+                Keep role, skills, and measurable outcomes specific. Better inputs produce better AI drafts.
+              </p>
+            </div>
+          </aside>
+
+          <section className="studio-soft-card rounded-[2rem] p-5 sm:p-6 lg:p-8">
+            <fieldset disabled={studioLockedByFirstAnalysis} className={studioLockedByFirstAnalysis ? "pointer-events-none opacity-55" : ""}>
+              {generationError && (
+                <div className="mb-5 rounded-xl border border-amber-100/40 bg-amber-100/14 px-4 py-3 text-sm text-amber-50">{generationError}</div>
               )}
 
-              {polishMode === "upload" && (
-                <div
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setIsDragging(false);
-                    const file = event.dataTransfer.files?.[0];
-                    if (file) {
-                      setUploadedFile(file);
-                    }
-                  }}
-                  className={`rounded-2xl border-2 border-dashed p-8 text-center transition ${
-                    isDragging ? "border-cyan-200/65 bg-cyan-100/12" : "border-cyan-100/28 bg-cyan-100/4"
-                  }`}
-                >
-                  {!uploadedFile ? (
-                    <>
-                      <p className="text-base font-semibold text-cyan-50">Drag and drop your resume PDF</p>
-                      <p className="mt-2 text-sm text-cyan-50/62">or choose a file manually</p>
-                      <label className="mt-4 inline-block cursor-pointer rounded-xl border border-cyan-100/35 bg-cyan-200/20 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28">
-                        Browse File
-                        <input
-                          type="file"
-                          accept=".pdf"
-                          className="hidden"
-                          onChange={(event) => setUploadedFile(event.target.files?.[0] || null)}
+              {mode === "build" && (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-2xl font-semibold text-cyan-50">AI Resume Architect</h3>
+                    <span className="rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-1.5 text-xs text-cyan-100/80">
+                      {wallet?.pricing.ai_resume_generation ?? 0} credits per generation
+                    </span>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className={sectionCardClass}>
+                      <label className={fieldLabelClass}>Candidate Name</label>
+                      <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className={fieldClass} />
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className={fieldLabelClass}>Target Industry</label>
+                          <input type="text" placeholder="Example: SaaS" value={industry} onChange={(e) => setIndustry(e.target.value)} className={fieldClass} />
+                        </div>
+                        <div>
+                          <label className={fieldLabelClass}>Target Role</label>
+                          <input type="text" placeholder="Example: Sales Manager" value={role} onChange={(e) => setRole(e.target.value)} className={fieldClass} />
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <label className={fieldLabelClass}>Professional Snapshot</label>
+                        <textarea
+                          placeholder="Add your role focus, domain depth, and outcomes you are known for."
+                          value={summary}
+                          onChange={(e) => setSummary(e.target.value)}
+                          className={`${textAreaClass} min-h-[120px]`}
                         />
-                      </label>
-                    </>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-sm font-semibold text-cyan-50">Selected: {uploadedFile.name}</p>
-                      <button type="button" onClick={() => setUploadedFile(null)} className="text-sm text-amber-100/90 hover:text-amber-100">
-                        Remove file
+                      </div>
+                    </div>
+
+                    <div className={sectionCardClass}>
+                      <label className={fieldLabelClass}>Core Skills</label>
+                      <textarea
+                        placeholder="List role-critical skills, tools, and strengths."
+                        value={skills}
+                        onChange={(e) => setSkills(e.target.value)}
+                        className={`${textAreaClass} min-h-[120px]`}
+                      />
+                      <div className="mt-4">
+                        <label className={fieldLabelClass}>Work Experience Highlights</label>
+                        <textarea
+                          placeholder="Include achievements with measurable impact, ownership, and scope."
+                          value={workExperience}
+                          onChange={(e) => setWorkExperience(e.target.value)}
+                          className={`${textAreaClass} min-h-[140px]`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className={sectionCardClass}>
+                      <label className={fieldLabelClass}>Projects</label>
+                      <textarea
+                        placeholder="Mention key projects with outcomes and business impact."
+                        value={projects}
+                        onChange={(e) => setProjects(e.target.value)}
+                        className={`${textAreaClass} min-h-[130px]`}
+                      />
+                    </div>
+                    <div className={sectionCardClass}>
+                      <label className={fieldLabelClass}>Education</label>
+                      <textarea
+                        placeholder="Add degree, institution, year, and major highlights."
+                        value={education}
+                        onChange={(e) => setEducation(e.target.value)}
+                        className={`${textAreaClass} min-h-[130px]`}
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleBuildResume}
+                    disabled={building || !authToken}
+                    className="w-full rounded-2xl border border-cyan-100/36 bg-cyan-200/20 px-5 py-3.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
+                  >
+                    {building ? "Generating Professional Draft..." : !authToken ? "Login To Continue" : "Generate Professional Resume Draft"}
+                  </button>
+                </div>
+              )}
+
+              {mode === "polish" && (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-2xl font-semibold text-cyan-50">Resume Refinery</h3>
+                    <span className="rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-1.5 text-xs text-cyan-100/80">
+                      Improves wording, ATS fit, and structure
+                    </span>
+                  </div>
+
+                  <div className={sectionCardClass}>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPolishMode("paste");
+                          setUploadedFile(null);
+                        }}
+                        className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+                          polishMode === "paste"
+                            ? "border-cyan-100/45 bg-cyan-200/22 text-cyan-50"
+                            : "border-cyan-100/20 bg-transparent text-cyan-50/75 hover:bg-cyan-200/10"
+                        }`}
+                      >
+                        Paste Resume Text
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPolishMode("upload")}
+                        className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+                          polishMode === "upload"
+                            ? "border-cyan-100/45 bg-cyan-200/22 text-cyan-50"
+                            : "border-cyan-100/20 bg-transparent text-cyan-50/75 hover:bg-cyan-200/10"
+                        }`}
+                      >
+                        Upload Resume PDF
+                      </button>
+                    </div>
+
+                    {polishMode === "paste" && (
+                      <div className="mt-4">
+                        <label className={fieldLabelClass}>Paste Existing Resume Content</label>
+                        <textarea
+                          placeholder="Paste your full resume content here..."
+                          value={polishText}
+                          onChange={(e) => setPolishText(e.target.value)}
+                          className={`${textAreaClass} min-h-[240px]`}
+                        />
+                      </div>
+                    )}
+
+                    {polishMode === "upload" && (
+                      <div
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          setIsDragging(true);
+                        }}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          setIsDragging(false);
+                          const file = event.dataTransfer.files?.[0];
+                          if (file) {
+                            setUploadedFile(file);
+                          }
+                        }}
+                        className={`mt-4 rounded-2xl border-2 border-dashed p-8 text-center transition ${
+                          isDragging ? "border-cyan-200/65 bg-cyan-100/12" : "border-cyan-100/28 bg-cyan-100/4"
+                        }`}
+                      >
+                        {!uploadedFile ? (
+                          <>
+                            <p className="text-base font-semibold text-cyan-50">Drag and drop your resume PDF</p>
+                            <p className="mt-2 text-sm text-cyan-50/62">or choose a file manually</p>
+                            <label className="mt-4 inline-block cursor-pointer rounded-xl border border-cyan-100/35 bg-cyan-200/20 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28">
+                              Browse File
+                              <input
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={(event) => setUploadedFile(event.target.files?.[0] || null)}
+                              />
+                            </label>
+                          </>
+                        ) : (
+                          <div className="space-y-3">
+                            <p className="text-sm font-semibold text-cyan-50">Selected: {uploadedFile.name}</p>
+                            <button type="button" onClick={() => setUploadedFile(null)} className="text-sm text-amber-100/90 hover:text-amber-100">
+                              Remove file
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleBuildResume}
+                    disabled={building || !authToken}
+                    className="w-full rounded-2xl border border-cyan-100/36 bg-cyan-200/20 px-5 py-3.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
+                  >
+                    {building ? "Refining Resume..." : !authToken ? "Login To Continue" : "Run Resume Refinement"}
+                  </button>
+                </div>
+              )}
+
+              {mode === "compose" && (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-2xl font-semibold text-cyan-50">Manual Studio + AI Boost</h3>
+                    <span className="rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-1.5 text-xs text-cyan-100/80">
+                      Write first, then enhance quality
+                    </span>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className={sectionCardClass}>
+                      <label className={fieldLabelClass}>Candidate Name</label>
+                      <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className={fieldClass} />
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className={fieldLabelClass}>Target Industry</label>
+                          <input type="text" placeholder="Example: Fintech" value={industry} onChange={(e) => setIndustry(e.target.value)} className={fieldClass} />
+                        </div>
+                        <div>
+                          <label className={fieldLabelClass}>Target Role</label>
+                          <input type="text" placeholder="Example: Product Manager" value={role} onChange={(e) => setRole(e.target.value)} className={fieldClass} />
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <label className={fieldLabelClass}>Professional Snapshot</label>
+                        <textarea
+                          placeholder="Write your core profile in 3-5 lines."
+                          value={summary}
+                          onChange={(e) => setSummary(e.target.value)}
+                          className={`${textAreaClass} min-h-[120px]`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className={sectionCardClass}>
+                      <label className={fieldLabelClass}>Skills</label>
+                      <textarea
+                        placeholder="List core capabilities and tools."
+                        value={skills}
+                        onChange={(e) => setSkills(e.target.value)}
+                        className={`${textAreaClass} min-h-[120px]`}
+                      />
+                      <div className="mt-4">
+                        <label className={fieldLabelClass}>Experience Highlights</label>
+                        <textarea
+                          placeholder="Add role history with measurable impact."
+                          value={workExperience}
+                          onChange={(e) => setWorkExperience(e.target.value)}
+                          className={`${textAreaClass} min-h-[140px]`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className={sectionCardClass}>
+                      <label className={fieldLabelClass}>Projects</label>
+                      <textarea
+                        placeholder="Key initiatives and results."
+                        value={projects}
+                        onChange={(e) => setProjects(e.target.value)}
+                        className={`${textAreaClass} min-h-[130px]`}
+                      />
+                    </div>
+                    <div className={sectionCardClass}>
+                      <label className={fieldLabelClass}>Education</label>
+                      <textarea
+                        placeholder="Institution, degree, and highlights."
+                        value={education}
+                        onChange={(e) => setEducation(e.target.value)}
+                        className={`${textAreaClass} min-h-[130px]`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={handleComposeDraft}
+                      className="rounded-2xl border border-cyan-100/36 bg-cyan-200/20 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
+                    >
+                      Build Draft In Studio
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleEnhanceCompose}
+                      disabled={building || !authToken || !canUseAiGeneration}
+                      className="rounded-2xl border border-cyan-100/30 bg-cyan-100/8 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/14 disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      {building ? "Enhancing..." : !authToken ? "Login To Enhance" : canUseAiGeneration ? "Enhance With AI" : "Need More Credits"}
+                    </button>
+                  </div>
+
+                  {composedDraft && (
+                    <div className="rounded-2xl border border-cyan-100/20 bg-cyan-100/5 p-4">
+                      <p className="mb-3 text-sm font-semibold text-cyan-100">Draft Preview</p>
+                      <pre className="max-h-[280px] overflow-auto whitespace-pre-wrap text-sm text-cyan-50/80">{composedDraft}</pre>
                     </div>
                   )}
                 </div>
               )}
-
-              <button
-                type="button"
-                onClick={handleBuildResume}
-                disabled={building || !authToken}
-                className="w-full rounded-2xl border border-cyan-100/36 bg-cyan-200/20 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
-              >
-                {building ? "Polishing..." : !authToken ? "Login To Continue" : "Polish Resume"}
-              </button>
-            </div>
-          )}
-
-          {mode === "compose" && (
-            <div className="mt-6 space-y-4">
-              <h2 className="text-xl font-semibold text-cyan-50 sm:text-2xl">Compose In Studio</h2>
-              <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className={fieldClass} />
-              <div className="grid gap-4 md:grid-cols-2">
-                <input type="text" placeholder="Target Industry" value={industry} onChange={(e) => setIndustry(e.target.value)} className={fieldClass} />
-                <input type="text" placeholder="Target Role" value={role} onChange={(e) => setRole(e.target.value)} className={fieldClass} />
-              </div>
-              <textarea placeholder="Professional Snapshot (optional)" value={summary} onChange={(e) => setSummary(e.target.value)} className={textAreaClass} />
-              <textarea placeholder="Key Skills" value={skills} onChange={(e) => setSkills(e.target.value)} className={textAreaClass} />
-              <textarea
-                placeholder="Work Experience Highlights (roles, tenure, measurable outcomes)"
-                value={workExperience}
-                onChange={(e) => setWorkExperience(e.target.value)}
-                className={textAreaClass}
-              />
-              <textarea placeholder="Projects" value={projects} onChange={(e) => setProjects(e.target.value)} className={textAreaClass} />
-              <textarea placeholder="Education" value={education} onChange={(e) => setEducation(e.target.value)} className={textAreaClass} />
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={handleComposeDraft}
-                  className="rounded-2xl border border-cyan-100/36 bg-cyan-200/20 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
-                >
-                  Build Draft In Studio
-                </button>
-                <button
-                  type="button"
-                  onClick={handleEnhanceCompose}
-                  disabled={building || !authToken || !canUseAiGeneration}
-                  className="rounded-2xl border border-cyan-100/30 bg-cyan-100/8 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/14 disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  {building ? "Enhancing..." : !authToken ? "Login To Enhance" : canUseAiGeneration ? "Enhance With AI" : "Need More Credits"}
-                </button>
-              </div>
-
-              {composedDraft && (
-                <div className="rounded-2xl border border-cyan-100/20 bg-cyan-100/5 p-4">
-                  <p className="mb-3 text-sm font-semibold text-cyan-100">Draft Preview</p>
-                  <pre className="max-h-[280px] overflow-auto whitespace-pre-wrap text-sm text-cyan-50/80">{composedDraft}</pre>
-                </div>
-              )}
-            </div>
-          )}
-          </fieldset>
+            </fieldset>
+          </section>
         </section>
 
         {studioAiLoading && (

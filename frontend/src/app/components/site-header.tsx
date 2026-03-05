@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type MouseEvent, useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { trackEvent } from "@/lib/analytics";
@@ -26,7 +26,7 @@ type NavLink = {
   isSection?: boolean;
 };
 
-const navLinks: NavLink[] = [
+const baseNavLinks: NavLink[] = [
   { href: "/", label: "Home" },
   { href: "/upload", label: "Analyze" },
   { href: "/studio", label: "Build Resume" },
@@ -57,6 +57,10 @@ export default function SiteHeader() {
   const [studioUnlocked, setStudioUnlocked] = useState(false);
   const [showStudioLockModal, setShowStudioLockModal] = useState(false);
   const portalReady = typeof window !== "undefined";
+  const navLinks = useMemo(
+    () => (authToken ? baseNavLinks.filter((link) => link.href !== "/resources") : baseNavLinks),
+    [authToken]
+  );
 
   useEffect(() => {
     if (!showStudioLockModal) return;
