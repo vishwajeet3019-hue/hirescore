@@ -242,7 +242,7 @@ export default function AdminPage() {
         timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
         parseError: async (response) => {
           const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-          return payload?.detail || `Request failed (${response.status})`;
+          return payload?.detail || `Request failed (${response.status}) on ${path}`;
         },
         abortErrorMessage: "Server wake-up is taking longer than expected. Please wait 10-20 seconds and try again.",
       });
@@ -304,25 +304,42 @@ export default function AdminPage() {
             }))
           : Promise.resolve(null);
 
-        const [analyticsData, usersData, chatsData, activityData] = await Promise.all([
+        const [analyticsResult, usersResult, chatsResult, activityResult] = await Promise.allSettled([
           adminFetch<AdminAnalytics>("/admin/analytics", undefined, effectiveCredential, effectiveMode),
           usersPromise,
           chatsPromise,
           activityPromise,
         ]);
 
-        setAnalytics(analyticsData);
-        if (usersData) {
-          setUsers(usersData.users || []);
+        const toError = (value: unknown) => (value instanceof Error ? value : new Error("Request failed."));
+
+        if (shouldLoadUsers && usersResult.status === "rejected") {
+          throw toError(usersResult.reason);
         }
-        if (activityData) {
-          setEvents(activityData.events);
-          setFeedbackRows(activityData.feedback);
-          setTransactions(activityData.transactions);
+        if (shouldLoadSupport && chatsResult.status === "rejected") {
+          throw toError(chatsResult.reason);
+        }
+        if (shouldLoadActivity && activityResult.status === "rejected") {
+          throw toError(activityResult.reason);
+        }
+
+        const warnings: string[] = [];
+        if (analyticsResult.status === "fulfilled") {
+          setAnalytics(analyticsResult.value);
+        } else {
+          warnings.push("Analytics");
+        }
+        if (usersResult.status === "fulfilled" && usersResult.value) {
+          setUsers(usersResult.value.users || []);
+        }
+        if (activityResult.status === "fulfilled" && activityResult.value) {
+          setEvents(activityResult.value.events);
+          setFeedbackRows(activityResult.value.feedback);
+          setTransactions(activityResult.value.transactions);
           setHasLoadedActivity(true);
         }
-        if (chatsData) {
-          const nextThreads = chatsData.threads || [];
+        if (chatsResult.status === "fulfilled" && chatsResult.value) {
+          const nextThreads = chatsResult.value.threads || [];
           setChatThreads(nextThreads);
           setActiveChatUser((prev) => {
             if (!prev) return null;
@@ -340,6 +357,9 @@ export default function AdminPage() {
         }
 
         setConnected(true);
+        if (warnings.length > 0) {
+          setSuccess(`Connected. ${warnings.join(", ")} temporarily unavailable.`);
+        }
         window.localStorage.setItem("hirescore_admin_auth_mode", effectiveMode);
         if (effectiveMode === "api_key") {
           setAdminApiKey(effectiveCredential);
