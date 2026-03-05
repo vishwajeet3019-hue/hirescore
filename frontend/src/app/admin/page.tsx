@@ -312,18 +312,36 @@ export default function AdminPage() {
         ]);
 
         const toError = (value: unknown) => (value instanceof Error ? value : new Error("Request failed."));
-
-        if (shouldLoadUsers && usersResult.status === "rejected") {
-          throw toError(usersResult.reason);
-        }
-        if (shouldLoadSupport && chatsResult.status === "rejected") {
-          throw toError(chatsResult.reason);
-        }
-        if (shouldLoadActivity && activityResult.status === "rejected") {
-          throw toError(activityResult.reason);
-        }
+        const isAuthFailure = (value: unknown) => {
+          const message = toError(value).message.toLowerCase();
+          return (
+            message.includes("401") ||
+            message.includes("403") ||
+            message.includes("authentication") ||
+            message.includes("admin session") ||
+            message.includes("unauthorized")
+          );
+        };
 
         const warnings: string[] = [];
+        if (shouldLoadUsers && usersResult.status === "rejected") {
+          if (isAuthFailure(usersResult.reason)) {
+            throw toError(usersResult.reason);
+          }
+          warnings.push("Users");
+        }
+        if (shouldLoadSupport && chatsResult.status === "rejected") {
+          if (isAuthFailure(chatsResult.reason)) {
+            throw toError(chatsResult.reason);
+          }
+          warnings.push("Support");
+        }
+        if (shouldLoadActivity && activityResult.status === "rejected") {
+          if (isAuthFailure(activityResult.reason)) {
+            throw toError(activityResult.reason);
+          }
+          warnings.push("Activity");
+        }
         if (analyticsResult.status === "fulfilled") {
           setAnalytics(analyticsResult.value);
         } else {
