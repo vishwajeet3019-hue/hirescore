@@ -185,7 +185,7 @@ export default function AdminPage() {
     const existingToken = window.localStorage.getItem("hirescore_admin_token");
     const existingApiKey = window.localStorage.getItem("hirescore_admin_api_key");
     const existingMode = window.localStorage.getItem("hirescore_admin_auth_mode");
-    const existingLogin = window.localStorage.getItem("hirescore_admin_login_id");
+    window.localStorage.removeItem("hirescore_admin_login_id");
     if (existingMode === "api_key" || existingMode === "token") {
       setAdminAuthMode(existingMode);
     }
@@ -194,9 +194,6 @@ export default function AdminPage() {
     }
     if (existingApiKey) {
       setAdminApiKey(existingApiKey);
-    }
-    if (existingLogin) {
-      setAdminLoginId(existingLogin);
     }
   }, []);
 
@@ -388,9 +385,6 @@ export default function AdminPage() {
           window.localStorage.setItem("hirescore_admin_token", effectiveCredential);
           window.localStorage.removeItem("hirescore_admin_api_key");
         }
-        if (adminLoginId.trim()) {
-          window.localStorage.setItem("hirescore_admin_login_id", adminLoginId.trim());
-        }
       } catch (err) {
         setConnected(false);
         setError(err instanceof Error ? err.message : "Unable to load admin data.");
@@ -409,7 +403,7 @@ export default function AdminPage() {
         setLoading(false);
       }
     },
-    [adminAuthMode, adminApiKey, adminToken, workspaceTab, search, planFilter, adminFetch, adminLoginId],
+    [adminAuthMode, adminApiKey, adminToken, workspaceTab, search, planFilter, adminFetch],
   );
 
   useEffect(() => {
@@ -493,7 +487,6 @@ export default function AdminPage() {
       window.localStorage.setItem("hirescore_admin_auth_mode", "token");
       window.localStorage.setItem("hirescore_admin_token", payload.admin_token);
       window.localStorage.removeItem("hirescore_admin_api_key");
-      window.localStorage.setItem("hirescore_admin_login_id", loginId);
       await loadAdminData(payload.admin_token, "users", "token");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to login.");
@@ -768,12 +761,13 @@ export default function AdminPage() {
             <p className="mt-2 text-sm text-slate-200/75">Login to access user management, credits, plans, analytics, and event logs.</p>
 
             <div className="mt-5 space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin Login ID</label>
+              <label className="text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin User ID</label>
               <input
                 type="text"
                 value={adminLoginId}
                 onChange={(event) => setAdminLoginId(event.target.value)}
-                placeholder="vishwajeet3019@gmail.com"
+                placeholder="Enter admin user id"
+                autoComplete="off"
                 className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
               <input
@@ -851,12 +845,13 @@ export default function AdminPage() {
             </p>
 
             <div className="mt-5 space-y-2">
-              <label className="text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin Login ID</label>
+              <label className="text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin User ID</label>
               <input
                 type="text"
                 value={adminLoginId}
                 onChange={(event) => setAdminLoginId(event.target.value)}
-                placeholder="admin@hirescore.in"
+                placeholder="Enter admin user id"
+                autoComplete="off"
                 className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
               <input
