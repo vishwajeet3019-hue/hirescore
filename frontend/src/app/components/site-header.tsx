@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type MouseEvent, useEffect, useMemo, useState } from "react";
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { trackEvent } from "@/lib/analytics";
@@ -25,15 +25,25 @@ type NavLink = {
   href: string;
   label: string;
   isSection?: boolean;
+  children?: NavLink[];
 };
 
 const baseNavLinks: NavLink[] = [
   { href: "/", label: "Home" },
   { href: "/upload", label: "Analyze" },
   { href: "/studio", label: "Build Resume" },
+  { href: "/#workflow", label: "How It Works", isSection: true },
+  {
+    href: "/tools",
+    label: "Tools",
+    children: [
+      { href: "/upload", label: "Analysis" },
+      { href: "/studio", label: "AI Resume Studio" },
+      { href: "/upload?focus=jd-match", label: "JD Matcher" },
+    ],
+  },
   { href: "/case-studies", label: "Success Stories" },
   { href: "/resources", label: "Guides" },
-  { href: "/#workflow", label: "How It Works", isSection: true },
   { href: "/pricing", label: "Pricing" },
 ];
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
@@ -58,6 +68,8 @@ export default function SiteHeader() {
   const [analysisCount, setAnalysisCount] = useState(0);
   const [studioUnlocked, setStudioUnlocked] = useState(false);
   const [showStudioLockModal, setShowStudioLockModal] = useState(false);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const portalReady = typeof window !== "undefined";
   const navLinks = useMemo(
     () => (authToken ? baseNavLinks.filter((link) => link.href !== "/resources") : baseNavLinks),
@@ -68,6 +80,13 @@ export default function SiteHeader() {
     medium: "internal",
     campaign: "nav_analyze",
   });
+  const isToolsActive = (link: NavLink) =>
+    link.children?.some((child) => isLinkActive(pathname, hash, child)) || false;
+  const isStudioNav = (href: string) => href === "/studio";
+  const toolsNavLinks = navLinks.find((link) => link.children?.length)?.children || [];
+  const isToolsDropdownOpen = (link: NavLink) => (link.children ? showToolsMenu : false);
+
+  const closeToolsDropdown = () => setShowToolsMenu(false);
 
   useEffect(() => {
     if (!showStudioLockModal) return;
@@ -131,6 +150,32 @@ export default function SiteHeader() {
     void syncAuth();
   }, [pathname]);
 
+  useEffect(() => {
+    closeToolsDropdown();
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!showToolsMenu) return;
+    const closeOnOutsideClick = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(target)) {
+        setShowToolsMenu(false);
+      }
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowToolsMenu(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [showToolsMenu]);
+
   const handleStudioNavClick = (event: MouseEvent<HTMLAnchorElement>) => {
     const studioLocked = !authToken || !studioUnlocked;
     if (!studioLocked) return;
@@ -164,21 +209,60 @@ export default function SiteHeader() {
 
         <nav className="hidden items-center gap-4 text-sm font-medium text-cyan-50/78 md:flex">
           {navLinks.map((link) => {
-            const active = isLinkActive(pathname, hash, link);
-            const isStudioLink = link.href === "/studio";
+            const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
+            if (!link.children) {
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={isStudioNav(link.href) ? handleStudioNavClick : undefined}
+                  className={`rounded-full border px-3 py-1.5 transition ${
+                    active
+                      ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
+                      : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            }
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={isStudioLink ? handleStudioNavClick : undefined}
-                className={`rounded-full border px-3 py-1.5 transition ${
-                  active
-                    ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
-                    : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
-                }`}
-              >
-                {link.label}
-              </Link>
+              <div key={link.label} ref={toolsMenuRef} className="group relative">
+                <button
+                  type="button"
+                  onClick={() => setShowToolsMenu((prev) => !prev)}
+                  className={`rounded-full border px-3 py-1.5 transition ${
+                    active
+                      ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
+                      : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
+                  }`}
+                >
+                  {link.label}
+                </button>
+                <div
+                  className={`pointer-events-none absolute left-0 top-full z-20 mt-2 min-w-[200px] rounded-xl border border-cyan-100/24 bg-[#05152a] p-2 shadow-[0_22px_55px_rgba(2,8,22,0.5)] transition-all duration-150 ${
+                    isToolsDropdownOpen(link)
+                      ? "visible opacity-100 pointer-events-auto"
+                      : "invisible opacity-0"
+                  }`}
+                >
+                  <div className="flex flex-col gap-1.5">
+                    {link.children.map((child) => (
+                      <Link
+                        key={`${link.label}-${child.href}-${child.label}`}
+                        href={child.href}
+                        onClick={isStudioNav(child.href) ? handleStudioNavClick : undefined}
+                        onClickCapture={() => {
+                          closeToolsDropdown();
+                        }}
+                        className="rounded-lg border border-cyan-100/20 px-3 py-2 text-xs text-cyan-50 transition hover:bg-cyan-100/16 hover:text-cyan-100"
+                      >
+                        {child.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
             );
           })}
         </nav>
@@ -230,23 +314,57 @@ export default function SiteHeader() {
       <div className="border-t border-cyan-100/8 px-3 py-2 md:hidden">
         <nav className="mx-auto flex w-full max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-cyan-50/80">
           {navLinks.map((link) => {
-            const active = isLinkActive(pathname, hash, link);
-            const isStudioLink = link.href === "/studio";
+            const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
+            if (!link.children) {
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={isStudioNav(link.href) ? handleStudioNavClick : undefined}
+                  className={`rounded-lg border px-3 py-1.5 transition ${
+                    active
+                      ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
+                      : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            }
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={isStudioLink ? handleStudioNavClick : undefined}
-                className={`rounded-lg border px-3 py-1.5 transition ${
+              <button
+                key={link.label}
+                type="button"
+                onClick={() => setShowToolsMenu((prev) => !prev)}
+                className={`rounded-lg border px-3 py-1.5 shrink-0 transition ${
                   active
                     ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
                     : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
                 }`}
               >
                 {link.label}
-              </Link>
+              </button>
             );
           })}
+          {showToolsMenu ? (
+            toolsNavLinks.map((child) => {
+              const childActive = isLinkActive(pathname, hash, child);
+              return (
+                <Link
+                  key={`mobile-tool-${child.label}`}
+                  href={child.href}
+                  onClick={isStudioNav(child.href) ? handleStudioNavClick : undefined}
+                  className={`rounded-lg border px-3 py-1.5 transition ${
+                    childActive
+                      ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
+                      : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
+                  }`}
+                >
+                  {child.label}
+                </Link>
+              );
+            })
+          ) : null}
           {authToken && (
             <Link
               href="/dashboard"
