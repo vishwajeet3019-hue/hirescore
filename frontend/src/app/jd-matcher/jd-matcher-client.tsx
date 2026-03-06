@@ -223,12 +223,16 @@ export default function JdMatcherClient() {
       setJdMatchError("Login required to run JD match.");
       return;
     }
-    if (!resumeUploadedFileName || !jdUploadedFileName) {
-      setJdMatchError("Upload both resume and JD files before running AI JD match.");
+    if (!resumeUploadedFileName) {
+      setJdMatchError("Upload resume file before running AI JD match.");
+      return;
+    }
+    if (!jdUploadedFileName && jdInput.trim().length < 24) {
+      setJdMatchError("Upload JD file or paste a fuller job description (at least 24 characters).");
       return;
     }
     if (jdInput.trim().length < 24) {
-      setJdMatchError("Could not extract enough text from JD. Upload a clearer JD file.");
+      setJdMatchError("Could not extract enough JD text. Upload a clearer JD file or paste manually.");
       return;
     }
     if (resumeText.trim().length < 24) {
@@ -286,7 +290,7 @@ export default function JdMatcherClient() {
   const canRunMatch =
     Boolean(authToken) &&
     Boolean(resumeUploadedFileName) &&
-    Boolean(jdUploadedFileName) &&
+    (Boolean(jdUploadedFileName) || jdInput.trim().length >= 24) &&
     !resumeFileUploading &&
     !jdFileUploading &&
     !jdMatchLoading;
@@ -306,8 +310,8 @@ export default function JdMatcherClient() {
           </p>
         )}
         <p className="mt-3 rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/82">
-          Mandatory: Upload both your <span className="font-semibold text-cyan-50">Resume</span> and target{" "}
-          <span className="font-semibold text-cyan-50">JD</span> file before running AI JD Match.
+          Mandatory: Upload your <span className="font-semibold text-cyan-50">Resume</span> file. For{" "}
+          <span className="font-semibold text-cyan-50">JD</span>, you can upload a file or paste text directly.
         </p>
         {authError && (
           <div className="mt-4 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
@@ -344,8 +348,8 @@ export default function JdMatcherClient() {
           />
           <textarea
             value={jdInput}
-            readOnly
-            placeholder="JD text preview appears after JD upload"
+            onChange={(event) => setJdInput(event.target.value)}
+            placeholder="Paste target job description here (or upload JD file)"
             className={`${textAreaClass} mt-3`}
           />
           <input
@@ -385,7 +389,7 @@ export default function JdMatcherClient() {
               disabled={jdFileUploading || jdMatchLoading}
               className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {jdFileUploading ? "Extracting JD..." : "Upload JD (Required)"}
+              {jdFileUploading ? "Extracting JD..." : "Upload JD (Optional)"}
             </button>
             <button
               type="button"
