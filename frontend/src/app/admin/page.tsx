@@ -734,7 +734,7 @@ export default function AdminPage() {
   const metricCardClass =
     "rounded-2xl border border-slate-200/16 bg-gradient-to-br from-slate-900/82 via-slate-900/70 to-indigo-900/36 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.4)]";
   const inputClass =
-    "rounded-xl border border-slate-300/18 bg-[#0a1a30]/92 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-300/45 outline-none transition focus:border-sky-300/65";
+    "rounded-xl border border-slate-300/18 bg-[#0b1120]/94 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-300/45 outline-none transition focus:border-sky-300/65";
 
   const metricRows = analytics
     ? [
@@ -768,14 +768,14 @@ export default function AdminPage() {
                 onChange={(event) => setAdminLoginId(event.target.value)}
                 placeholder="Enter admin user id"
                 autoComplete="off"
-                className="w-full rounded-xl border border-slate-200/16 bg-white px-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
               <input
                 type="password"
                 value={adminPassword}
                 onChange={(event) => setAdminPassword(event.target.value)}
                 placeholder="Password"
-                className="w-full rounded-xl border border-slate-200/16 bg-white px-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
               <label className="pt-1 text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Or Admin API Key</label>
               <input
@@ -783,7 +783,7 @@ export default function AdminPage() {
                 value={adminApiKey}
                 onChange={(event) => setAdminApiKey(event.target.value)}
                 placeholder="Paste ADMIN_API_KEYS value"
-                className="w-full rounded-xl border border-slate-200/16 bg-white px-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
               <p className="text-[11px] text-slate-300/66">
                 If login credentials fail, use API key login instead.
@@ -852,14 +852,14 @@ export default function AdminPage() {
                 onChange={(event) => setAdminLoginId(event.target.value)}
                 placeholder="Enter admin user id"
                 autoComplete="off"
-                className="w-full rounded-xl border border-slate-200/16 bg-white px-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
               <input
                 type="password"
                 value={adminPassword}
                 onChange={(event) => setAdminPassword(event.target.value)}
                 placeholder="Password"
-                className="w-full rounded-xl border border-slate-200/16 bg-white px-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
               <label className="pt-1 text-[11px] uppercase tracking-[0.12em] text-slate-300/70">Admin API Key (Optional)</label>
               <input
@@ -867,7 +867,7 @@ export default function AdminPage() {
                 value={adminApiKey}
                 onChange={(event) => setAdminApiKey(event.target.value)}
                 placeholder="Paste ADMIN_API_KEYS value"
-                className="w-full rounded-xl border border-slate-200/16 bg-white px-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
+                className="w-full rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-sky-300/65"
               />
             </div>
 
@@ -1036,7 +1036,7 @@ export default function AdminPage() {
             </section>
 
             {workspaceTab === "users" && (
-            <section className="rounded-[2rem] border border-slate-200/14 bg-[#0a1a30]/92 p-5 sm:p-6">
+            <section className="rounded-[2rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">User Management</p>
@@ -1200,7 +1200,7 @@ export default function AdminPage() {
             )}
 
             {workspaceTab === "support" && (
-            <section className="rounded-[2rem] border border-slate-200/14 bg-[#0a1a30]/92 p-5 sm:p-6">
+            <section className="rounded-[2rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Support Inbox</p>
@@ -1285,7 +1285,7 @@ export default function AdminPage() {
                         </div>
                       </div>
 
-                      <div className="mt-3 h-[310px] space-y-2 overflow-y-auto rounded-xl border border-slate-200/14 bg-slate-50 p-3">
+                      <div className="mt-3 h-[310px] space-y-2 overflow-y-auto rounded-xl border border-slate-200/14 bg-[#0a1324] p-3">
                         {chatLoading && <p className="text-xs text-slate-300/74">Loading conversation...</p>}
                         {!chatLoading && !chatMessages.length && <p className="text-xs text-slate-300/74">No messages in this thread yet.</p>}
                         {chatMessages.map((msg) => {
@@ -1323,7 +1323,7 @@ export default function AdminPage() {
                           value={chatReplyText}
                           onChange={(event) => setChatReplyText(event.target.value)}
                           placeholder="Type your reply to user..."
-                          className="h-24 w-full resize-none rounded-xl border border-slate-200/18 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400/70 outline-none transition focus:border-sky-300/62"
+                          className="h-24 w-full resize-none rounded-xl border border-slate-200/18 bg-[#0a1324] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400/70 outline-none transition focus:border-sky-300/62"
                         />
                         <div className="flex justify-end">
                           <button
@@ -1344,7 +1344,7 @@ export default function AdminPage() {
             )}
 
             {workspaceTab === "activity" && (
-            <section className="rounded-[1.8rem] border border-slate-200/14 bg-[#0a1a30]/92 p-5 sm:p-6">
+            <section className="rounded-[1.8rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Activity Stream</p>

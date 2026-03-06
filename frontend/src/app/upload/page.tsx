@@ -1823,11 +1823,11 @@ export default function UploadPage() {
   closeResultModalRef.current = handleCloseResultModal;
 
   const analysisFieldClass =
-    "w-full rounded-2xl border border-amber-100/28 bg-[#08192d]/92 px-4 py-3.5 text-amber-50 placeholder:text-amber-100/40 outline-none transition focus:border-rose-100/70 focus:shadow-[0_0_0_3px_rgba(255,186,138,0.2)]";
+    "w-full rounded-2xl border border-amber-100/28 bg-[#1a1020]/78 px-4 py-3.5 text-amber-50 placeholder:text-amber-100/40 outline-none transition focus:border-rose-100/70 focus:shadow-[0_0_0_3px_rgba(255,186,138,0.2)]";
   const analysisTextAreaClass = `${analysisFieldClass} min-h-28 leading-relaxed`;
 
   const fieldClass =
-    "w-full rounded-2xl border border-cyan-200/35 bg-[#08192d]/92 px-4 py-3.5 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100 focus:shadow-[0_0_0_3px_rgba(128,240,255,0.18)]";
+    "w-full rounded-2xl border border-cyan-200/35 bg-[#021327]/92 px-4 py-3.5 text-cyan-50 placeholder:text-cyan-100/45 outline-none transition focus:border-cyan-100 focus:shadow-[0_0_0_3px_rgba(128,240,255,0.18)]";
 
   const textAreaClass = `${fieldClass} min-h-28 leading-relaxed`;
 
@@ -1905,7 +1905,7 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-amber-100/24 bg-[#0c2039]/84 p-4">
+                <div className="mt-4 rounded-2xl border border-amber-100/24 bg-[#24162a]/58 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       {!authToken ? (
@@ -2193,7 +2193,7 @@ export default function UploadPage() {
               initial={{ opacity: 0, y: 14, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="my-auto w-full max-w-xl overflow-y-auto rounded-[1.7rem] border border-cyan-100/26 bg-[#0a1a30]/92 p-6 shadow-[0_35px_100px_rgba(0,0,0,0.6)] max-h-[calc(100dvh-2rem)]"
+              className="my-auto w-full max-w-xl overflow-y-auto rounded-[1.7rem] border border-cyan-100/26 bg-[#04172e]/96 p-6 shadow-[0_35px_100px_rgba(0,0,0,0.6)] max-h-[calc(100dvh-2rem)]"
             >
               <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Login Required</p>
               <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Unlock Your Analysis Report</h3>
@@ -2443,7 +2443,7 @@ export default function UploadPage() {
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="mx-auto my-0 flex h-[calc(100dvh-0.75rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1rem] border border-cyan-100/22 bg-[#0a1a30]/92 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:h-[calc(100dvh-2rem)] sm:rounded-[2rem]"
+              className="mx-auto my-0 flex h-[calc(100dvh-0.75rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1rem] border border-cyan-100/22 bg-[#041427]/96 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:h-[calc(100dvh-2rem)] sm:rounded-[2rem]"
             >
               <div className="border-b border-cyan-100/14 px-3 py-3 sm:px-6 sm:py-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2455,7 +2455,7 @@ export default function UploadPage() {
                   <button
                     type="button"
                     onClick={handleCloseResultModal}
-                    className="rounded-xl border border-cyan-100/28 bg-cyan-100/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50/90 transition hover:bg-cyan-100/18"
+                    className="rounded-xl border border-cyan-100/28 bg-[#082640]/78 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-50/90 transition hover:bg-[#0d3358]"
                   >
                     Close
                   </button>
@@ -2960,7 +2960,7 @@ export default function UploadPage() {
                   </div>
                 </div>
               </div>
-              <div className="border-t border-cyan-100/14 bg-[#061429]/94 px-3 py-3 sm:px-6">
+              <div className="border-t border-cyan-100/14 bg-[#031628]/96 px-3 py-3 sm:px-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs text-cyan-100/68">
                     {resultStepIndex >= RESULT_STEPS.length - 1 ? "Final section" : `Up next: ${nextResultStep.label}`}
@@ -3006,7 +3006,7 @@ export default function UploadPage() {
               initial={{ opacity: 0, y: 14, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="w-full max-w-2xl rounded-[1.8rem] border border-cyan-100/22 bg-[#0a1a30]/92 p-5 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:p-7"
+              className="w-full max-w-2xl rounded-[1.8rem] border border-cyan-100/22 bg-[#041427]/96 p-5 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:p-7"
             >
               <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Roadmap Decision</p>
               <h3 className="mt-2 text-2xl font-semibold text-cyan-50">{roadmapDecisionTitle}</h3>
@@ -3093,7 +3093,7 @@ export default function UploadPage() {
               initial={{ opacity: 0, y: 14, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               onClick={(event) => event.stopPropagation()}
-              className="w-full max-w-3xl rounded-[1.8rem] border border-cyan-100/22 bg-[#0a1a30]/92 p-5 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:p-7"
+              className="w-full max-w-3xl rounded-[1.8rem] border border-cyan-100/22 bg-[#041427]/96 p-5 shadow-[0_35px_100px_rgba(0,0,0,0.65)] sm:p-7"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -3210,7 +3210,7 @@ export default function UploadPage() {
             <motion.section
               initial={{ opacity: 0, y: 14, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              className="w-full max-w-xl rounded-[1.7rem] border border-cyan-100/26 bg-[#0a1a30]/92 p-6 shadow-[0_35px_100px_rgba(0,0,0,0.6)]"
+              className="w-full max-w-xl rounded-[1.7rem] border border-cyan-100/26 bg-[#04172e]/96 p-6 shadow-[0_35px_100px_rgba(0,0,0,0.6)]"
             >
               <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Mandatory Feedback</p>
               <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Rate Your First Analysis</h3>
@@ -3218,7 +3218,7 @@ export default function UploadPage() {
                 Please share feedback once to unlock your next analysis attempt.
               </p>
 
-              <div className="mt-5 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-4">
+              <div className="mt-5 rounded-2xl border border-cyan-100/20 bg-[#06233f]/72 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">Your Rating</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {[1, 2, 3, 4, 5].map((value) => {

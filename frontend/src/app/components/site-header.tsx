@@ -137,11 +137,11 @@ export default function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-cyan-100/18 bg-white/90 backdrop-blur-xl">
-      <div className="border-b border-cyan-100/14 px-3 py-2 sm:px-6 sm:py-2.5">
-        <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-100/72 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
-          <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,0.88)]" />
-          Resume assessment and optimization platform for every role
+    <header className="sticky top-0 z-50 border-b border-cyan-100/12 bg-[#030c1b]/90 backdrop-blur-[2px]">
+      <div className="border-b border-cyan-100/8 px-3 py-2 sm:px-6 sm:py-2.5">
+        <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-50/70 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
+          <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.9)]" />
+          Precision shortlist prediction platform for every role
         </p>
       </div>
 
@@ -149,13 +149,13 @@ export default function SiteHeader() {
         <Link href="/" className="group">
           <BrandLogo
             intro
-            subtitle="Professional Resume Assessment"
+            subtitle="Interview Calls Made Easier"
             titleClassName="font-mono text-sm tracking-wide sm:text-xl"
             subtitleClassName="text-[10px] tracking-[0.16em] sm:text-xs sm:tracking-[0.26em]"
           />
         </Link>
 
-        <nav className="hidden items-center gap-4 text-sm font-medium text-cyan-50/82 md:flex">
+        <nav className="hidden items-center gap-4 text-sm font-medium text-cyan-50/78 md:flex">
           {navLinks.map((link) => {
             const active = isLinkActive(pathname, hash, link);
             const isStudioLink = link.href === "/studio";
@@ -166,8 +166,8 @@ export default function SiteHeader() {
                 onClick={isStudioLink ? handleStudioNavClick : undefined}
                 className={`rounded-full border px-3 py-1.5 transition ${
                   active
-                    ? "border-cyan-100/44 bg-cyan-200/20 text-cyan-50 shadow-[0_0_18px_rgba(94,209,255,0.18)]"
-                    : "border-transparent text-cyan-50/82 hover:border-cyan-100/30 hover:bg-cyan-100/10 hover:text-cyan-50"
+                    ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
+                    : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
                 }`}
               >
                 {link.label}
@@ -181,11 +181,11 @@ export default function SiteHeader() {
             <>
               <Link
                 href="/dashboard"
-                className="hidden rounded-xl border border-cyan-100/36 bg-cyan-200/14 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:inline"
+                className="hidden rounded-xl border border-cyan-200/35 bg-cyan-200/14 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/22 sm:inline"
               >
                 Dashboard
               </Link>
-              <span className="rounded-xl border border-emerald-200/36 bg-emerald-200/12 px-2.5 py-1.5 text-xs font-semibold text-emerald-100">
+              <span className="rounded-xl border border-emerald-200/36 bg-emerald-200/14 px-2.5 py-1.5 text-xs font-semibold text-emerald-100">
                 Wallet: {wallet.credits}
               </span>
               <button
@@ -197,7 +197,7 @@ export default function SiteHeader() {
                   setStudioUnlocked(false);
                   window.localStorage.removeItem("hirescore_auth_token");
                 }}
-                className="hidden rounded-xl border border-cyan-100/30 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 sm:inline"
+                className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 sm:inline"
               >
                 Sign Out
               </button>
@@ -208,20 +208,20 @@ export default function SiteHeader() {
               onClick={() => {
                 trackEvent("cta_check_my_score_click", {
                   cta_location: "header",
-                  cta_label: "Start Assessment",
+                  cta_label: "Check My Score (Free)",
                 });
               }}
-              className="rounded-xl border border-cyan-100/44 bg-gradient-to-r from-cyan-300/22 via-cyan-200/20 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-50 shadow-[0_10px_26px_rgba(21,128,255,0.24)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
+              className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
             >
               <span className="sm:hidden">Analyze</span>
-              <span className="hidden sm:inline">Start Assessment</span>
+              <span className="hidden sm:inline">Check My Score (Free)</span>
             </Link>
           )}
         </div>
       </div>
 
-      <div className="border-t border-cyan-100/14 px-3 py-2 md:hidden">
-        <nav className="mx-auto flex w-full max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-cyan-50/82">
+      <div className="border-t border-cyan-100/8 px-3 py-2 md:hidden">
+        <nav className="mx-auto flex w-full max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-cyan-50/80">
           {navLinks.map((link) => {
             const active = isLinkActive(pathname, hash, link);
             const isStudioLink = link.href === "/studio";
@@ -233,7 +233,7 @@ export default function SiteHeader() {
                 className={`rounded-lg border px-3 py-1.5 transition ${
                   active
                     ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                    : "border-cyan-100/20 bg-cyan-100/8 text-cyan-50/82 hover:bg-cyan-100/14"
+                    : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
                 }`}
               >
                 {link.label}
@@ -243,7 +243,7 @@ export default function SiteHeader() {
           {authToken && (
             <Link
               href="/dashboard"
-              className="rounded-lg border border-emerald-200/36 bg-emerald-200/14 px-3 py-1.5 font-semibold text-emerald-100"
+              className="rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 font-semibold text-emerald-100"
             >
               Wallet {wallet?.credits ?? 0}
             </Link>
@@ -259,7 +259,7 @@ export default function SiteHeader() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020817]/62 px-4 py-6 backdrop-blur-[6px]"
+                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[6px]"
                   onClick={(event) => {
                     if (event.target !== event.currentTarget) return;
                     setShowStudioLockModal(false);
@@ -269,7 +269,7 @@ export default function SiteHeader() {
                     initial={{ opacity: 0, y: 18, scale: 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.97 }}
-                    className="relative my-auto w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/24 bg-[#081729]/96 p-6 shadow-[0_24px_70px_rgba(2,8,20,0.56)]"
+                    className="relative my-auto w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_24px_70px_rgba(2,8,20,0.55)]"
                   >
                     <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_42%,rgba(253,230,138,0.08))]" />
 
@@ -295,7 +295,7 @@ export default function SiteHeader() {
                             });
                             router.push("/upload");
                           }}
-                          className="rounded-xl border border-cyan-100/35 bg-cyan-200/20 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
+                          className="rounded-xl border border-cyan-100/35 bg-cyan-200/18 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
                         >
                           Go To Analyze
                         </button>

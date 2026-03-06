@@ -442,10 +442,10 @@ export default function DashboardPage() {
 
   const priorityToneClass = (priority?: string | null) => {
     const normalized = (priority || "").toLowerCase();
-    if (normalized === "critical") return "border-rose-300/50 bg-rose-300/14 text-rose-100";
-    if (normalized === "high") return "border-amber-200/50 bg-amber-200/14 text-amber-100";
-    if (normalized === "low") return "border-sky-200/50 bg-sky-200/14 text-sky-100";
-    return "border-cyan-100/28 bg-cyan-100/8 text-cyan-100/88";
+    if (normalized === "critical") return "border-rose-200/40 bg-rose-200/14 text-rose-100";
+    if (normalized === "high") return "border-amber-200/40 bg-amber-200/14 text-amber-100";
+    if (normalized === "low") return "border-cyan-200/35 bg-cyan-200/10 text-cyan-100";
+    return "border-cyan-100/26 bg-cyan-100/8 text-cyan-100/88";
   };
 
   const priorityLabel = (priority?: string | null) => {
@@ -466,7 +466,8 @@ export default function DashboardPage() {
     ? `Top ${Math.max(1, 100 - roleBenchmark.percentile)}% gap left to dominate your bracket.`
     : "Get premium role benchmarks and conversion signals with more runs.";
 
-  const cardClass = "premium-hover-card neon-panel rounded-3xl p-5";
+  const cardClass =
+    "rounded-3xl border border-cyan-100/20 bg-[linear-gradient(150deg,rgba(7,28,52,0.9),rgba(6,20,40,0.86))] p-5 shadow-[0_22px_50px_rgba(2,8,22,0.42)]";
 
   return (
     <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
@@ -479,25 +480,25 @@ export default function DashboardPage() {
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="absolute inset-0 bg-slate-900/24 backdrop-blur-[4px]"
+              className="absolute inset-0 bg-[#020a18]/72 backdrop-blur-[4px]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             />
             <motion.div
-              className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-cyan-100/30 bg-[linear-gradient(150deg,rgba(6,22,43,0.96),rgba(4,16,33,0.95))] shadow-[0_28px_80px_rgba(2,9,24,0.68)]"
+              className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-cyan-100/38 bg-[linear-gradient(150deg,rgba(8,27,52,0.96),rgba(4,18,38,0.95))] shadow-[0_28px_80px_rgba(2,9,24,0.68)]"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 16 }}
               transition={{ duration: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
             >
               <motion.div
-                className="absolute -left-14 -top-12 h-44 w-44 rounded-full bg-cyan-300/24 blur-3xl"
+                className="absolute -left-14 -top-12 h-44 w-44 rounded-full bg-cyan-300/28 blur-3xl"
                 animate={{ scale: [1, 1.25, 1], opacity: [0.6, 1, 0.6] }}
                 transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
               />
               <motion.div
-                className="absolute -bottom-16 -right-10 h-52 w-52 rounded-full bg-emerald-200/18 blur-3xl"
+                className="absolute -bottom-16 -right-10 h-52 w-52 rounded-full bg-emerald-200/22 blur-3xl"
                 animate={{ scale: [1.15, 0.95, 1.15], opacity: [0.5, 0.9, 0.5] }}
                 transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
               />
@@ -521,7 +522,7 @@ export default function DashboardPage() {
                 </p>
 
                 <div className="mt-4 overflow-hidden rounded-xl border border-cyan-100/24 bg-cyan-100/8 p-3">
-                  <div className="relative h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-[#051730]/85">
+                  <div className="relative h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-[#051730]">
                     <motion.div
                       className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
                       initial={{ width: 0 }}
@@ -547,40 +548,17 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
       <section className="mx-auto max-w-[1320px]">
-        <div className="premium-panel relative overflow-hidden rounded-[2rem] p-5 sm:p-7">
-          <div className="absolute -right-10 -top-16 h-56 w-56 rounded-full bg-cyan-300/20 blur-[96px]" />
-          <div className="absolute -left-8 bottom-[-74px] h-52 w-52 rounded-full bg-amber-100/12 blur-[92px]" />
-          <div className="relative z-10 grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/72">Post-Login Experience</p>
-              <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">HireScore Candidate Dashboard</h1>
-              <p className="mt-2 max-w-3xl text-sm text-cyan-50/72">
-                Track analysis results, roadmap progress, and account usage in one professional workspace.
-              </p>
-              <div className="aurora-strip mt-4 h-1.5 rounded-full" />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <article className="rounded-xl border border-cyan-100/22 bg-cyan-100/8 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Wallet</p>
-                <p className="mt-1 text-sm font-semibold text-cyan-50">{wallet?.credits ?? 0} credits</p>
-              </article>
-              <article className="rounded-xl border border-cyan-100/22 bg-cyan-100/8 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Roadmap</p>
-                <p className="mt-1 text-sm font-semibold text-cyan-50">{roadmapProgress}% complete</p>
-              </article>
-              <article className="rounded-xl border border-cyan-100/22 bg-cyan-100/8 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Runs Left</p>
-                <p className="mt-1 text-sm font-semibold text-cyan-50">{estimatedRunsLeft} runs</p>
-              </article>
-            </div>
-          </div>
-        </div>
+        <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/72">Post-Login Experience</p>
+        <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">HireScore Growth Cockpit</h1>
+        <p className="mt-2 max-w-3xl text-sm text-cyan-50/72">
+          Built to persuade action: clear momentum, clear execution, clear ROI.
+        </p>
 
         {loading && <p className="mt-5 text-sm text-cyan-100/76">Loading your dashboard...</p>}
 
         {!loading && error && (
-          <div className="mt-5 rounded-xl border border-cyan-100/34 bg-cyan-100/12 p-4">
-            <p className="text-sm text-cyan-50">{error}</p>
+          <div className="mt-5 rounded-xl border border-amber-100/34 bg-amber-100/12 p-4">
+            <p className="text-sm text-amber-50">{error}</p>
             <Link
               href="/upload"
               className="mt-3 inline-flex rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
@@ -593,87 +571,44 @@ export default function DashboardPage() {
         {!loading && !error && (
           <>
             <div className="mt-6 grid gap-4 xl:grid-cols-12">
-              <section className="cockpit-surface xl:col-span-8 rounded-[2rem] p-5 sm:p-7">
-                <div className="absolute -right-16 top-10 h-56 w-56 rounded-full bg-cyan-300/14 blur-[94px]" />
-                <div className="absolute -left-12 bottom-[-76px] h-52 w-52 rounded-full bg-amber-100/10 blur-[90px]" />
-                <div className="relative z-10 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-cyan-100/35 bg-cyan-100/10 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-100/84">
-                        Dashboard View
-                      </span>
-                      <span className="rounded-full border border-amber-100/34 bg-amber-100/10 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-amber-100/86">
-                        Professional Workflow
-                      </span>
-                    </div>
-                    <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Track profile quality and execution progress.</h2>
-                    <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cyan-100/74">Profile: {email || "User"}</p>
-                    <p className="mt-2 text-sm text-cyan-50/74">
-                      {nextMilestone
-                        ? `Next highest-impact move: ${nextMilestone.title}`
-                        : "Start a fresh analysis to unlock your next growth track."}
-                    </p>
+              <section className="xl:col-span-8 rounded-[2rem] border border-cyan-100/26 bg-[linear-gradient(130deg,rgba(8,33,58,0.95)_0%,rgba(9,25,44,0.94)_56%,rgba(40,29,16,0.82)_100%)] p-5 shadow-[0_28px_65px_rgba(2,8,22,0.45)] sm:p-7">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-cyan-100/35 bg-cyan-100/10 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-100/84">
+                    Conversion Mode
+                  </span>
+                  <span className="rounded-full border border-amber-100/30 bg-amber-100/12 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-amber-100/84">
+                    Active Buyer Journey
+                  </span>
+                </div>
+                <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Let’s convert profile quality into real interview demand.</h2>
+                <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cyan-100/74">Profile: {email || "User"}</p>
+                <p className="mt-2 text-sm text-cyan-50/74">
+                  {nextMilestone
+                    ? `Next highest-impact move: ${nextMilestone.title}`
+                    : "Start a fresh analysis to unlock your next growth track."}
+                </p>
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-12">
-                      <article className="cockpit-kpi-card rounded-2xl p-4 sm:col-span-5">
-                        <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Wallet</p>
-                        <p className="mt-1 text-3xl font-semibold text-cyan-50">{wallet?.credits ?? 0}</p>
-                        <p className="text-xs text-cyan-100/64">Credits available</p>
-                      </article>
-                      <article className="cockpit-kpi-card rounded-2xl p-4 sm:col-span-3">
-                        <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Roadmap</p>
-                        <p className="mt-1 text-3xl font-semibold text-cyan-50">{roadmapProgress}%</p>
-                        <p className="text-xs text-cyan-100/64">Execution complete</p>
-                      </article>
-                      <article className="cockpit-kpi-card rounded-2xl p-4 sm:col-span-4">
-                        <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Runs Left</p>
-                        <p className="mt-1 text-3xl font-semibold text-cyan-50">{estimatedRunsLeft}</p>
-                        <p className="text-xs text-cyan-100/64">At {wallet?.pricing.analyze ?? 0} credits/run</p>
-                      </article>
-                    </div>
-                  </div>
-
-                  <article className="analysis-live-shell rounded-[1.5rem] p-4 sm:p-5">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/78">Analysis Snapshot</p>
-                    <p className="mt-2 text-sm font-semibold text-cyan-50">
-                      {analysisComparison?.latest ? `${analysisComparison.latest.role || "Latest role"} forecast` : "Awaiting first run"}
-                    </p>
-                    <p className="mt-1 text-xs text-cyan-100/72">
-                      {analysisComparison?.latest
-                        ? `Confidence ${analysisComparison.latest.confidence}% • Callback ${analysisComparison.latest.estimated_callback_rate}%`
-                        : "Run your first analysis to activate real-time conversion diagnostics."}
-                    </p>
-
-                    <div className="analysis-live-stage relative mt-4 overflow-hidden rounded-2xl border border-cyan-100/22 bg-cyan-100/8">
-                      <div className="analysis-live-grid left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-wave analysis-live-wave-a left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-wave analysis-live-wave-b left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-ring analysis-live-ring-outer left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-ring analysis-live-ring-mid left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-ring analysis-live-ring-inner left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-beam left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-orbit analysis-live-orbit-a left-1/2 top-1/2" />
-                      <div className="analysis-live-orbit analysis-live-orbit-b left-1/2 top-1/2" />
-                      <div className="analysis-live-orbit analysis-live-orbit-c left-1/2 top-1/2" />
-                      <div className="analysis-live-core absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                        <span className="analysis-live-core-value">
-                          {analysisComparison?.latest ? `${analysisComparison.latest.overall_score}%` : "--"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 rounded-xl border border-cyan-100/24 bg-cyan-100/10 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/76">Next Focus</p>
-                      <p className="mt-1 text-xs text-cyan-50/82">
-                        {nextMilestone ? nextMilestone.title : "No active roadmap milestone yet."}
-                      </p>
-                    </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Wallet</p>
+                    <p className="mt-1 text-3xl font-semibold text-emerald-100">{wallet?.credits ?? 0}</p>
+                    <p className="text-xs text-cyan-100/64">Credits available</p>
+                  </article>
+                  <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Roadmap</p>
+                    <p className="mt-1 text-3xl font-semibold text-cyan-50">{roadmapProgress}%</p>
+                    <p className="text-xs text-cyan-100/64">Execution complete</p>
+                  </article>
+                  <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Runs Left</p>
+                    <p className="mt-1 text-3xl font-semibold text-cyan-50">{estimatedRunsLeft}</p>
+                    <p className="text-xs text-cyan-100/64">At {wallet?.pricing.analyze ?? 0} credits/run</p>
                   </article>
                 </div>
 
-                <div className="relative z-10 mt-5 grid gap-3 sm:grid-cols-2">
-                  <article className="cockpit-kpi-card rounded-2xl p-4">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Latest Momentum</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <article className="rounded-2xl border border-cyan-100/20 bg-cyan-100/8 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Latest Momentum</p>
                     {analysisComparison?.latest ? (
                       <>
                         <p className="mt-1 text-sm font-semibold text-cyan-50">
@@ -687,28 +622,28 @@ export default function DashboardPage() {
                       <p className="mt-1 text-sm text-cyan-50/72">No latest run yet. Launch analysis to start trend tracking.</p>
                     )}
                   </article>
-                  <article className="cockpit-kpi-card rounded-2xl p-4">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/80">Usage Insight</p>
-                    <p className="mt-1 text-sm font-semibold text-cyan-50">More runs = sharper positioning = higher shortlist odds.</p>
-                    <p className="mt-1 text-xs text-cyan-100/74">{premiumNudgeText}</p>
+                  <article className="rounded-2xl border border-amber-100/22 bg-amber-100/10 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-amber-100/80">Upgrade Signal</p>
+                    <p className="mt-1 text-sm font-semibold text-amber-50">More runs = sharper positioning = higher shortlist odds.</p>
+                    <p className="mt-1 text-xs text-amber-100/74">{premiumNudgeText}</p>
                   </article>
                 </div>
               </section>
 
-              <aside className="cockpit-surface xl:col-span-4 rounded-[2rem] p-5 sm:p-6">
-                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/76">Credit & Usage</p>
-                <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Improve Interview Readiness</h3>
-                <p className="mt-2 text-sm text-cyan-50/82">
+              <aside className="xl:col-span-4 rounded-[2rem] border border-amber-100/28 bg-[linear-gradient(160deg,rgba(51,35,12,0.72),rgba(16,23,36,0.96))] p-5 shadow-[0_28px_65px_rgba(2,8,22,0.45)] sm:p-6">
+                <p className="text-xs uppercase tracking-[0.14em] text-amber-100/76">Premium Advantage</p>
+                <h3 className="mt-2 text-2xl font-semibold text-amber-50">Increase Interview Velocity</h3>
+                <p className="mt-2 text-sm text-amber-50/82">
                   Purchase credits to run focused analyses weekly, keep roadmap momentum, and improve callback conversion faster.
                 </p>
-                <div className="mt-4 space-y-2 rounded-2xl border border-amber-100/28 bg-amber-100/8 p-4 text-sm text-amber-100/84">
+                <div className="mt-4 space-y-2 rounded-2xl border border-amber-100/24 bg-[#2b2516]/45 p-4 text-sm text-amber-50/86">
                   <p>Analyze cost: {wallet?.pricing.analyze ?? 0} credits</p>
                   <p>Resume AI build: {wallet?.pricing.ai_resume_generation ?? 0} credits</p>
                   <p>PDF download: {wallet?.pricing.template_pdf_download ?? 0} credits</p>
                 </div>
                 <Link
                   href="/pricing"
-                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-amber-100/42 bg-amber-200/20 px-4 py-3 text-sm font-semibold text-amber-50 transition hover:bg-amber-200/28"
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-amber-100/42 bg-amber-200/22 px-4 py-3 text-sm font-semibold text-amber-50 transition hover:bg-amber-200/30"
                 >
                   Upgrade Credits Now
                 </Link>
@@ -721,17 +656,17 @@ export default function DashboardPage() {
               </aside>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-12">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Link
                 href="/upload"
-                className="cockpit-action-tile rounded-2xl px-4 py-4 text-left sm:col-span-5"
+                className="rounded-2xl border border-cyan-100/28 bg-[#0a223d]/80 px-4 py-4 text-left transition hover:bg-[#0e2b4c]"
               >
                 <p className="text-sm font-semibold text-cyan-50">Run New Analysis</p>
                 <p className="mt-1 text-xs text-cyan-100/72">Get fresh shortlist and callback intelligence.</p>
               </Link>
               <Link
                 href="/studio"
-                className="cockpit-action-tile rounded-2xl px-4 py-4 text-left sm:col-span-4"
+                className="rounded-2xl border border-cyan-100/28 bg-[#0a223d]/80 px-4 py-4 text-left transition hover:bg-[#0e2b4c]"
               >
                 <p className="text-sm font-semibold text-cyan-50">Resume Studio</p>
                 <p className="mt-1 text-xs text-cyan-100/72">Apply fixes with guided resume writing workflows.</p>
@@ -739,10 +674,10 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setActiveWorkspace("roadmaps")}
-                className={`cockpit-action-tile rounded-2xl px-4 py-4 text-left sm:col-span-3 ${
+                className={`rounded-2xl border px-4 py-4 text-left transition ${
                   activeWorkspace === "roadmaps"
-                    ? "border-emerald-100/45 bg-emerald-200/16"
-                    : ""
+                    ? "border-emerald-100/45 bg-emerald-200/18"
+                    : "border-cyan-100/28 bg-[#0a223d]/80 hover:bg-[#0e2b4c]"
                 }`}
               >
                 <p className="text-sm font-semibold text-cyan-50">Roadmap Control</p>
@@ -751,10 +686,10 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setActiveWorkspace("reports")}
-                className={`cockpit-action-tile rounded-2xl px-4 py-4 text-left sm:col-span-12 ${
+                className={`rounded-2xl border px-4 py-4 text-left transition ${
                   activeWorkspace === "reports"
-                    ? "border-emerald-100/45 bg-emerald-200/16"
-                    : ""
+                    ? "border-emerald-100/45 bg-emerald-200/18"
+                    : "border-cyan-100/28 bg-[#0a223d]/80 hover:bg-[#0e2b4c]"
                 }`}
               >
                 <p className="text-sm font-semibold text-cyan-50">Report Vault</p>
@@ -779,7 +714,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     {analysisComparison.delta && (
-                      <p className="mt-2 text-xs text-emerald-100">
+                      <p className="mt-2 text-xs text-emerald-100/88">
                         Score {formatDelta(analysisComparison.delta.overall_score)} • Callback{" "}
                         {formatDelta(analysisComparison.delta.estimated_callback_rate, "%")}
                       </p>
@@ -832,15 +767,15 @@ export default function DashboardPage() {
               </article>
             </section>
 
-            <section className="mt-6 rounded-[2rem] border border-cyan-100/22 bg-cyan-100/6 p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+            <section className="mt-6 rounded-[2rem] border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(8,29,55,0.84),rgba(5,18,36,0.82))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Workspace Navigator</p>
-                  <h2 className="mt-2 text-xl font-semibold text-cyan-50">Choose Your Workspace</h2>
+                  <h2 className="mt-2 text-xl font-semibold text-cyan-50">Choose Your Execution Lane</h2>
                   <p className="mt-1 text-sm text-cyan-50/70">
                     {featureFlags.roadmap_prompt_variant === "B"
                       ? "Switch between roadmap execution and report downloads based on your current objective."
-                      : "Use focused workspace modes to keep actions clear and measurable."}
+                      : "Use focused workspace modes to keep actions clear and high-converting."}
                   </p>
                 </div>
                 <div className="flex rounded-xl border border-cyan-100/24 bg-cyan-100/8 p-1">
@@ -869,14 +804,14 @@ export default function DashboardPage() {
         )}
 
         {!loading && !error && activeWorkspace === "roadmaps" && (
-          <section className="mt-6 rounded-[2rem] border border-emerald-100/24 bg-emerald-100/6 p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-            <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/80">Roadmap Tracking</p>
-            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Growth Roadmap Engine</h2>
+          <section className="mt-6 rounded-[2rem] border border-emerald-100/24 bg-[linear-gradient(145deg,rgba(8,39,47,0.86),rgba(6,20,30,0.9))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
+            <p className="text-xs uppercase tracking-[0.14em] text-emerald-100/76">Roadmap Tracking</p>
+            <h2 className="mt-2 text-xl font-semibold text-emerald-50">Growth Roadmap Engine</h2>
 
-            {roadmapError && <p className="mt-3 text-xs text-cyan-100">{roadmapError}</p>}
+            {roadmapError && <p className="mt-3 text-xs text-amber-100">{roadmapError}</p>}
 
             {!activeRoadmap ? (
-              <div className="mt-4 rounded-xl border border-cyan-100/16 bg-cyan-100/7 p-4">
+              <div className="mt-4 rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
                 <p className="text-sm text-cyan-50/76">No roadmap generated yet. Run analysis and choose Add To Roadmap when prompted.</p>
                 <Link
                   href="/upload"
@@ -911,7 +846,7 @@ export default function DashboardPage() {
                 )}
 
                 <div className="mt-4 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
-                  <div className="rounded-xl border border-cyan-100/16 bg-cyan-100/7 p-4">
+                  <div className="rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
                     <p className="text-sm font-semibold text-cyan-50">{activeRoadmap.goal_title}</p>
                     {activeRoadmap.goal_context && <p className="mt-1 text-xs text-cyan-50/72">{activeRoadmap.goal_context}</p>}
                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-cyan-100/72">
@@ -936,17 +871,17 @@ export default function DashboardPage() {
 
                   <div className="rounded-xl border border-emerald-100/22 bg-emerald-200/8 p-4">
                     <p className="text-xs uppercase tracking-[0.12em] text-emerald-100/82">How To Update Progress</p>
-                    <p className="mt-2 text-sm text-cyan-100">
+                    <p className="mt-2 text-sm text-emerald-50/88">
                       Click <span className="font-semibold">Mark Complete</span> on each milestone card.
                     </p>
                     {nextMilestone && (
                       <div className="mt-3 rounded-lg border border-emerald-100/28 bg-emerald-200/12 p-2.5">
                         <p className="text-[11px] uppercase tracking-[0.12em] text-emerald-100/80">Current Focus</p>
-                        <p className="mt-1 text-sm font-semibold text-cyan-50">{nextMilestone.title}</p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-50">{nextMilestone.title}</p>
                       </div>
                     )}
                     {scoreGap !== null && (
-                      <p className="mt-3 text-xs text-cyan-100">
+                      <p className="mt-3 text-xs text-emerald-50/82">
                         Score gap to target: <span className="font-semibold">+{scoreGap} points</span>
                       </p>
                     )}
@@ -954,7 +889,7 @@ export default function DashboardPage() {
                 </div>
 
                 {!visibleRoadmapMilestones.length ? (
-                  <p className="mt-4 rounded-xl border border-cyan-100/16 bg-cyan-100/7 px-3 py-2 text-sm text-cyan-50/76">
+                  <p className="mt-4 rounded-xl border border-cyan-100/16 bg-[#041634]/55 px-3 py-2 text-sm text-cyan-50/76">
                     No milestones available yet for this track.
                   </p>
                 ) : (
@@ -964,7 +899,7 @@ export default function DashboardPage() {
                       const stepIndex = originalIndex >= 0 ? originalIndex + 1 : index + 1;
                       const updating = roadmapUpdatingMilestoneId === milestone.id;
                       return (
-                        <li key={milestone.id} className="rounded-xl border border-cyan-100/16 bg-cyan-100/7 p-4">
+                        <li key={milestone.id} className="rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
                           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.11em]">
@@ -993,9 +928,9 @@ export default function DashboardPage() {
                                 </div>
                               )}
 
-                              {milestone.done_when && <p className="mt-2 text-xs text-emerald-100">Done when: {milestone.done_when}</p>}
+                              {milestone.done_when && <p className="mt-2 text-xs text-emerald-100/82">Done when: {milestone.done_when}</p>}
                               {milestone.completed_at && (
-                                <p className="mt-1 text-[11px] text-emerald-100">Completed on {formatReportDate(milestone.completed_at)}</p>
+                                <p className="mt-1 text-[11px] text-emerald-100/80">Completed on {formatReportDate(milestone.completed_at)}</p>
                               )}
                               {milestone.evidence_updated_at && (
                                 <p className="mt-1 text-[11px] text-cyan-100/76">Evidence updated {formatReportDate(milestone.evidence_updated_at)}</p>
@@ -1043,7 +978,7 @@ export default function DashboardPage() {
                                 className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-55 ${
                                   milestone.completed
                                     ? "border-amber-100/32 bg-amber-100/14 text-amber-50 hover:bg-amber-100/20"
-                                    : "border-emerald-200/46 bg-emerald-300/16 text-emerald-50 hover:bg-emerald-300/24"
+                                    : "border-emerald-200/40 bg-emerald-200/18 text-emerald-50 hover:bg-emerald-200/24"
                                 }`}
                                 aria-label={milestone.completed ? "Mark milestone as incomplete" : "Mark milestone as complete"}
                               >
@@ -1080,11 +1015,11 @@ export default function DashboardPage() {
         )}
 
         {!loading && !error && activeWorkspace === "reports" && (
-          <section className="mt-6 rounded-[2rem] border border-amber-100/28 bg-amber-100/7 p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-            <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/76">Saved Analysis Reports</p>
-            <h2 className="mt-2 text-xl font-semibold text-cyan-50">Offer Intelligence Archive</h2>
+          <section className="mt-6 rounded-[2rem] border border-amber-100/28 bg-[linear-gradient(145deg,rgba(45,33,14,0.78),rgba(13,20,33,0.92))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
+            <p className="text-xs uppercase tracking-[0.14em] text-amber-100/76">Saved Analysis Reports</p>
+            <h2 className="mt-2 text-xl font-semibold text-amber-50">Offer Intelligence Archive</h2>
             <p className="mt-1 text-sm text-cyan-50/70">Each analysis is auto-saved to your account dashboard.</p>
-            {reportsError && <p className="mt-3 text-xs text-cyan-100">{reportsError}</p>}
+            {reportsError && <p className="mt-3 text-xs text-amber-100">{reportsError}</p>}
             {!reports.length ? (
               <p className="mt-4 text-sm text-cyan-50/70">No reports saved yet. Run one analysis to see it here.</p>
             ) : (
@@ -1092,7 +1027,7 @@ export default function DashboardPage() {
                 {reports.map((report) => (
                   <article
                     key={report.id}
-                    className="flex flex-col gap-3 rounded-xl border border-cyan-100/16 bg-cyan-100/7 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div>
                       <p className="text-sm font-semibold text-cyan-50">{report.role || "Target role not set"}</p>
