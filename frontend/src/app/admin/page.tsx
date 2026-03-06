@@ -495,16 +495,23 @@ export default function AdminPage() {
     }
   };
 
-  const loadChatConversation = async (userId: number, tokenOverride?: string) => {
-    const effectiveToken = (tokenOverride ?? adminToken).trim();
-    if (!effectiveToken || userId <= 0) return;
+  const loadChatConversation = async (
+    userId: number,
+    credentialOverride?: string,
+    modeOverride?: AdminAuthMode,
+  ) => {
+    const effectiveMode = modeOverride ?? adminAuthMode;
+    const fallbackCredential = effectiveMode === "api_key" ? adminApiKey : adminToken;
+    const effectiveCredential = (credentialOverride ?? fallbackCredential).trim();
+    if (!effectiveCredential || userId <= 0) return;
     setChatLoading(true);
     setError("");
     try {
       const payload = await adminFetch<{ user?: AdminChatUser; messages?: AdminChatMessage[] }>(
         `/admin/chats/${userId}?limit=300`,
         undefined,
-        effectiveToken,
+        effectiveCredential,
+        effectiveMode,
       );
       setActiveChatUser(payload.user || null);
       setChatMessages(payload.messages || []);

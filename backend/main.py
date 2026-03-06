@@ -10599,61 +10599,75 @@ def collect_admin_chat_threads(
 
 def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str, Any]:
     cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    users_total = int(connection.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"])
-    feedback_row = connection.execute(
-        "SELECT COUNT(*) AS count, COALESCE(AVG(rating), 0) AS avg_rating FROM user_feedback"
-    ).fetchone()
-    feedback_total = int(feedback_row["count"])
-    feedback_avg = round(float(feedback_row["avg_rating"] or 0), 2)
-    signups_total = int(
-        connection.execute(
-            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'signup_success'"
-        ).fetchone()["count"]
+    def scalar_int(query: str, params: tuple[Any, ...] = (), key: str = "count", default: int = 0) -> int:
+        try:
+            row = connection.execute(query, params).fetchone()
+            if not row:
+                return int(default)
+            try:
+                raw_value = row[key]
+            except Exception:
+                raw_value = row[0] if isinstance(row, (tuple, list)) and row else default
+            return int(raw_value or 0)
+        except Exception:
+            logger.exception("Admin analytics query failed: %s", query.strip().split("\n")[0][:140])
+            return int(default)
+
+    def scalar_float(query: str, params: tuple[Any, ...] = (), key: str = "value", default: float = 0.0) -> float:
+        try:
+            row = connection.execute(query, params).fetchone()
+            if not row:
+                return float(default)
+            try:
+                raw_value = row[key]
+            except Exception:
+                raw_value = row[0] if isinstance(row, (tuple, list)) and row else default
+            return float(raw_value or 0.0)
+        except Exception:
+            logger.exception("Admin analytics query failed: %s", query.strip().split("\n")[0][:140])
+            return float(default)
+
+    users_total = scalar_int("SELECT COUNT(*) AS count FROM users")
+    feedback_total = scalar_int("SELECT COUNT(*) AS count FROM user_feedback")
+    feedback_avg = round(scalar_float("SELECT COALESCE(AVG(rating), 0) AS value FROM user_feedback", key="value"), 2)
+    signups_total = scalar_int(
+        "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'signup_success'"
     )
-    logins_total = int(
-        connection.execute(
-            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'login_success'"
-        ).fetchone()["count"]
+    logins_total = scalar_int(
+        "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'login_success'"
     )
-    analyses_total = int(connection.execute("SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze'").fetchone()["count"])
-    payments_total = int(
-        connection.execute(
-            "SELECT COUNT(*) AS count FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
-        ).fetchone()["count"]
+    analyses_total = scalar_int("SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze'")
+    payments_total = scalar_int(
+        "SELECT COUNT(*) AS count FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
     )
-    credits_sold = int(
-        connection.execute(
-            "SELECT COALESCE(SUM(delta), 0) AS sold FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
-        ).fetchone()["sold"]
+    credits_sold = scalar_int(
+        "SELECT COALESCE(SUM(delta), 0) AS sold FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')",
+        key="sold",
     )
-    payment_rows = connection.execute(
-        "SELECT meta_json FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
-    ).fetchall()
-    roadmaps_total = int(connection.execute("SELECT COUNT(*) AS count FROM user_goal_roadmaps").fetchone()["count"])
-    reports_total = int(connection.execute("SELECT COUNT(*) AS count FROM analysis_reports").fetchone()["count"])
-    signups_24h = int(
-        connection.execute(
-            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'signup_success' AND created_at >= ?",
-            (cutoff_24h,),
-        ).fetchone()["count"]
+    try:
+        payment_rows = connection.execute(
+            "SELECT meta_json FROM credit_transactions WHERE action IN ('stripe_credit_pack', 'razorpay_credit_pack')"
+        ).fetchall()
+    except Exception:
+        logger.exception("Admin analytics payment meta query failed.")
+        payment_rows = []
+    roadmaps_total = scalar_int("SELECT COUNT(*) AS count FROM user_goal_roadmaps")
+    reports_total = scalar_int("SELECT COUNT(*) AS count FROM analysis_reports")
+    signups_24h = scalar_int(
+        "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'signup_success' AND created_at >= ?",
+        (cutoff_24h,),
     )
-    logins_24h = int(
-        connection.execute(
-            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'login_success' AND created_at >= ?",
-            (cutoff_24h,),
-        ).fetchone()["count"]
+    logins_24h = scalar_int(
+        "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name = 'login_success' AND created_at >= ?",
+        (cutoff_24h,),
     )
-    analyses_24h = int(
-        connection.execute(
-            "SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze' AND created_at >= ?",
-            (cutoff_24h,),
-        ).fetchone()["count"]
+    analyses_24h = scalar_int(
+        "SELECT COUNT(*) AS count FROM credit_transactions WHERE action = 'analyze' AND created_at >= ?",
+        (cutoff_24h,),
     )
-    failed_logins_24h = int(
-        connection.execute(
-            "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name LIKE 'login_failed%' AND created_at >= ?",
-            (cutoff_24h,),
-        ).fetchone()["count"]
+    failed_logins_24h = scalar_int(
+        "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name LIKE 'login_failed%' AND created_at >= ?",
+        (cutoff_24h,),
     )
 
     revenue_inr = 0
