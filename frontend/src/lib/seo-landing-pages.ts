@@ -1582,6 +1582,501 @@ export const seoLandingPages: SeoLandingPage[] = [
       },
     ],
   },
+  {
+    slug: "full-stack-developer-resume-checker",
+    keyword: "full stack developer resume checker",
+    title: "Full Stack Developer Resume Checker",
+    metaDescription:
+      "Improve your full stack developer resume with better architecture, delivery, and business impact signals for stronger shortlisting.",
+    h1: "Full Stack Developer Resume Checker",
+    intro:
+      "Full stack resumes should show end-to-end ownership, not just a long tech stack. This guide helps you show impact across backend, frontend, and delivery.",
+    roleFocus: "Full Stack Developer",
+    searchIntent: "Increase interview callbacks for full stack engineering roles.",
+    painPoints: [
+      "Skills section is long but role-fit keywords are weak.",
+      "No clear evidence of ownership across frontend and backend.",
+      "Impact and production outcomes are not quantified.",
+    ],
+    whatYouGet: [
+      "Role-fit scoring for full stack engineering expectations.",
+      "Guidance for linking project ownership to business impact.",
+      "Priority edits for ATS readability and recruiter scan speed.",
+    ],
+    actionPlan: [
+      "Map projects to business outcomes with clear problem statements.",
+      "Show feature ownership from design to deployment.",
+      "Re-check score after every major application batch.",
+    ],
+    faqs: [
+      {
+        question: "Can full stack resumes be one page?",
+        answer:
+          "For early-career candidates yes. If you have strong, high-impact projects, two pages may help for senior-level roles.",
+      },
+      {
+        question: "What should I prioritize for full stack roles?",
+        answer:
+          "Prioritize production examples, API impact, deployment outcomes, and end-user impact in your bullets.",
+      },
+      {
+        question: "Should I include every framework?",
+        answer:
+          "Include only frameworks that directly support the exact role and project outcomes you are targeting.",
+      },
+    ],
+  },
+  {
+    slug: "mern-stack-resume-checker",
+    keyword: "mern stack resume checker",
+    title: "MERN Stack Resume Checker",
+    metaDescription:
+      "Optimize your MERN stack resume with stronger project outcomes, delivery speed, and stack relevance for full stack hiring.",
+    h1: "MERN Stack Resume Checker",
+    intro:
+      "MERN resumes should prove complete feature ownership and deployment quality. This guide helps you convert stack lists into measurable impact.",
+    roleFocus: "MERN Stack Developer",
+    searchIntent: "Improve MERN stack resume quality and shortlist performance.",
+    painPoints: [
+      "Tech stack is listed without project-level business outcomes.",
+      "MongoDB/Express/React/Node experience is weakly mapped to role fit.",
+      "Project ownership is not shown from idea to release.",
+    ],
+    whatYouGet: [
+      "MERN-focused role-fit suggestions.",
+      "Framework-to-outcome mapping for stronger profile relevance.",
+      "Actionable improvements for clearer stack communication.",
+    ],
+    actionPlan: [
+      "Rewrite your top projects with stack-to-outcome evidence.",
+      "Show backend, frontend, and deployment ownership in separate bullets.",
+      "Trim generic tool names and keep only hire-relevant proof.",
+    ],
+    faqs: [
+      {
+        question: "Do recruiters care about MERN naming?",
+        answer: "They care more about what you built and what improved due to your work.",
+      },
+      {
+        question: "Should I include architecture details?",
+        answer: "Yes, but keep architecture details tied to business results and complexity handled.",
+      },
+      {
+        question: "Can I target non-MERN jobs with a MERN resume?",
+        answer: "Yes, with transferable stack and outcome framing for each target role.",
+      },
+    ],
+  },
+  {
+    slug: "data-engineer-resume-checker",
+    keyword: "data engineer resume checker",
+    title: "Data Engineer Resume Checker",
+    metaDescription:
+      "Check your data engineer resume for pipeline reliability, query performance, and business analytics impact to increase shortlist chances.",
+    h1: "Data Engineer Resume Checker",
+    intro:
+      "Data engineering resumes should emphasize data flow ownership and reliability outcomes. This guide helps you position engineering work with measurable impact.",
+    roleFocus: "Data Engineer",
+    searchIntent: "Improve data engineer resume quality and recruiter conversion.",
+    painPoints: [
+      "Pipeline work is listed but business outcomes are not clear.",
+      "Technical stack is verbose and hard to scan.",
+      "Ownership across ingestion, transformation, and reliability is unclear.",
+    ],
+    whatYouGet: [
+      "Data engineering role-fit scoring and KPI guidance.",
+      "Better framing for pipeline quality, latency, and reliability.",
+      "Practical edits to improve recruiter readability and trust.",
+    ],
+    actionPlan: [
+      "Turn each project into measurable outcomes for volume, speed, and reliability.",
+      "Highlight architecture decisions and data quality impact.",
+      "Align keywords with target data platform and company stack.",
+    ],
+    faqs: [
+      {
+        question: "What metrics should data engineer resumes include?",
+        answer: "Mention throughput, processing time, quality improvements, and cost or latency gains where possible.",
+      },
+      {
+        question: "Should I include tools like Airflow and dbt?",
+        answer: "Yes, but only with context of what problem each tool solved.",
+      },
+      {
+        question: "How do I show reliability ownership?",
+        answer: "Mention recovery actions, quality checks, and SLA or latency improvements tied to outcomes.",
+      },
+    ],
+  },
+  {
+    slug: "android-developer-resume-checker",
+    keyword: "android developer resume checker",
+    title: "Android Developer Resume Checker",
+    metaDescription:
+      "Upgrade your Android developer resume with app impact, feature ownership, and release outcome signals recruiters act on.",
+    h1: "Android Developer Resume Checker",
+    intro:
+      "Android resumes should show shipped outcomes and performance improvements. This guide helps you present app development with measurable value.",
+    roleFocus: "Android Developer",
+    searchIntent: "Increase shortlist rates for Android engineering roles.",
+    painPoints: [
+      "App features are listed without usage or conversion outcomes.",
+      "Only technologies are shown, not performance achievements.",
+      "Release and maintenance ownership is unclear.",
+    ],
+    whatYouGet: [
+      "Mobile-first resume scoring for hiring workflows.",
+      "Guidance for release impact and user outcome writing.",
+      "Role-fit keyword optimization for Android job descriptions.",
+    ],
+    actionPlan: [
+      "Rewrite app projects with before/after user or performance metrics.",
+      "Add production ownership around releases and bug reduction.",
+      "Track role-specific stack + impact alignment per job.",
+    ],
+    faqs: [
+      {
+        question: "Should I include app download links?",
+        answer: "Yes, include links if they clearly support your stated shipped outcomes.",
+      },
+      {
+        question: "How many apps to mention?",
+        answer: "Focus on 2-3 strong apps with measurable results and ownership clarity.",
+      },
+      {
+        question: "Do recruiters care about Play Store metrics?",
+        answer: "Yes, app rating, install trends, and retention signals strengthen credibility.",
+      },
+    ],
+  },
+  {
+    slug: "ios-developer-resume-checker",
+    keyword: "ios developer resume checker",
+    title: "iOS Developer Resume Checker",
+    metaDescription:
+      "Optimize your iOS resume for app stability, architecture choices, and user outcomes to improve shortlist and callbacks.",
+    h1: "iOS Developer Resume Checker",
+    intro:
+      "iOS resumes should prove quality, performance, and release readiness. This guide helps you present practical value and ownership.",
+    roleFocus: "iOS Developer",
+    searchIntent: "Get more interview opportunities for iOS development roles.",
+    painPoints: [
+      "App work is described without quality, retention, or perf context.",
+      "Swift/SwiftUI knowledge is listed without examples.",
+      "Maintenance and deployment ownership is not visible.",
+    ],
+    whatYouGet: [
+      "iOS-specific guidance for recruiter-friendly impact framing.",
+      "Clear edits for project outcomes and release credibility.",
+      "Keyword alignment for stable and scalable mobile hiring.",
+    ],
+    actionPlan: [
+      "Show measurable feature improvements in your shipped work.",
+      "Add release support and crash/fix ownership signals.",
+      "Refine your profile for one target role per application cycle.",
+    ],
+    faqs: [
+      {
+        question: "Can I use one resume for multiple iOS roles?",
+        answer: "Use role-specific tailoring for better match, especially for performance or enterprise roles.",
+      },
+      {
+        question: "Do recruiters care about app maintenance skills?",
+        answer: "Yes, post-launch ownership is a strong hiring signal.",
+      },
+      {
+        question: "Should iOS resumes include analytics results?",
+        answer: "Yes, retention, crash rate, and user engagement trends are useful metrics.",
+      },
+    ],
+  },
+  {
+    slug: "machine-learning-engineer-resume-checker",
+    keyword: "machine learning engineer resume checker",
+    title: "Machine Learning Engineer Resume Checker",
+    metaDescription:
+      "Optimize your machine learning engineer resume for model deployment, experimentation, and business impact readiness.",
+    h1: "Machine Learning Engineer Resume Checker",
+    intro:
+      "ML Engineer resumes need practical deployment and impact proof. This guide helps you move from model tools to real business outcomes.",
+    roleFocus: "Machine Learning Engineer",
+    searchIntent: "Improve ML engineer shortlist rate through clearer engineering and impact messaging.",
+    painPoints: [
+      "Algorithms are listed without measurable production impact.",
+      "Deployment and scaling decisions are not explained.",
+      "MLOps and validation depth are often underrepresented.",
+    ],
+    whatYouGet: [
+      "ML hiring signal mapping for resume structure.",
+      "Guidance on showing end-to-end machine learning ownership.",
+      "Action-oriented edits for stronger recruiter trust.",
+    ],
+    actionPlan: [
+      "Highlight model use cases with business outcome numbers.",
+      "Add monitoring, drift, and improvement loop details.",
+      "Map role-specific ML stack to each targeted application.",
+    ],
+    faqs: [
+      {
+        question: "Should ML resumes include research papers?",
+        answer: "Only include papers that strengthen direct role relevance and proof of contribution.",
+      },
+      {
+        question: "What is the most important ML resume section?",
+        answer: "Projects with business impact and clear deployment outcomes are usually most important.",
+      },
+      {
+        question: "Is GitHub enough for ML credibility?",
+        answer: "It helps, but resumes still need a clear narrative of outcomes and trade-offs solved.",
+      },
+    ],
+  },
+  {
+    slug: "cybersecurity-engineer-resume-checker",
+    keyword: "cybersecurity engineer resume checker",
+    title: "Cybersecurity Engineer Resume Checker",
+    metaDescription:
+      "Improve your cybersecurity resume with incident handling, risk reduction, and security ownership signals for stronger shortlisting.",
+    h1: "Cybersecurity Engineer Resume Checker",
+    intro:
+      "Security resumes should show prevention, detection, and response capabilities. This guide helps you present credible, outcome-oriented security experience.",
+    roleFocus: "Cybersecurity Engineer",
+    searchIntent: "Increase shortlist conversion for cybersecurity engineering roles.",
+    painPoints: [
+      "Tools are listed without risk context.",
+      "Incident outcomes and response ownership are missing.",
+      "Security achievements are not tied to measurable risk reduction.",
+    ],
+    whatYouGet: [
+      "Security-first scoring for role-fit and ATS alignment.",
+      "Guidance for incident, threat, and response metrics.",
+      "High-impact rewrites for trust and responsibility signals.",
+    ],
+    actionPlan: [
+      "Show incident prevention or response results with outcomes.",
+      "Add risk, compliance, and policy impact in concise bullets.",
+      "Tailor your profile for SOC, cloud, and application security roles.",
+    ],
+    faqs: [
+      {
+        question: "Can cybersecurity resumes include compliance details?",
+        answer: "Yes, include compliance alignment where relevant and with real outcomes.",
+      },
+      {
+        question: "Should I mention CTF or certifications only?",
+        answer: "Mention both, but prioritize demonstrated outcomes from real implementation or projects.",
+      },
+      {
+        question: "What should be first in cybersecurity resume?",
+        answer: "A short summary of threat, platform, and ownership focus with measurable impact.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-1-year-experience-job-switch",
+    keyword: "resume for 1 year experience job switch",
+    title: "Resume for 1 Year Experience Job Switch",
+    metaDescription:
+      "Build a role-switch resume in your first job year with stronger impact bullets, ownership framing, and concise positioning.",
+    h1: "Resume for 1 Year Experience Job Switch",
+    intro:
+      "At 1 year, role-switch candidates struggle with recruiter trust. This guide helps you present growth and readiness clearly for new roles.",
+    roleFocus: "1 Year Experience",
+    searchIntent: "Improve shortlist results for early-career job transitions.",
+    painPoints: [
+      "Resume appears too junior for role transitions.",
+      "Role intent is not specific enough for target jobs.",
+      "No clear evidence of growth from early projects.",
+    ],
+    whatYouGet: [
+      "A structured framework for first-switch candidate positioning.",
+      "Impact-first edits for short experience profiles.",
+      "Guidance for mapping early work to target role expectations.",
+    ],
+    actionPlan: [
+      "Build one clear target role and optimize the entire profile for it.",
+      "Rewrite existing achievements with outcome metrics.",
+      "Keep one master version and one target-role variant.",
+    ],
+    faqs: [
+      {
+        question: "How much experience is enough to switch jobs?",
+        answer: "Switching early is possible with clear outcomes and role-specific proof in your resume.",
+      },
+      {
+        question: "Should I remove older irrelevant projects?",
+        answer: "Yes, remove noisy projects and keep only resume-relevant proof.",
+      },
+      {
+        question: "What should I optimize first when switching early?",
+        answer: "Optimize your summary and top achievement bullets before keyword and format changes.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-5-years-experience-job-change",
+    keyword: "resume for 5 years experience job change",
+    title: "Resume for 5 Years Experience Job Change",
+    metaDescription:
+      "Create a senior-ready job-change resume with ownership depth, metric-led achievements, and leadership signals for better callbacks.",
+    h1: "Resume for 5 Years Experience Job Change",
+    intro:
+      "At 5 years, recruiters expect ownership maturity. This guide helps you convert role progression into measurable hiring evidence.",
+    roleFocus: "5 Years Experience",
+    searchIntent: "Increase shortlist quality for mid-career role transitions.",
+    painPoints: [
+      "Experience is scattered across too many responsibilities.",
+      "Leadership and ownership signals are weakly written.",
+      "Job-change resume lacks concise target-role positioning.",
+    ],
+    whatYouGet: [
+      "A structure focused on ownership, impact, and leadership evolution.",
+      "Guidance for prioritizing high-signal achievements.",
+      "Role-fit optimization for senior-level switch targets.",
+    ],
+    actionPlan: [
+      "Lead with scope, ownership, and outcomes in each role.",
+      "Quantify team, process, and business improvements.",
+      "Refine one page for recruiter scan and one page for interview prep context.",
+    ],
+    faqs: [
+      {
+        question: "Should I keep all experience for 5 years profiles?",
+        answer: "Keep depth-first experience and cut low-impact details to improve readability.",
+      },
+      {
+        question: "What proves ownership at mid-career?",
+        answer: "Use ownership scope, leadership examples, mentoring, and measurable business impact.",
+      },
+      {
+        question: "Can 5 years candidates use one-page resume?",
+        answer: "It is possible when every bullet is outcome-driven and highly relevant.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-bangalore-it-jobs",
+    keyword: "resume for bangalore it jobs",
+    title: "Resume for Bangalore IT Jobs",
+    metaDescription:
+      "Optimize your resume for Bangalore IT hiring with role-fit keywords, product-ready language, and stronger shortlist-ready positioning.",
+    h1: "Resume for Bangalore IT Jobs",
+    intro:
+      "Bangalore jobs are competitive; resumes need sharper positioning by role and measurable outcomes. This guide aligns your profile to that market behavior.",
+    roleFocus: "Bangalore Job Seekers",
+    searchIntent: "Increase callbacks for IT roles in Bangalore.",
+    painPoints: [
+      "Resume language is too generic for metro IT hiring.",
+      "No role-specific keyword alignment for Bangalore openings.",
+      "No quantified outcomes to stand out in volume-heavy applications.",
+    ],
+    whatYouGet: [
+      "City-focused positioning tips for Bangalore hiring demand.",
+      "Guidance on role clustering for IT roles.",
+      "Action plan for application batch-level optimization.",
+    ],
+    actionPlan: [
+      "Choose your top 2 target domains in Bangalore job market.",
+      "Align skills and achievements to each domain with impact metrics.",
+      "Track response quality and iterate weekly.",
+    ],
+    faqs: [
+      {
+        question: "Do I need a special format for Bangalore jobs?",
+        answer: "No special format is needed, but role clarity and outcome depth are critical.",
+      },
+      {
+        question: "Which jobs in Bangalore need best keyword focus?",
+        answer: "Product, cloud, data, and full stack roles often require tighter role-specific vocabulary.",
+      },
+      {
+        question: "How often should I update resume for Bangalore applications?",
+        answer: "Update quickly based on response patterns and role-specific requirements.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-hyderabad-it-jobs",
+    keyword: "resume for hyderabad it jobs",
+    title: "Resume for Hyderabad IT Jobs",
+    metaDescription:
+      "Create a Hyderabad-focused resume with stronger role signals, domain keywords, and measurable outcomes for better shortlist rates.",
+    h1: "Resume for Hyderabad IT Jobs",
+    intro:
+      "Hyderabad hiring is fast-moving and role-specific. This guide helps you tailor your resume for product, services, and enterprise opportunities.",
+    roleFocus: "Hyderabad Job Seekers",
+    searchIntent: "Improve interview responses for Hyderabad technology roles.",
+    painPoints: [
+      "Resume is not mapped to local hiring role clusters.",
+      "Metrics are weak and often not role-specific.",
+      "Applications feel broad and not tailored.",
+    ],
+    whatYouGet: [
+      "City-market targeting guidance for Hyderabad openings.",
+      "Role-based keyword mapping for common Hyderabad tech jobs.",
+      "A practical framework to improve callbacks in high-volume hiring windows.",
+    ],
+    actionPlan: [
+      "Define 2-3 target domains in Hyderabad market.",
+      "Rewrite bullet points with role relevance and outcomes.",
+      "Build 2 tailored resume versions for services vs product roles.",
+    ],
+    faqs: [
+      {
+        question: "Is location important in resume for Hyderabad?",
+        answer: "Location and role clarity help align your profile with local hiring patterns.",
+      },
+      {
+        question: "Should I mention visa or relocation options?",
+        answer: "Only if it is relevant and helps your recruiter fit.",
+      },
+      {
+        question: "Can I apply to multiple role types in Hyderabad?",
+        answer: "Apply with one strong role-focused version per role family for better quality.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-pune-it-jobs",
+    keyword: "resume for pune it jobs",
+    title: "Resume for Pune IT Jobs",
+    metaDescription:
+      "Optimize your resume for Pune IT hiring with stronger technical positioning, outcomes, and role-fit alignment.",
+    h1: "Resume for Pune IT Jobs",
+    intro:
+      "Pune hiring values practical delivery signals and domain clarity. This guide helps you make your profile recruiter-readable and conversion-ready.",
+    roleFocus: "Pune Job Seekers",
+    searchIntent: "Increase shortlist conversion for Pune IT roles.",
+    painPoints: [
+      "Resume lacks domain and project relevance for Pune opportunities.",
+      "No strong start in the summary and headline.",
+      "Skills are stacked without proving implementation outcomes.",
+    ],
+    whatYouGet: [
+      "City-specific optimization ideas for Pune job applications.",
+      "Guidance on tailoring profiles for product, services, and enterprise roles.",
+      "A practical approach for improving callback ratios.",
+    ],
+    actionPlan: [
+      "Pick job families and map skills to each family.",
+      "Prioritize measurable achievements in top half of resume.",
+      "Run weekly refinements based on interview and callback responses.",
+    ],
+    faqs: [
+      {
+        question: "Do city-specific resumes help in Pune?",
+        answer: "They help when paired with role-specific outcome bullets and keyword relevance.",
+      },
+      {
+        question: "Should I mention local project experience?",
+        answer: "Mention relevant local or domain-specific experience when it strengthens role fit.",
+      },
+      {
+        question: "How to increase callbacks in Pune IT market?",
+        answer: "Improve role-fit precision and keep bullets short, specific, and metric-backed.",
+      },
+    ],
+  },
 ];
 
 export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
@@ -1648,6 +2143,18 @@ export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
       "resume parser friendly format",
       "best resume format for recruiters",
       "resume shortlist score",
+    ],
+  },
+  {
+    label: "City Based IT Jobs",
+    phrases: [
+      "resume for bangalore it jobs",
+      "resume for hyderabad it jobs",
+      "resume for pune it jobs",
+      "resume for chennai tech jobs",
+      "resume for gurgaon tech companies",
+      "resume for noida software jobs",
+      "resume for mumbai it jobs",
     ],
   },
 ];
@@ -2032,6 +2539,126 @@ const keywordVariantsBySlug: Record<string, string[]> = {
     "resume improve for more callbacks",
     "resume audit for interview calls",
     "shortlist chance improve resume",
+  ],
+  "full-stack-developer-resume-checker": [
+    "full stack developer resume checker",
+    "full stack resume format india",
+    "full stack developer resume score",
+    "full stack resume for product companies",
+    "mvp developer resume format",
+    "full stack resume with projects",
+    "hire full stack developer resume tips",
+    "full stack role resume not shortlisted",
+  ],
+  "mern-stack-resume-checker": [
+    "mern stack resume checker",
+    "mern developer resume format",
+    "react node mongodb resume",
+    "mern resume for fresher",
+    "mern developer cv sample",
+    "mern resume for product roles",
+    "mern developer profile checklist",
+    "mern jobs resume tips",
+  ],
+  "data-engineer-resume-checker": [
+    "data engineer resume checker",
+    "data engineer resume format india",
+    "data pipeline resume score",
+    "etl resume format",
+    "analytics engineer resume checklist",
+    "data engineer resume not getting calls",
+    "data engineer cv sample",
+    "big data resume checker",
+  ],
+  "android-developer-resume-checker": [
+    "android developer resume checker",
+    "android developer resume format india",
+    "android app resume score",
+    "mobile app resume not getting shortlisted",
+    "android developer cv sample",
+    "android resume for fresher",
+    "google play resume impact metrics",
+    "android developer resume checklist",
+  ],
+  "ios-developer-resume-checker": [
+    "ios developer resume checker",
+    "ios developer resume format",
+    "ios app developer resume",
+    "ios cv for job applications",
+    "ios developer resume not getting calls",
+    "swift developer resume score",
+    "ios developer role resume",
+    "iphone app resume highlights",
+  ],
+  "machine-learning-engineer-resume-checker": [
+    "machine learning engineer resume checker",
+    "ml engineer resume format",
+    "machine learning resume score",
+    "mle resume for india",
+    "machine learning resume not getting interviews",
+    "ml engineer cv sample",
+    "machine learning deployment resume",
+    "mle profile optimization",
+  ],
+  "cybersecurity-engineer-resume-checker": [
+    "cybersecurity engineer resume checker",
+    "cybersecurity resume format india",
+    "security engineer resume score",
+    "infosec resume checklist",
+    "security engineer cv sample",
+    "cyber resume for fresher",
+    "cyber incident handling resume",
+    "security analyst resume not shortlisted",
+  ],
+  "resume-for-1-year-experience-job-switch": [
+    "resume for 1 year experience job switch",
+    "1 year experience job change resume",
+    "resume for first career switch",
+    "early career job switch resume format",
+    "resume for 1 year experienced candidate",
+    "job switch resume for fresher to junior role",
+    "1 year experience resume checklist",
+    "switching jobs after 1 year resume",
+  ],
+  "resume-for-5-years-experience-job-change": [
+    "resume for 5 years experience job change",
+    "5 years experience resume check",
+    "mid career resume job change",
+    "job change resume 5 years experience",
+    "resume for career change after 5 years",
+    "resume checker for 5 years experience",
+    "experienced resume for new role",
+    "5 years experience resume not shortlisted",
+  ],
+  "resume-for-bangalore-it-jobs": [
+    "resume for bangalore it jobs",
+    "bangalore it resume format",
+    "resume for software jobs bangalore",
+    "bangalore software engineer resume",
+    "resume for product jobs bangalore",
+    "bangalore job resume tips",
+    "it resume bangalore city jobs",
+    "how to make resume for bangalore companies",
+  ],
+  "resume-for-hyderabad-it-jobs": [
+    "resume for hyderabad it jobs",
+    "hyderabad software resume format",
+    "resume for product jobs hyderabad",
+    "it jobs hyderabad resume",
+    "hyderabad tech resume checklist",
+    "resume for services companies hyderabad",
+    "job switch resume hyderabad",
+    "hyderabad it hiring resume tips",
+  ],
+  "resume-for-pune-it-jobs": [
+    "resume for pune it jobs",
+    "pune software resume format",
+    "it jobs pune cv",
+    "pune developer resume checklist",
+    "resume for pune software engineer",
+    "enterprise jobs pune resume",
+    "resume for pmp jobs pune",
+    "pune tech jobs application resume",
   ],
 };
 

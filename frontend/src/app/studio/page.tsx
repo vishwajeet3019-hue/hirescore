@@ -8,6 +8,8 @@ import { createPortal } from "react-dom";
 import StudioLockVisual from "@/app/components/studio-lock-visual";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
+import { addUtmParams } from "@/lib/utm";
+import { trackEvent } from "@/lib/analytics";
 
 type ResumeTemplateId = "quantum" | "executive" | "minimal" | "dublin" | "slate" | "metro";
 
@@ -130,6 +132,16 @@ export default function StudioPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"build" | "polish" | "compose">("build");
   const [polishMode, setPolishMode] = useState<"paste" | "upload">("paste");
+  const studioAnalyzeHref = addUtmParams("/upload", {
+    source: "studio",
+    medium: "internal",
+    campaign: "studio_page",
+  });
+  const studioPricingHref = addUtmParams("/pricing", {
+    source: "studio",
+    medium: "internal",
+    campaign: "studio_page",
+  });
 
   const [industry, setIndustry] = useState("");
   const [role, setRole] = useState("");
@@ -1105,7 +1117,13 @@ export default function StudioPage() {
                       <p className="mt-1 text-xs text-amber-50/86">{studioLockMessage}</p>
                       <p className="mt-1 text-[11px] text-amber-50/78">Analysis runs completed: {analysisCount}</p>
                       <a
-                        href="/upload"
+                        href={studioAnalyzeHref}
+                        onClick={() => {
+                          trackEvent("cta_check_my_score_click", {
+                            cta_location: "studio_locked_state",
+                            cta_label: "Run First Analysis",
+                          });
+                        }}
                         className="mt-2 inline-flex rounded-lg border border-amber-100/36 bg-amber-100/16 px-2.5 py-1.5 text-[11px] font-semibold text-amber-50 transition hover:bg-amber-100/24"
                       >
                         Run First Analysis
@@ -1115,7 +1133,13 @@ export default function StudioPage() {
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     <a
-                      href="/pricing"
+                      href={studioPricingHref}
+                      onClick={() => {
+                        trackEvent("cta_view_premium_plans_click", {
+                          cta_location: "studio_sidebar",
+                          cta_label: "Buy Credit Packs",
+                        });
+                      }}
                       className="rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
                     >
                       Buy Credit Packs
@@ -1284,7 +1308,13 @@ export default function StudioPage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-50">Studio Unlock Required</p>
                 <p className="mt-2 text-xs text-amber-50/86">{studioLockMessage}</p>
                 <a
-                  href="/upload"
+                  href={studioAnalyzeHref}
+                  onClick={() => {
+                    trackEvent("cta_check_my_score_click", {
+                      cta_location: "studio_lock_notice",
+                      cta_label: "Go To First Analysis",
+                    });
+                  }}
                   className="mt-3 inline-flex rounded-xl border border-amber-100/40 bg-amber-100/16 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/24"
                 >
                   Go To First Analysis

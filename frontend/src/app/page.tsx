@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import GrowthShareSection from "./components/growth-share-section";
 import TrackedLink from "./components/tracked-link";
 import { seoLandingPages } from "@/lib/seo-landing-pages";
+import { addUtmParams } from "@/lib/utm";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
 
@@ -98,6 +99,68 @@ const successStories = [
 
 export default function Home() {
   const featuredGuides = seoLandingPages.slice(0, 3);
+  const homeUploadHref = addUtmParams("/upload", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_hero",
+  });
+  const homePricingHref = addUtmParams("/pricing", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_hero",
+  });
+  const homeShareHref = addUtmParams("/upload", {
+    source: "home_social",
+    medium: "referral",
+    campaign: "share_prompt",
+  });
+  const growthKitHref = addUtmParams("/growth-kit", {
+    source: "home",
+    medium: "organic",
+    campaign: "traffic_kit_teaser",
+  });
+  const homeCaseStudiesHref = addUtmParams("/case-studies", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_case_studies",
+  });
+  const homeStudioHref = addUtmParams("/studio", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_workflow",
+  });
+  const homeResourcesHref = addUtmParams("/resources", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_resources",
+  });
+  const homeMonetizationUploadHref = addUtmParams("/upload", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_monetization",
+  });
+  const homeMonetizationPricingHref = addUtmParams("/pricing", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_monetization",
+  });
+  const featuredStudies = [
+    {
+      title: "Fresher To First Interview",
+      person: "Karthik R. • Chennai",
+      outcome: "Interview response improved from low to consistent",
+    },
+    {
+      title: "Career Switch With Clarity",
+      person: "Sneha P. • Hyderabad",
+      outcome: "Shortlist probability improved after profile rebuild",
+    },
+    {
+      title: "Higher Conversion In 30 Days",
+      person: "Arjun M. • Delhi NCR",
+      outcome: "More recruiter replies from the same application volume",
+    },
+  ];
   const organizationJsonLd = {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -158,9 +221,9 @@ export default function Home() {
                 build professional resumes that improve interview outcomes.
               </p>
 
-              <div className="mt-8 flex flex-wrap gap-3 sm:mt-10 sm:gap-4">
-                <TrackedLink
-                  href="/upload"
+            <div className="mt-8 flex flex-wrap gap-3 sm:mt-10 sm:gap-4">
+            <TrackedLink
+                  href={homeUploadHref}
                   eventName="cta_check_my_score_click"
                   eventParams={{ cta_location: "home_hero", cta_label: "Check My Score (Free)" }}
                   className="w-full rounded-2xl border border-cyan-100/40 bg-gradient-to-r from-cyan-300/28 via-cyan-200/30 to-amber-100/20 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
@@ -169,7 +232,7 @@ export default function Home() {
                 </TrackedLink>
 
                 <TrackedLink
-                  href="/pricing"
+                  href={homePricingHref}
                   eventName="cta_view_premium_plans_click"
                   eventParams={{ cta_location: "home_hero", cta_label: "View Premium Plans" }}
                   className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
@@ -235,6 +298,68 @@ export default function Home() {
       </section>
 
       <section className="mx-auto mt-12 max-w-7xl">
+        <div className="premium-panel rounded-2xl p-6 sm:p-8">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.2em]">Traffic Boost Block</p>
+          <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">Share with friends who are actively applying</h3>
+            <p className="mt-2 text-sm text-cyan-50/72">
+            Real growth is usually referral-driven for this audience in India. Each share brings an already-intentional jobseeker.
+          </p>
+          <div className="mt-6">
+            <TrackedLink
+              href={homeShareHref}
+              eventName="cta_check_my_score_click"
+              eventParams={{
+                cta_location: "home_share_prompt",
+                cta_label: "Send to Friends",
+              }}
+              className="rounded-2xl border border-cyan-100/38 bg-cyan-200/18 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto"
+            >
+              Send People to Free Analysis
+            </TrackedLink>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto mt-10 max-w-7xl">
+        <div className="premium-panel rounded-[2rem] p-6 sm:p-10">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/64 sm:text-xs sm:tracking-[0.24em]">Live Proof</p>
+          <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-4xl">Top Case Outcomes from Our Users</h3>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {featuredStudies.map((item) => (
+              <article key={item.title} className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4">
+                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/62">{item.person}</p>
+                <h4 className="mt-2 text-lg font-semibold text-cyan-50">{item.title}</h4>
+                <p className="mt-3 text-sm text-cyan-50/74">{item.outcome}</p>
+              </article>
+            ))}
+          </div>
+          <div className="mt-6">
+            <TrackedLink
+              href={homeCaseStudiesHref}
+              eventName="cta_case_studies_click"
+              eventParams={{ cta_location: "home_case_studies", cta_label: "View All Proof Stories" }}
+              className="inline-flex rounded-xl border border-cyan-100/28 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/12"
+            >
+              View All Proof Stories
+            </TrackedLink>
+            <TrackedLink
+              href={growthKitHref}
+              eventName="cta_view_growth_kit"
+              eventParams={{ cta_location: "home_case_stories", cta_label: "Create Growth Content" }}
+              className="ml-3 inline-flex rounded-xl border border-cyan-100/28 bg-cyan-200/22 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
+            >
+              Growth Kit
+            </TrackedLink>
+          </div>
+        </div>
+      </section>
+
+      <GrowthShareSection
+        location="home"
+        title="HireScore AI Resume Analyzer"
+      />
+
+      <section className="mx-auto mt-12 max-w-7xl">
         <div className="premium-panel rounded-[2rem] p-6 sm:p-10">
           <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.22em]">
             Success Stories
@@ -264,12 +389,14 @@ export default function Home() {
               <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.24em]">Workflow</p>
               <h3 className="mt-2 text-2xl font-semibold leading-tight text-cyan-50 sm:text-4xl">From Profile Input to Offer-Ready Resume</h3>
             </div>
-            <Link
-              href="/studio"
+            <TrackedLink
+              href={homeStudioHref}
+              eventName="cta_navigation"
+              eventParams={{ cta_location: "home_workflow", cta_label: "Open Resume Studio" }}
               className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:w-auto"
             >
               Open Resume Studio
-            </Link>
+            </TrackedLink>
           </div>
 
           <div className="mt-8 grid gap-5 md:grid-cols-3">
@@ -296,12 +423,14 @@ export default function Home() {
                 Role-Specific Resume Playbooks
               </h3>
             </div>
-            <Link
-              href="/resources"
+            <TrackedLink
+              href={homeResourcesHref}
+              eventName="cta_navigation"
+              eventParams={{ cta_location: "home_resources", cta_label: "Explore All Guides" }}
               className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:w-auto"
             >
               Explore All {seoLandingPages.length} Guides
-            </Link>
+            </TrackedLink>
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -310,12 +439,19 @@ export default function Home() {
                 <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/62">{guide.roleFocus}</p>
                 <h4 className="mt-2 text-lg font-semibold text-cyan-50">{guide.title}</h4>
                 <p className="mt-2 text-sm leading-relaxed text-cyan-50/72">{guide.metaDescription}</p>
-                <Link
-                  href={`/resources/${guide.slug}`}
+                <TrackedLink
+                  href={addUtmParams(`/resources/${guide.slug}`, {
+                    source: "home_resources",
+                    medium: "organic",
+                    campaign: "home_guide_featured",
+                    content: guide.slug,
+                  })}
+                  eventName="cta_resources_open"
+                  eventParams={{ cta_location: "home_resources", cta_label: "Read Guide", content: guide.slug }}
                   className="mt-4 inline-flex rounded-xl border border-cyan-100/28 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/12"
                 >
                   Read Guide
-                </Link>
+                </TrackedLink>
               </article>
             ))}
           </div>
@@ -330,7 +466,7 @@ export default function Home() {
           </h3>
           <div className="mt-8 flex flex-wrap justify-center gap-3 sm:gap-4">
             <TrackedLink
-              href="/pricing"
+              href={homeMonetizationPricingHref}
               eventName="cta_view_premium_plans_click"
               eventParams={{ cta_location: "home_monetization", cta_label: "Compare Plans" }}
               className="w-full rounded-2xl border border-cyan-100/40 bg-cyan-200/18 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto sm:px-7 sm:py-3.5"
@@ -338,7 +474,7 @@ export default function Home() {
               Compare Plans
             </TrackedLink>
             <TrackedLink
-              href="/upload"
+              href={homeMonetizationUploadHref}
               eventName="cta_check_my_score_click"
               eventParams={{ cta_location: "home_monetization", cta_label: "Start Analysis" }}
               className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"

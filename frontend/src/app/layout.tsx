@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import AppChrome from "./components/app-chrome";
+import AnalyticsPageviewTracker from "./components/analytics-pageview";
 import MotionProvider from "./components/motion-provider";
 import "./globals.css";
 
@@ -76,7 +77,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+<html lang="en">
       <body className="antialiased overflow-x-hidden">
         {GA_MEASUREMENT_ID ? (
           <>
@@ -89,9 +90,10 @@ export default function RootLayout({
                 window.dataLayer = window.dataLayer || [];
                 function gtag(){dataLayer.push(arguments);}
                 gtag('js', new Date());
-                gtag('config', '${GA_MEASUREMENT_ID}');
+                gtag('config', '${GA_MEASUREMENT_ID}', { send_page_view: false });
               `}
             </Script>
+            <AnalyticsPageviewTracker />
           </>
         ) : null}
         <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden">

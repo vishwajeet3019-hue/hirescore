@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import TrackedLink from "@/app/components/tracked-link";
+import GrowthShareSection from "@/app/components/growth-share-section";
+import { addUtmParams } from "@/lib/utm";
 import {
   getKeywordVariantsBySlug,
   getRelatedSeoLandingPages,
@@ -33,7 +34,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   }
 
-  return {
+    return {
     title: page.title,
     description: page.metaDescription,
     keywords: [page.keyword, ...getKeywordVariantsBySlug(page.slug)],
@@ -45,6 +46,20 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description: page.metaDescription,
       url: `${SITE_URL}/resources/${page.slug}`,
       type: "article",
+      images: [
+        {
+          url: `${SITE_URL}/icon.svg`,
+          width: 1200,
+          height: 630,
+          alt: `${page.title} | HireScore AI`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${page.title} | HireScore AI`,
+      description: page.metaDescription,
+      images: [`${SITE_URL}/icon.svg`],
     },
   };
 }
@@ -112,7 +127,11 @@ export default async function SeoLandingPage({ params }: PageProps) {
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <TrackedLink
-              href={`/upload?utm_source=seo_landing&utm_medium=organic&utm_campaign=${page.slug}`}
+              href={addUtmParams("/upload", {
+                source: "seo_landing",
+                medium: "organic",
+                campaign: page.slug,
+              })}
               eventName="cta_check_my_score_click"
               eventParams={{ cta_location: "seo_landing_hero", cta_label: "Check My Score (Free)", page: page.slug }}
               className="w-full rounded-2xl border border-cyan-100/40 bg-cyan-200/18 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto"
@@ -120,7 +139,11 @@ export default async function SeoLandingPage({ params }: PageProps) {
               Check My Score (Free)
             </TrackedLink>
             <TrackedLink
-              href={`/pricing?utm_source=seo_landing&utm_medium=organic&utm_campaign=${page.slug}`}
+              href={addUtmParams("/pricing", {
+                source: "seo_landing",
+                medium: "organic",
+                campaign: page.slug,
+              })}
               eventName="cta_view_premium_plans_click"
               eventParams={{ cta_location: "seo_landing_hero", cta_label: "View Premium Plans", page: page.slug }}
               className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto"
@@ -184,22 +207,34 @@ export default async function SeoLandingPage({ params }: PageProps) {
           </div>
           <div className="mt-7 flex flex-wrap gap-3">
             <TrackedLink
-              href={`/upload?utm_source=seo_landing&utm_medium=organic&utm_campaign=${page.slug}&step=plan`}
+              href={addUtmParams("/upload", {
+                source: "seo_landing",
+                medium: "organic",
+                campaign: `${page.slug}-plan`,
+                content: "plan_cta",
+              })}
               eventName="cta_check_my_score_click"
               eventParams={{ cta_location: "seo_landing_plan", cta_label: "Start My Analysis", page: page.slug }}
               className="w-full rounded-xl border border-cyan-100/38 bg-cyan-200/18 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto"
             >
               Start My Analysis
             </TrackedLink>
-            <Link
-              href="/resources"
-              className="w-full rounded-xl border border-cyan-100/24 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50/84 transition hover:bg-cyan-100/10 sm:w-auto"
-            >
-              Explore All Guides
-            </Link>
-          </div>
-        </div>
-      </section>
+                <TrackedLink
+                  href={addUtmParams("/resources", {
+                    source: "seo_landing",
+                    medium: "organic",
+                    campaign: page.slug,
+                    content: "explore_guides",
+                  })}
+                  eventName="cta_resources_open"
+                  eventParams={{ cta_location: "seo_landing_plan", cta_label: "Explore All Guides" }}
+                  className="w-full rounded-xl border border-cyan-100/24 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50/84 transition hover:bg-cyan-100/10 sm:w-auto"
+                >
+                  Explore All Guides
+                </TrackedLink>
+              </div>
+            </div>
+          </section>
 
       <section className="mx-auto mt-10 max-w-5xl">
         <div className="neon-panel rounded-2xl p-6 sm:p-8">
@@ -224,17 +259,33 @@ export default async function SeoLandingPage({ params }: PageProps) {
                 <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/62">{item.roleFocus}</p>
                 <h3 className="mt-2 text-base font-semibold text-cyan-50">{item.title}</h3>
                 <p className="mt-2 text-sm text-cyan-50/72">{item.metaDescription}</p>
-                <Link
-                  href={`/resources/${item.slug}`}
+                <TrackedLink
+                  href={addUtmParams(`/resources/${item.slug}`, {
+                    source: "seo_landing",
+                    medium: "organic",
+                    campaign: `${page.slug}-related`,
+                    content: item.slug,
+                  })}
+                  eventName="cta_resource_guide_open"
+                  eventParams={{
+                    cta_location: "seo_landing_related",
+                    cta_label: "Read Related Guide",
+                    resource_slug: item.slug,
+                  }}
                   className="mt-3 inline-flex rounded-lg border border-cyan-100/30 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/12"
                 >
                   Read Guide
-                </Link>
+                </TrackedLink>
               </article>
             ))}
           </div>
         </div>
       </section>
+
+      <GrowthShareSection
+        location="resource_detail"
+        title={`${page.h1} | HireScore AI`}
+      />
     </main>
   );
 }

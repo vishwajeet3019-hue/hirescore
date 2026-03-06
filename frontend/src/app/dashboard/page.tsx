@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
+import { addUtmParams } from "@/lib/utm";
+import TrackedLink from "../components/tracked-link";
 
 type CreditWallet = {
   credits: number;
@@ -196,6 +197,21 @@ export default function DashboardPage() {
   const [roadmapCelebration, setRoadmapCelebration] = useState<RoadmapCelebration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const dashboardRunAnalysisHref = addUtmParams("/upload", {
+    source: "dashboard",
+    medium: "internal",
+    campaign: "dashboard",
+  });
+  const dashboardPricingHref = addUtmParams("/pricing", {
+    source: "dashboard",
+    medium: "internal",
+    campaign: "dashboard",
+  });
+  const dashboardStudioHref = addUtmParams("/studio", {
+    source: "dashboard",
+    medium: "internal",
+    campaign: "dashboard",
+  });
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -559,12 +575,14 @@ export default function DashboardPage() {
         {!loading && error && (
           <div className="mt-5 rounded-xl border border-amber-100/34 bg-amber-100/12 p-4">
             <p className="text-sm text-amber-50">{error}</p>
-            <Link
-              href="/upload"
+            <TrackedLink
+              href={dashboardRunAnalysisHref}
+              eventName="cta_check_my_score_click"
+              eventParams={{ cta_location: "dashboard_error", cta_label: "Go To Analyze + Login" }}
               className="mt-3 inline-flex rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
             >
               Go To Analyze + Login
-            </Link>
+            </TrackedLink>
           </div>
         )}
 
@@ -641,36 +659,44 @@ export default function DashboardPage() {
                   <p>Resume AI build: {wallet?.pricing.ai_resume_generation ?? 0} credits</p>
                   <p>PDF download: {wallet?.pricing.template_pdf_download ?? 0} credits</p>
                 </div>
-                <Link
-                  href="/pricing"
+                <TrackedLink
+                  href={dashboardPricingHref}
+                  eventName="cta_view_premium_plans_click"
+                  eventParams={{ cta_location: "dashboard_sidebar", cta_label: "Upgrade Credits Now" }}
                   className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-amber-100/42 bg-amber-200/22 px-4 py-3 text-sm font-semibold text-amber-50 transition hover:bg-amber-200/30"
                 >
                   Upgrade Credits Now
-                </Link>
-                <Link
-                  href="/upload"
+                </TrackedLink>
+                <TrackedLink
+                  href={dashboardRunAnalysisHref}
+                  eventName="cta_check_my_score_click"
+                  eventParams={{ cta_location: "dashboard_sidebar", cta_label: "Run Analysis First" }}
                   className="mt-2 inline-flex w-full items-center justify-center rounded-xl border border-cyan-100/32 bg-cyan-100/10 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
                 >
                   Run Analysis First
-                </Link>
+                </TrackedLink>
               </aside>
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Link
-                href="/upload"
+              <TrackedLink
+                href={dashboardRunAnalysisHref}
+                eventName="cta_check_my_score_click"
+                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Run New Analysis" }}
                 className="rounded-2xl border border-cyan-100/28 bg-[#0a223d]/80 px-4 py-4 text-left transition hover:bg-[#0e2b4c]"
               >
                 <p className="text-sm font-semibold text-cyan-50">Run New Analysis</p>
                 <p className="mt-1 text-xs text-cyan-100/72">Get fresh shortlist and callback intelligence.</p>
-              </Link>
-              <Link
-                href="/studio"
+              </TrackedLink>
+              <TrackedLink
+                href={dashboardStudioHref}
+                eventName="cta_studio_open"
+                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Resume Studio" }}
                 className="rounded-2xl border border-cyan-100/28 bg-[#0a223d]/80 px-4 py-4 text-left transition hover:bg-[#0e2b4c]"
               >
                 <p className="text-sm font-semibold text-cyan-50">Resume Studio</p>
                 <p className="mt-1 text-xs text-cyan-100/72">Apply fixes with guided resume writing workflows.</p>
-              </Link>
+              </TrackedLink>
               <button
                 type="button"
                 onClick={() => setActiveWorkspace("roadmaps")}
@@ -813,12 +839,14 @@ export default function DashboardPage() {
             {!activeRoadmap ? (
               <div className="mt-4 rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4">
                 <p className="text-sm text-cyan-50/76">No roadmap generated yet. Run analysis and choose Add To Roadmap when prompted.</p>
-                <Link
-                  href="/upload"
+                <TrackedLink
+                  href={dashboardRunAnalysisHref}
+                  eventName="cta_check_my_score_click"
+                  eventParams={{ cta_location: "dashboard_reports", cta_label: "Run Analysis" }}
                   className="mt-3 inline-flex rounded-xl border border-cyan-100/34 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
                 >
                   Run Analysis
-                </Link>
+                </TrackedLink>
               </div>
             ) : (
               <>

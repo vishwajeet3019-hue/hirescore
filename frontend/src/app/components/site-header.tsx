@@ -6,6 +6,7 @@ import { type MouseEvent, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { trackEvent } from "@/lib/analytics";
+import { addUtmParams } from "@/lib/utm";
 import BrandLogo from "./brand-logo";
 import StudioLockVisual from "./studio-lock-visual";
 
@@ -30,7 +31,9 @@ const baseNavLinks: NavLink[] = [
   { href: "/", label: "Home" },
   { href: "/upload", label: "Analyze" },
   { href: "/studio", label: "Build Resume" },
+  { href: "/case-studies", label: "Success Stories" },
   { href: "/resources", label: "Guides" },
+  { href: "/growth-kit", label: "Growth Kit" },
   { href: "/#workflow", label: "How It Works", isSection: true },
   { href: "/pricing", label: "Pricing" },
 ];
@@ -61,6 +64,11 @@ export default function SiteHeader() {
     () => (authToken ? baseNavLinks.filter((link) => link.href !== "/resources") : baseNavLinks),
     [authToken]
   );
+  const headerAnalyzeHref = addUtmParams("/upload", {
+    source: "header_nav",
+    medium: "internal",
+    campaign: "nav_analyze",
+  });
 
   useEffect(() => {
     if (!showStudioLockModal) return;
@@ -80,33 +88,33 @@ export default function SiteHeader() {
 
   useEffect(() => {
     const syncAuth = async () => {
-      const token = window.localStorage.getItem("hirescore_auth_token") || "";
-      if (!token) {
+      const clearSessionState = () => {
         setAuthToken("");
         setWallet(null);
         setAnalysisCount(0);
         setStudioUnlocked(false);
+        window.localStorage.removeItem("hirescore_auth_token");
+      };
+
+      const token = window.localStorage.getItem("hirescore_auth_token") || "";
+      if (!token) {
+        clearSessionState();
         return;
       }
-      setAuthToken(token);
+
       try {
         const response = await fetch(apiUrl("/auth/me"), {
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          cache: "no-store",
         });
-        if (response.status === 401) {
-          setAuthToken("");
-          setWallet(null);
-          setAnalysisCount(0);
-          setStudioUnlocked(false);
-          window.localStorage.removeItem("hirescore_auth_token");
-          return;
-        }
         if (!response.ok) {
+          clearSessionState();
           return;
         }
         const payload = (await response.json()) as AuthPayload;
+        setAuthToken(token);
         if (payload.wallet) setWallet(payload.wallet);
         const nextAnalysisCount = Math.max(0, Math.floor(payload.analysis_count || 0));
         setAnalysisCount(nextAnalysisCount);
@@ -118,7 +126,7 @@ export default function SiteHeader() {
           setStudioUnlocked(false);
         }
       } catch {
-        // Avoid hard logout during temporary backend/network failures.
+        clearSessionState();
       }
     };
     void syncAuth();
@@ -204,7 +212,7 @@ export default function SiteHeader() {
             </>
           ) : (
             <Link
-              href="/upload"
+              href={headerAnalyzeHref}
               onClick={() => {
                 trackEvent("cta_check_my_score_click", {
                   cta_location: "header",

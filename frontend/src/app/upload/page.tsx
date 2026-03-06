@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { addUtmParams } from "@/lib/utm";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
+import { trackAnalyzeComplete, trackAnalyzeStart, trackSignup } from "@/lib/analytics";
+import TrackedLink from "@/app/components/tracked-link";
 
 type ImprovementArea = {
   category: string;
@@ -359,6 +362,11 @@ const RESULT_STEPS: { id: ResultTabId; label: string; description: string }[] = 
 
 export default function UploadPage() {
   const router = useRouter();
+  const buyCreditsHref = addUtmParams("/pricing", {
+    source: "upload",
+    medium: "toolbar",
+    campaign: "upload_credits",
+  });
   const [analysisMode, setAnalysisMode] = useState<"manual" | "upload">("manual");
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({});
   const [industry, setIndustry] = useState("");
@@ -464,35 +472,46 @@ export default function UploadPage() {
   };
 
   useEffect(() => {
-    const token = window.localStorage.getItem("hirescore_auth_token");
-    if (!token) return;
+    const clearSessionState = () => {
+      setAuthToken("");
+      setWallet(null);
+      setAuthUserEmail("");
+      setFeedbackRequired(false);
+      setShowFeedbackModal(false);
+      window.localStorage.removeItem("hirescore_auth_token");
+    };
 
-    setAuthToken(token);
+    const token = window.localStorage.getItem("hirescore_auth_token");
+    if (!token) {
+      clearSessionState();
+      return;
+    }
+
+    let cancelled = false;
     fetch(apiUrl("/auth/me"), {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      cache: "no-store",
     })
       .then(async (response) => {
-        if (response.status === 401) {
-          setAuthToken("");
-          setWallet(null);
-          setAuthUserEmail("");
-          setFeedbackRequired(false);
-          setShowFeedbackModal(false);
-          window.localStorage.removeItem("hirescore_auth_token");
-          return;
-        }
+        if (cancelled) return;
         if (!response.ok) {
-          // Keep local session for transient backend/network issues.
+          clearSessionState();
           return;
         }
         const payload = (await response.json()) as AuthPayload;
+        setAuthToken(token);
         applyAuthPayload(payload);
       })
       .catch(() => {
-        // Do not force logout on temporary connectivity failures.
+        if (cancelled) return;
+        clearSessionState();
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -786,6 +805,9 @@ export default function UploadPage() {
       try {
         const payload = await runWithMinimumAuthLiveLoading(() => submitGoogleAuthRequest(credential));
         applyAuthPayload(payload);
+        if (authMode === "signup") {
+          trackSignup("google");
+        }
         setAuthMode("login");
         setAuthPassword("");
         setSignupOtpRequired(false);
@@ -859,6 +881,12 @@ export default function UploadPage() {
     if (data.callback_forecast?.applications_input) {
       setCallbackSimulationApps(String(data.callback_forecast.applications_input));
     }
+
+    trackAnalyzeComplete({
+      score: data.overall_score,
+      mode: analysisMode,
+      location: "upload_page",
+    });
   };
 
   const handleFeedbackSubmit = async () => {
@@ -998,6 +1026,7 @@ export default function UploadPage() {
         }
         const payload = await runWithMinimumAuthLiveLoading(() => verifySignupOtp(email, signupOtp.trim()));
         applyAuthPayload(payload);
+        trackSignup("email_otp");
         setSignupOtpRequired(false);
         setSignupOtp("");
         setAuthPassword("");
@@ -1010,6 +1039,9 @@ export default function UploadPage() {
         }
         const payload = await runWithMinimumAuthLiveLoading(() => submitAuthRequest(authMode, email, password));
         if (authMode === "signup") {
+          if (!payload.otp_required) {
+            trackSignup("email_password");
+          }
           setSignupOtpRequired(Boolean(payload.otp_required));
           setAuthInfo(payload.message || "OTP sent to your email.");
           setAuthError("");
@@ -1093,6 +1125,8 @@ export default function UploadPage() {
       return;
     }
 
+    trackAnalyzeStart("manual", "upload_page");
+
     setAnalysisError("");
     setResult(null);
     setShowResultModal(false);
@@ -1148,6 +1182,8 @@ export default function UploadPage() {
       setResult(null);
       return;
     }
+
+    trackAnalyzeStart("upload", "upload_page");
 
     if (!uploadedFile) {
       setAnalysisError("Upload your resume file first.");
@@ -1939,12 +1975,14 @@ export default function UploadPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <Link
-                        href="/pricing"
-                        className="rounded-xl border border-rose-100/34 bg-rose-100/12 px-3 py-1.5 text-center font-semibold text-rose-50 transition hover:bg-rose-100/18"
-                      >
-                        Buy Credits
-                      </Link>
+                    <TrackedLink
+                      href={buyCreditsHref}
+                      eventName="cta_view_premium_plans_click"
+                      eventParams={{ cta_location: "upload_toolbar", cta_label: "Buy Credits" }}
+                      className="rounded-xl border border-rose-100/34 bg-rose-100/12 px-3 py-1.5 text-center font-semibold text-rose-50 transition hover:bg-rose-100/18"
+                    >
+                      Buy Credits
+                    </TrackedLink>
                       {feedbackRequired && (
                         <button
                           type="button"

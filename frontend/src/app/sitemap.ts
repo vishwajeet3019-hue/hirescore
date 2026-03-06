@@ -31,6 +31,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.8,
     },
+    {
+      url: `${SITE_URL}/case-studies`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.82,
+    },
+    {
+      url: `${SITE_URL}/growth-kit`,
+      lastModified: now,
+      changeFrequency: "daily",
+      priority: 0.88,
+    },
   ];
 
   const resourceRoutes: MetadataRoute.Sitemap = [

@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
+import { trackBeginCheckout, trackPurchase, trackSignup } from "@/lib/analytics";
+import { addUtmParams } from "@/lib/utm";
+import TrackedLink from "../components/tracked-link";
 
 declare global {
   interface Window {
@@ -170,6 +172,11 @@ export default function PricingPage() {
       }),
     [paymentPackages]
   );
+  const pricingAnalyzeHref = addUtmParams("/upload", {
+    source: "pricing",
+    medium: "internal",
+    campaign: "pricing_page",
+  });
 
   const applyAuthPayload = (payload: AuthPayload | null | undefined) => {
     if (payload?.wallet) setWallet(payload.wallet);
@@ -395,6 +402,9 @@ export default function PricingPage() {
         setForgotOtp("");
         setForgotNewPassword("");
         setAuthInfo("Signed in with Google.");
+        if (authMode === "signup") {
+          trackSignup("google");
+        }
       } catch (error) {
         setAuthError(error instanceof Error ? error.message : "Unable to sign in with Google.");
       } finally {
@@ -457,6 +467,7 @@ export default function PricingPage() {
         if (!email || !signupOtp.trim()) throw new Error("Enter email and OTP.");
         const payload = await verifySignupOtp(email, signupOtp.trim());
         applyAuthPayload(payload);
+        trackSignup("email_otp");
         setSignupOtpRequired(false);
         setSignupOtp("");
         setAuthPassword("");
@@ -466,6 +477,9 @@ export default function PricingPage() {
         if (!email || !password) throw new Error("Enter email and password.");
         const payload = await submitAuthRequest(authMode, email, password);
         if (authMode === "signup") {
+          if (!payload.otp_required) {
+            trackSignup("email_password");
+          }
           setSignupOtpRequired(Boolean(payload.otp_required));
           setAuthInfo(payload.message || "OTP sent to your email.");
         } else {
@@ -594,6 +608,15 @@ export default function PricingPage() {
             const verifyPayload = (await verifyResponse.json()) as { wallet?: CreditWallet; message?: string };
             if (verifyPayload.wallet) setWallet(verifyPayload.wallet);
             setAuthInfo(verifyPayload.message || "Payment successful. Credits added.");
+            trackPurchase({
+              transaction_id: String(response.razorpay_payment_id || payload.order_id || ""),
+              item_id: payload.package_id || "package_unknown",
+              item_name: payload.package_label || "Credit Pack",
+              currency: (payload.currency || "INR").trim(),
+              value: Math.max(0, Number(payload.amount_paise || 0)) / 100,
+              payment_gateway: "razorpay",
+              credits: payload.credits || 0,
+            });
             finalize();
           } catch (error) {
             finalize(error instanceof Error ? error : new Error("Unable to verify payment."));
@@ -672,6 +695,17 @@ export default function PricingPage() {
     setAuthError("");
     try {
       const payload = preparedCheckoutRef.current[packageId] || (await requestCheckoutPayload(packageId));
+      const selectedPackage = paymentPackages.find((item) => item.id === packageId);
+      const packageAmountInr =
+        Number(payload.amount_paise || 0) > 0 ? Number(payload.amount_paise || 0) / 100 : (selectedPackage?.amount_inr || 0);
+      trackBeginCheckout({
+        item_id: packageId,
+        item_name: selectedPackage?.label || "Credit Pack",
+        currency: (payload.currency || "INR").trim(),
+        value: Math.max(0, packageAmountInr),
+        payment_gateway: payload.provider || paymentGateway || "unknown",
+        location: "pricing_page",
+      });
       if (payload.provider === "razorpay") {
         preparedCheckoutRef.current[packageId] = payload;
         await openRazorpayCheckout(payload);
@@ -1018,18 +1052,26 @@ export default function PricingPage() {
             Start with your free score, then unlock AI workflows using credits.
           </h3>
           <div className="mt-8 flex flex-wrap justify-center gap-3 sm:gap-4">
-            <Link
-              href="/upload"
+            <TrackedLink
+              href={pricingAnalyzeHref}
+              eventName="cta_check_my_score_click"
+              eventParams={{ cta_location: "pricing_page", cta_label: "Check My Score (Free)" }}
               className="w-full rounded-2xl border border-cyan-100/40 bg-cyan-200/18 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto sm:px-7 sm:py-3.5"
             >
               Check My Score (Free)
-            </Link>
-            <Link
-              href="/studio"
+            </TrackedLink>
+            <TrackedLink
+              href={addUtmParams("/studio", {
+                source: "pricing",
+                medium: "internal",
+                campaign: "pricing_page",
+              })}
+              eventName="cta_improve_resume_click"
+              eventParams={{ cta_location: "pricing_page", cta_label: "Improve Resume Next" }}
               className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
             >
               Improve Resume Next
-            </Link>
+            </TrackedLink>
           </div>
         </motion.div>
       </section>

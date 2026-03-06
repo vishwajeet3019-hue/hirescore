@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import BrandLogo from "./brand-logo";
 import CaptureDeterrence from "./capture-deterrence";
 import FloatingSupportChat from "./floating-support-chat";
 import SiteHeader from "./site-header";
+import TrackedLink from "./tracked-link";
+import { addUtmParams } from "@/lib/utm";
 
 type AppChromeProps = {
   children: React.ReactNode;
@@ -40,16 +41,49 @@ export default function AppChrome({ children }: AppChromeProps) {
           </div>
 
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">Platform</p>
-            <div className="mt-3 space-y-2 text-sm text-cyan-50/72">
-              <p>Shortlist prediction by role intent</p>
-              <p>Actionable improvement roadmaps</p>
-              <p>In-platform resume building</p>
-              <Link href="/resources" className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50">
-                Resume Optimization Guides
-              </Link>
+              <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">Platform</p>
+              <div className="mt-3 space-y-2 text-sm text-cyan-50/72">
+                <p>Shortlist prediction by role intent</p>
+                <p>Actionable improvement roadmaps</p>
+                <p>In-platform resume building</p>
+                <TrackedLink
+                  href={addUtmParams("/resources", {
+                    source: "footer",
+                    medium: "internal",
+                    campaign: "site_footer",
+                  })}
+                  eventName="cta_resources_open"
+                  eventParams={{ cta_location: "footer", cta_label: "Resume Optimization Guides" }}
+                  className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+                >
+                  Resume Optimization Guides
+                </TrackedLink>
+                <TrackedLink
+                  href={addUtmParams("/case-studies", {
+                    source: "footer",
+                    medium: "internal",
+                    campaign: "site_footer",
+                  })}
+                  eventName="cta_case_studies_click"
+                  eventParams={{ cta_location: "footer", cta_label: "Success Stories" }}
+                  className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+                >
+                  Success Stories
+                </TrackedLink>
+                <TrackedLink
+                  href={addUtmParams("/growth-kit", {
+                    source: "footer",
+                    medium: "internal",
+                    campaign: "site_footer",
+                  })}
+                  eventName="cta_view_growth_kit"
+                  eventParams={{ cta_location: "footer", cta_label: "Growth Kit" }}
+                  className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+                >
+                  Growth Kit
+                </TrackedLink>
+              </div>
             </div>
-          </div>
 
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">Trust Signal</p>

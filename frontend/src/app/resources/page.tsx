@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import TrackedLink from "../components/tracked-link";
+import GrowthShareSection from "../components/growth-share-section";
+import { addUtmParams } from "@/lib/utm";
 import {
   getPopularIndianJobSeekerKeywords,
   indianJobSeekerKeywordClusters,
@@ -28,6 +29,24 @@ export const metadata: Metadata = {
 };
 
 export default function ResourcesPage() {
+  const resourcesUploadHref = addUtmParams("/upload", {
+    source: "resources_hub",
+    medium: "organic",
+    campaign: "resource_hub",
+  });
+  const resourcesPricingHref = addUtmParams("/pricing", {
+    source: "resources_hub",
+    medium: "organic",
+    campaign: "resource_hub",
+  });
+  const getResourceGuideHref = (slug: string) =>
+    addUtmParams(`/resources/${slug}`, {
+      source: "resources_hub",
+      medium: "organic",
+      campaign: "resource_card",
+      content: slug,
+    });
+
   const itemListJsonLd = {
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -61,7 +80,7 @@ export default function ResourcesPage() {
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <TrackedLink
-              href="/upload?utm_source=resources_hub&utm_medium=organic&utm_campaign=seo_resources"
+              href={resourcesUploadHref}
               eventName="cta_check_my_score_click"
               eventParams={{ cta_location: "resources_hub", cta_label: "Check My Score (Free)" }}
               className="w-full rounded-2xl border border-cyan-100/40 bg-cyan-200/18 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto"
@@ -69,7 +88,7 @@ export default function ResourcesPage() {
               Check My Score (Free)
             </TrackedLink>
             <TrackedLink
-              href="/pricing?utm_source=resources_hub&utm_medium=organic&utm_campaign=seo_resources"
+              href={resourcesPricingHref}
               eventName="cta_view_premium_plans_click"
               eventParams={{ cta_location: "resources_hub", cta_label: "View Premium Plans" }}
               className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto"
@@ -119,16 +138,23 @@ export default function ResourcesPage() {
               <h2 className="mt-2 text-xl font-semibold text-cyan-50">{item.title}</h2>
               <p className="mt-3 text-sm leading-relaxed text-cyan-50/74">{item.metaDescription}</p>
               <p className="mt-3 text-xs uppercase tracking-[0.12em] text-cyan-100/62">Keyword: {item.keyword}</p>
-              <Link
-                href={`/resources/${item.slug}`}
+              <TrackedLink
+                href={getResourceGuideHref(item.slug)}
+                eventName="cta_resource_guide_open"
+                eventParams={{ cta_location: "resources_grid", cta_label: "Open Guide", resource_slug: item.slug }}
                 className="mt-4 inline-flex rounded-xl border border-cyan-100/34 bg-cyan-200/14 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/22"
               >
                 Open Guide
-              </Link>
+              </TrackedLink>
             </article>
           ))}
         </div>
       </section>
+
+      <GrowthShareSection
+        location="resources"
+        title="HireScore AI Resume Guides"
+      />
     </main>
   );
 }
