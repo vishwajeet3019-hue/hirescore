@@ -30,8 +30,6 @@ type NavLink = {
 
 const baseNavLinks: NavLink[] = [
   { href: "/", label: "Home" },
-  { href: "/upload", label: "Analyze" },
-  { href: "/studio", label: "Build Resume" },
   { href: "/#workflow", label: "How It Works", isSection: true },
   {
     href: "/tools",
@@ -39,7 +37,7 @@ const baseNavLinks: NavLink[] = [
     children: [
       { href: "/upload", label: "Analysis" },
       { href: "/studio", label: "AI Resume Studio" },
-      { href: "/upload?focus=jd-match", label: "JD Matcher" },
+      { href: "/jd-matcher", label: "JD Matcher" },
     ],
   },
   { href: "/case-studies", label: "Success Stories" },
@@ -207,7 +205,7 @@ export default function SiteHeader() {
           />
         </Link>
 
-        <nav className="hidden items-center gap-4 text-sm font-medium text-cyan-50/78 md:flex">
+        <nav className="hidden items-center gap-2 text-sm font-medium text-cyan-50/78 md:flex lg:gap-3">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
             if (!link.children) {
@@ -231,6 +229,7 @@ export default function SiteHeader() {
                 <button
                   type="button"
                   onClick={() => setShowToolsMenu((prev) => !prev)}
+                  aria-expanded={isToolsDropdownOpen(link)}
                   className={`rounded-full border px-3 py-1.5 transition ${
                     active
                       ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
@@ -240,7 +239,7 @@ export default function SiteHeader() {
                   {link.label}
                 </button>
                 <div
-                  className={`pointer-events-none absolute left-0 top-full z-20 mt-2 min-w-[200px] rounded-xl border border-cyan-100/24 bg-[#05152a] p-2 shadow-[0_22px_55px_rgba(2,8,22,0.5)] transition-all duration-150 ${
+                  className={`pointer-events-none absolute left-0 top-full z-20 mt-2 min-w-[220px] rounded-xl border border-cyan-100/24 bg-[#05152a] p-2 shadow-[0_22px_55px_rgba(2,8,22,0.5)] transition-all duration-150 ${
                     isToolsDropdownOpen(link)
                       ? "visible opacity-100 pointer-events-auto"
                       : "invisible opacity-0"
@@ -255,7 +254,7 @@ export default function SiteHeader() {
                         onClickCapture={() => {
                           closeToolsDropdown();
                         }}
-                        className="rounded-lg border border-cyan-100/20 px-3 py-2 text-xs text-cyan-50 transition hover:bg-cyan-100/16 hover:text-cyan-100"
+                        className="rounded-lg border border-cyan-100/20 px-3 py-2 text-sm text-cyan-50 transition hover:bg-cyan-100/16 hover:text-cyan-100"
                       >
                         {child.label}
                       </Link>
@@ -312,7 +311,7 @@ export default function SiteHeader() {
       </div>
 
       <div className="border-t border-cyan-100/8 px-3 py-2 md:hidden">
-        <nav className="mx-auto flex w-full max-w-7xl items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-cyan-50/80">
+        <nav className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-1.5 text-xs text-cyan-50/80">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
             if (!link.children) {
@@ -336,6 +335,7 @@ export default function SiteHeader() {
                 key={link.label}
                 type="button"
                 onClick={() => setShowToolsMenu((prev) => !prev)}
+                aria-expanded={isToolsDropdownOpen(link)}
                 className={`rounded-lg border px-3 py-1.5 shrink-0 transition ${
                   active
                     ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
@@ -346,25 +346,6 @@ export default function SiteHeader() {
               </button>
             );
           })}
-          {showToolsMenu ? (
-            toolsNavLinks.map((child) => {
-              const childActive = isLinkActive(pathname, hash, child);
-              return (
-                <Link
-                  key={`mobile-tool-${child.label}`}
-                  href={child.href}
-                  onClick={isStudioNav(child.href) ? handleStudioNavClick : undefined}
-                  className={`rounded-lg border px-3 py-1.5 transition ${
-                    childActive
-                      ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                      : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
-                  }`}
-                >
-                  {child.label}
-                </Link>
-              );
-            })
-          ) : null}
           {authToken && (
             <Link
               href="/dashboard"
@@ -374,6 +355,30 @@ export default function SiteHeader() {
             </Link>
           )}
         </nav>
+        {showToolsMenu && toolsNavLinks.length > 0 && (
+          <div className="mx-auto mt-2 grid w-full max-w-7xl gap-1.5 sm:grid-cols-3">
+            {toolsNavLinks.map((child) => {
+              const childActive = isLinkActive(pathname, hash, child);
+              return (
+                <Link
+                  key={`mobile-tool-${child.label}`}
+                  href={child.href}
+                  onClick={isStudioNav(child.href) ? handleStudioNavClick : undefined}
+                  onClickCapture={() => {
+                    closeToolsDropdown();
+                  }}
+                  className={`rounded-lg border px-3 py-2 transition ${
+                    childActive
+                      ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
+                      : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
+                  }`}
+                >
+                  {child.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {portalReady
@@ -403,7 +408,7 @@ export default function SiteHeader() {
                       <p className="text-center text-xs uppercase tracking-[0.18em] text-cyan-100/72">Resume Studio Gate</p>
                       <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Let&apos;s Analyze Your Skills First</h3>
                       <p className="mt-3 text-center text-sm text-cyan-50/80">
-                        Complete your first analysis on Analyze page to unlock Build Resume.
+                        Complete your first analysis on the Analysis page to unlock AI Resume Studio.
                       </p>
                       <p className="mt-2 text-center text-xs text-cyan-100/72">
                         Analysis runs completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
@@ -422,7 +427,7 @@ export default function SiteHeader() {
                           }}
                           className="rounded-xl border border-cyan-100/35 bg-cyan-200/18 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
                         >
-                          Go To Analyze
+                          Go To Analysis
                         </button>
                         <button
                           type="button"
