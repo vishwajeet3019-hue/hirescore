@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f3f5f8;
-  --foreground: #0f172a;
-  --surface: rgba(255, 255, 255, 0.9);
-  --surface-strong: rgba(255, 255, 255, 0.97);
-  --line: rgba(51, 65, 85, 0.1);
-  --accent: #2563eb;
-  --accent-warm: #475569;
-  --accent-rich: #1e293b;
+  --background: #f4efe5;
+  --foreground: #1b2430;
+  --surface: rgba(252, 248, 240, 0.92);
+  --surface-strong: rgba(255, 252, 246, 0.98);
+  --line: rgba(48, 58, 72, 0.12);
+  --accent: #1f4b73;
+  --accent-warm: #b07a45;
+  --accent-rich: #12263a;
 }
 
 @theme inline {
@@ -16,29 +16,29 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans-ui), "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-mono: "IBM Plex Mono", "Menlo", "Consolas", monospace;
-  --color-cyan-50: #0f172a;
-  --color-cyan-100: #334155;
-  --color-cyan-200: #475569;
-  --color-cyan-300: #64748b;
-  --color-cyan-400: #94a3b8;
-  --color-amber-50: #1f2937;
-  --color-amber-100: #4b5563;
-  --color-amber-200: #6b7280;
+  --color-cyan-50: #1b2430;
+  --color-cyan-100: #344053;
+  --color-cyan-200: #4b5b72;
+  --color-cyan-300: #6e819d;
+  --color-cyan-400: #8fa1ba;
+  --color-amber-50: #3d2a19;
+  --color-amber-100: #7f5938;
+  --color-amber-200: #af7d4f;
   --color-emerald-50: #14532d;
   --color-emerald-100: #166534;
   --color-emerald-200: #047857;
 }
 
 html {
-  background: #f3f5f8;
+  background: #f4efe5;
 }
 
 body {
   background:
-    radial-gradient(circle at 12% 10%, rgba(148, 163, 184, 0.25), transparent 36%),
-    radial-gradient(circle at 88% 8%, rgba(191, 219, 254, 0.22), transparent 34%),
-    radial-gradient(circle at 78% 88%, rgba(226, 232, 240, 0.5), transparent 36%),
-    linear-gradient(142deg, #f8fafc 0%, #eef2f7 46%, #e2e8f0 100%);
+    radial-gradient(circle at 12% 10%, rgba(176, 122, 69, 0.14), transparent 36%),
+    radial-gradient(circle at 88% 8%, rgba(31, 75, 115, 0.12), transparent 34%),
+    radial-gradient(circle at 78% 88%, rgba(197, 167, 134, 0.2), transparent 36%),
+    linear-gradient(142deg, #fbf8f2 0%, #f4efe5 46%, #ece4d6 100%);
   color: var(--foreground);
   font-family: var(--font-sans-ui), "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   min-height: 100vh;
@@ -50,8 +50,8 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.12;
-  background-image: radial-gradient(rgba(71, 85, 105, 0.14) 0.7px, transparent 0.7px);
+  opacity: 0.1;
+  background-image: radial-gradient(rgba(74, 56, 41, 0.14) 0.7px, transparent 0.7px);
   background-size: 10px 10px;
   z-index: -2;
 }
@@ -61,8 +61,8 @@ body::after {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at 24% 24%, rgba(148, 163, 184, 0.16), transparent 48%);
-  opacity: 0.8;
+  background: radial-gradient(circle at 24% 24%, rgba(176, 122, 69, 0.11), transparent 48%);
+  opacity: 0.62;
   z-index: -1;
 }
 
@@ -74,20 +74,20 @@ body::after {
     linear-gradient(to bottom, var(--line) 1px, transparent 1px);
   background-size: 68px 68px;
   transform: perspective(900px) rotateX(62deg);
-  opacity: 0.12;
+  opacity: 0.1;
 }
 
 .neon-panel {
   background: linear-gradient(
     150deg,
-    rgba(255, 255, 255, 0.97) 0%,
-    rgba(248, 250, 252, 0.96) 54%,
-    rgba(241, 245, 249, 0.96) 100%
+    rgba(255, 251, 244, 0.97) 0%,
+    rgba(252, 246, 236, 0.96) 54%,
+    rgba(247, 239, 226, 0.96) 100%
   );
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  border: 1px solid rgba(139, 112, 84, 0.24);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 18px 42px rgba(15, 23, 42, 0.09);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.78),
+    0 18px 42px rgba(18, 38, 58, 0.08);
   transform: translateZ(0);
   backface-visibility: hidden;
   contain: paint;
@@ -96,13 +96,13 @@ body::after {
 
 .premium-panel {
   background:
-    radial-gradient(circle at 14% 18%, rgba(148, 163, 184, 0.18), transparent 36%),
-    radial-gradient(circle at 88% 14%, rgba(191, 219, 254, 0.2), transparent 38%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 58%, rgba(241, 245, 249, 0.97) 100%);
-  border: 1px solid rgba(148, 163, 184, 0.3);
+    radial-gradient(circle at 14% 18%, rgba(176, 122, 69, 0.14), transparent 36%),
+    radial-gradient(circle at 88% 14%, rgba(31, 75, 115, 0.11), transparent 38%),
+    linear-gradient(145deg, rgba(255, 251, 244, 0.98) 0%, rgba(252, 246, 236, 0.97) 58%, rgba(247, 239, 226, 0.97) 100%);
+  border: 1px solid rgba(139, 112, 84, 0.28);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
-    0 22px 56px rgba(15, 23, 42, 0.1);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8),
+    0 20px 52px rgba(18, 38, 58, 0.09);
   transform: translateZ(0);
   backface-visibility: hidden;
   contain: paint;
@@ -111,13 +111,13 @@ body::after {
 
 .studio-bright-panel {
   background:
-    radial-gradient(circle at 12% 18%, rgba(203, 213, 225, 0.36), transparent 34%),
-    radial-gradient(circle at 88% 16%, rgba(191, 219, 254, 0.28), transparent 36%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 52%, rgba(241, 245, 249, 0.97) 100%);
-  border: 1px solid rgba(148, 163, 184, 0.3);
+    radial-gradient(circle at 12% 18%, rgba(176, 122, 69, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 16%, rgba(31, 75, 115, 0.12), transparent 36%),
+    linear-gradient(145deg, rgba(255, 251, 244, 0.98) 0%, rgba(252, 246, 236, 0.97) 52%, rgba(247, 239, 226, 0.97) 100%);
+  border: 1px solid rgba(139, 112, 84, 0.26);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
-    0 20px 46px rgba(15, 23, 42, 0.08);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.82),
+    0 18px 40px rgba(18, 38, 58, 0.08);
   transform: translateZ(0);
   backface-visibility: hidden;
   contain: paint;
@@ -125,11 +125,11 @@ body::after {
 }
 
 .studio-soft-card {
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.95));
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: linear-gradient(150deg, rgba(255, 251, 244, 0.98), rgba(247, 239, 226, 0.95));
+  border: 1px solid rgba(139, 112, 84, 0.24);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
-    0 14px 34px rgba(15, 23, 42, 0.08);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.82),
+    0 14px 34px rgba(18, 38, 58, 0.07);
 }
 
 .holo-sheen {
@@ -146,15 +146,15 @@ body::after {
 .aurora-strip {
   position: relative;
   overflow: hidden;
-  background: rgba(148, 163, 184, 0.2);
-  box-shadow: 0 0 10px rgba(148, 163, 184, 0.2);
+  background: rgba(176, 122, 69, 0.14);
+  box-shadow: 0 0 10px rgba(31, 75, 115, 0.1);
 }
 
 .aurora-strip::after {
   content: "";
   position: absolute;
   inset: -120% -45%;
-  background: linear-gradient(90deg, rgba(148, 163, 184, 0.02), rgba(148, 163, 184, 0.36), rgba(148, 163, 184, 0.02));
+  background: linear-gradient(90deg, rgba(176, 122, 69, 0.03), rgba(31, 75, 115, 0.22), rgba(176, 122, 69, 0.03));
   transform: translateX(-34%);
   animation: auroraPulse10 6.2s linear infinite alternate;
   will-change: transform, opacity;
@@ -214,9 +214,9 @@ body::after {
 }
 
 .glow-chip {
-  border: 1px solid rgba(148, 163, 184, 0.34);
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: inset 0 0 18px rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(139, 112, 84, 0.28);
+  background: rgba(255, 251, 244, 0.92);
+  box-shadow: inset 0 0 18px rgba(31, 75, 115, 0.06);
 }
 
 .live-dot {
@@ -224,7 +224,7 @@ body::after {
   height: 10px;
   border-radius: 999px;
   background: var(--accent);
-  box-shadow: 0 0 12px rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 10px rgba(31, 75, 115, 0.34);
 }
 
 .hero-radar {
@@ -232,14 +232,14 @@ body::after {
   width: min(100%, 420px);
   aspect-ratio: 1 / 1;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  border: 1px solid rgba(139, 112, 84, 0.28);
   background:
-    radial-gradient(circle at center, rgba(191, 219, 254, 0.45), transparent 40%),
-    radial-gradient(circle at 20% 18%, rgba(226, 232, 240, 0.7), transparent 45%),
-    linear-gradient(150deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.96));
+    radial-gradient(circle at center, rgba(31, 75, 115, 0.12), transparent 40%),
+    radial-gradient(circle at 20% 18%, rgba(176, 122, 69, 0.18), transparent 45%),
+    linear-gradient(150deg, rgba(255, 251, 244, 0.98), rgba(247, 239, 226, 0.96));
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
-    0 20px 42px rgba(15, 23, 42, 0.1);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.82),
+    0 18px 34px rgba(18, 38, 58, 0.08);
   overflow: hidden;
 }
 
@@ -249,19 +249,19 @@ body::after {
   position: absolute;
   inset: 10%;
   border-radius: inherit;
-  border: 1px solid rgba(148, 163, 184, 0.4);
+  border: 1px solid rgba(139, 112, 84, 0.36);
   pointer-events: none;
 }
 
 .hero-radar::after {
   inset: 28%;
-  border-color: rgba(148, 163, 184, 0.46);
+  border-color: rgba(31, 75, 115, 0.28);
 }
 
 .hero-radar-sweep {
   position: absolute;
   inset: -34%;
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(59, 130, 246, 0.22) 18deg, transparent 74deg);
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(31, 75, 115, 0.2) 18deg, transparent 74deg);
   animation: radarSpin 5.2s linear infinite;
   pointer-events: none;
 }
@@ -274,17 +274,17 @@ body::after {
   height: 18px;
   border-radius: 999px;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.96) 0%, rgba(96, 165, 250, 0.9) 60%, rgba(30, 58, 138, 0.72) 100%);
-  box-shadow: 0 0 16px rgba(96, 165, 250, 0.5), 0 0 32px rgba(59, 130, 246, 0.34);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.96) 0%, rgba(176, 122, 69, 0.78) 60%, rgba(31, 75, 115, 0.72) 100%);
+  box-shadow: 0 0 14px rgba(176, 122, 69, 0.3), 0 0 30px rgba(31, 75, 115, 0.24);
   animation: radarPulse 2.6s ease-in-out infinite;
 }
 
 .hero-floating-chip {
   position: absolute;
   min-width: 134px;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.96));
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+  border: 1px solid rgba(139, 112, 84, 0.28);
+  background: linear-gradient(145deg, rgba(255, 251, 244, 0.98), rgba(247, 239, 226, 0.96));
+  box-shadow: 0 10px 24px rgba(18, 38, 58, 0.08);
   border-radius: 0.9rem;
   padding: 0.65rem 0.7rem;
   animation: chipFloat 4.8s ease-in-out infinite;
@@ -304,21 +304,21 @@ body::after {
 
 .premium-hover-card:hover {
   transform: translateY(-5px);
-  border-color: rgba(100, 116, 139, 0.42);
-  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
+  border-color: rgba(31, 75, 115, 0.34);
+  box-shadow: 0 16px 30px rgba(18, 38, 58, 0.12);
 }
 
 .cockpit-surface {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  border: 1px solid rgba(139, 112, 84, 0.24);
   background:
-    radial-gradient(circle at 14% 12%, rgba(226, 232, 240, 0.8), transparent 36%),
-    radial-gradient(circle at 86% 16%, rgba(191, 219, 254, 0.42), transparent 40%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.97) 54%, rgba(241, 245, 249, 0.97) 100%);
+    radial-gradient(circle at 14% 12%, rgba(176, 122, 69, 0.14), transparent 36%),
+    radial-gradient(circle at 86% 16%, rgba(31, 75, 115, 0.12), transparent 40%),
+    linear-gradient(145deg, rgba(255, 251, 244, 0.98) 0%, rgba(252, 246, 236, 0.97) 54%, rgba(247, 239, 226, 0.97) 100%);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 18px 42px rgba(15, 23, 42, 0.1);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.82),
+    0 16px 36px rgba(18, 38, 58, 0.08);
   isolation: isolate;
 }
 
@@ -326,7 +326,7 @@ body::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(118deg, transparent 10%, rgba(148, 163, 184, 0.12) 48%, transparent 86%);
+  background: linear-gradient(118deg, transparent 10%, rgba(31, 75, 115, 0.09) 48%, transparent 86%);
   transform: translate3d(-128%, 0, 0);
   animation: cockpitSweep 8.6s linear infinite;
   pointer-events: none;
@@ -335,16 +335,16 @@ body::after {
 .cockpit-kpi-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: linear-gradient(154deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
-  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(139, 112, 84, 0.26);
+  background: linear-gradient(154deg, rgba(255, 251, 244, 0.97), rgba(247, 239, 226, 0.95));
+  box-shadow: 0 10px 22px rgba(18, 38, 58, 0.08);
 }
 
 .cockpit-kpi-card::after {
   content: "";
   position: absolute;
   inset: -120% -48%;
-  background: linear-gradient(96deg, rgba(148, 163, 184, 0.04), rgba(203, 213, 225, 0.3), rgba(148, 163, 184, 0.04));
+  background: linear-gradient(96deg, rgba(176, 122, 69, 0.04), rgba(31, 75, 115, 0.08), rgba(176, 122, 69, 0.04));
   transform: translateX(-26%);
   animation: cockpitKpiFloat 6.4s ease-in-out infinite;
   pointer-events: none;
@@ -353,9 +353,9 @@ body::after {
 .cockpit-action-tile {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.97), rgba(241, 245, 249, 0.95));
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(139, 112, 84, 0.28);
+  background: linear-gradient(150deg, rgba(255, 251, 244, 0.97), rgba(247, 239, 226, 0.95));
+  box-shadow: 0 10px 20px rgba(18, 38, 58, 0.07);
   transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
 }
 
@@ -363,14 +363,14 @@ body::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 86% 18%, rgba(203, 213, 225, 0.26), transparent 48%);
+  background: radial-gradient(circle at 86% 18%, rgba(31, 75, 115, 0.1), transparent 48%);
   pointer-events: none;
 }
 
 .cockpit-action-tile:hover {
   transform: translateY(-4px);
-  border-color: rgba(100, 116, 139, 0.42);
-  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.12);
+  border-color: rgba(31, 75, 115, 0.28);
+  box-shadow: 0 14px 30px rgba(18, 38, 58, 0.1);
 }
 
 .analysis-live-shell {
