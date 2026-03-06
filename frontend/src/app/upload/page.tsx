@@ -21,6 +21,7 @@ type CreditWallet = {
   free_analysis_included: number;
   pricing: {
     analyze: number;
+    jd_match: number;
     ai_resume_generation: number;
     template_pdf_download: number;
   };
@@ -249,6 +250,7 @@ type RoadmapPreviewPayload = {
 type JdMatchPayload = {
   role_track: string;
   match_score: number;
+  match_percentage?: number;
   matched_keywords: string[];
   missing_keywords: string[];
   jd_keyword_count: number;
@@ -256,6 +258,11 @@ type JdMatchPayload = {
   critical_coverage: number;
   suggested_bullets: string[];
   alignment_summary: string;
+  feedback?: string[];
+  improvements?: string[];
+  next_steps?: string[];
+  wallet?: CreditWallet;
+  credit_transaction_id?: number;
   role_profile?: {
     core: string[];
     critical: string[];
@@ -1718,6 +1725,9 @@ export default function UploadPage() {
         parseError: parseApiError,
         abortErrorMessage: "JD match is taking longer than expected. Please try again.",
       });
+      if (payload.wallet) {
+        setWallet(payload.wallet);
+      }
       setJdMatch(payload);
     } catch (error) {
       setJdMatch(null);
@@ -2649,6 +2659,9 @@ export default function UploadPage() {
                             <div>
                               <p className="text-sm font-semibold text-cyan-100">JD Match Scanner</p>
                               <p className="mt-1 text-xs text-cyan-50/72">Upload JD (PDF/image) or paste text when you are ready.</p>
+                              <p className="mt-1 text-[11px] text-cyan-100/74">
+                                Cost: {wallet?.pricing.jd_match ?? wallet?.pricing.analyze ?? 0} credits per JD match run
+                              </p>
                             </div>
                             <button
                               type="button"
@@ -2695,7 +2708,11 @@ export default function UploadPage() {
                                 >
                                   {jdMatchLoading ? "Matching..." : "Run JD Match"}
                                 </button>
-                                {jdMatch && <span className="text-xs text-cyan-100/78">Match score: {jdMatch.match_score}%</span>}
+                                {jdMatch && (
+                                  <span className="text-xs text-cyan-100/78">
+                                    Match score: {jdMatch.match_percentage ?? jdMatch.match_score}%
+                                  </span>
+                                )}
                               </div>
                               {jdUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">Imported from: {jdUploadedFileName}</p>}
                               {jdMatchError && <p className="mt-2 text-xs text-amber-100">{jdMatchError}</p>}
@@ -2705,6 +2722,13 @@ export default function UploadPage() {
                                   <p className="mt-2 text-xs text-cyan-100/84">
                                     Missing keywords: {(jdMatch.missing_keywords || []).slice(0, 8).join(", ") || "None"}
                                   </p>
+                                  {(jdMatch.feedback || []).length > 0 && (
+                                    <ul className="mt-2 space-y-1 text-xs text-cyan-50/78">
+                                      {(jdMatch.feedback || []).slice(0, 2).map((line, idx) => (
+                                        <li key={`jd-feedback-${idx}`}>- {line}</li>
+                                      ))}
+                                    </ul>
+                                  )}
                                   {(jdMatch.suggested_bullets || []).length > 0 && (
                                     <ul className="mt-2 space-y-1 text-xs text-cyan-50/75">
                                       {(jdMatch.suggested_bullets || []).slice(0, 3).map((line, idx) => (

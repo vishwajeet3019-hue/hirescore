@@ -9,6 +9,7 @@ type CreditWallet = {
   credits: number;
   pricing: {
     analyze: number;
+    jd_match: number;
   };
 };
 
@@ -51,6 +52,8 @@ type JdMatchPayload = {
   improvements?: string[];
   next_steps?: string[];
   jd_relevance?: JdRelevancePayload;
+  wallet?: CreditWallet;
+  credit_transaction_id?: number;
 };
 
 type JdExtractPayload = {
@@ -294,6 +297,9 @@ export default function JdMatcherClient() {
           window.setTimeout(resolve, JD_MATCH_MIN_LOADING_MS - elapsedMs);
         });
       }
+      if (payload.wallet) {
+        setWallet(payload.wallet);
+      }
       setJdMatch(payload);
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
@@ -328,7 +334,7 @@ export default function JdMatcherClient() {
         {authEmail && <p className="mt-3 text-sm text-cyan-100/84">Signed in as: {authEmail}</p>}
         {wallet && (
           <p className="mt-1 text-xs text-cyan-100/76">
-            Wallet: {wallet.credits} credits | Analyze cost: {wallet.pricing.analyze} credits
+            Wallet: {wallet.credits} credits | JD Match cost: {wallet.pricing.jd_match || wallet.pricing.analyze} credits
           </p>
         )}
         <p className="mt-3 rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/82">
@@ -419,7 +425,9 @@ export default function JdMatcherClient() {
               disabled={!canRunMatch}
               className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {jdMatchLoading ? "Running AI Match..." : "Run AI JD Match"}
+              {jdMatchLoading
+                ? "Running AI Match..."
+                : `Run AI JD Match (${wallet?.pricing.jd_match ?? wallet?.pricing.analyze ?? 0} credits)`}
             </button>
           </div>
           {resumeUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">Resume imported from: {resumeUploadedFileName}</p>}

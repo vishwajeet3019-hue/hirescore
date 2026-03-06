@@ -24,6 +24,7 @@ type CreditWallet = {
   free_analysis_included: number;
   pricing: {
     analyze: number;
+    jd_match: number;
     ai_resume_generation: number;
     template_pdf_download: number;
   };
@@ -95,6 +96,7 @@ type ApiErrorPayload = {
 
 const DEFAULT_FEATURE_PRICING = {
   analyze: 5,
+  jd_match: 5,
   ai_resume_generation: 15,
   template_pdf_download: 20,
 };
@@ -109,6 +111,11 @@ const creditRules = [
     title: "Analysis Report",
     value: "5 Credits",
     description: "Use on /upload for shortlist probability, salary insights, and callback forecast.",
+  },
+  {
+    title: "JD Match Analysis",
+    value: "5 Credits",
+    description: "Use on /jd-matcher or in-page scanner to match resume against JD with AI feedback and next steps.",
   },
   {
     title: "AI Resume Build + TXT",
@@ -760,7 +767,7 @@ export default function PricingPage() {
               One Free Analysis, Then Credit-Based Usage
             </h1>
             <p className="mx-auto mt-4 max-w-3xl text-sm text-cyan-50/72 sm:text-base">
-              Buy wallet credits to run more analyses and unlock premium resume-improvement actions.
+              Buy wallet credits to run more analyses, JD matches, and premium resume-improvement actions.
             </p>
           </div>
         </motion.div>
@@ -798,6 +805,8 @@ export default function PricingPage() {
               const tierTitle = isElite ? "Elite" : isPro ? "Pro" : "Starter";
               const isFeatured = isPro || (sortedPackages.length === 1 && index === 0);
               const analysisRuns = Math.max(1, Math.floor(item.credits / pricingUnits.analyze));
+              const jdMatchUnitCost = Math.max(1, pricingUnits.jd_match || pricingUnits.analyze || DEFAULT_FEATURE_PRICING.jd_match);
+              const jdMatchRuns = Math.max(1, Math.floor(item.credits / jdMatchUnitCost));
               const aiBuildRuns = Math.max(0, Math.floor(item.credits / pricingUnits.ai_resume_generation));
               const pdfExports = Math.max(0, Math.floor(item.credits / pricingUnits.template_pdf_download));
 
@@ -829,6 +838,7 @@ export default function PricingPage() {
 
                   <div className="mt-4 space-y-1.5 text-xs text-cyan-50/80">
                     <p>Up to {analysisRuns} analysis reports</p>
+                    <p>Up to {jdMatchRuns} JD match runs</p>
                     <p>Up to {aiBuildRuns} AI resume build + TXT runs</p>
                     <p>Up to {pdfExports} premium PDF exports</p>
                     <p>{isElite ? "Best for power users" : isPro ? "Best for regular users" : "Best to get started"}</p>
@@ -866,6 +876,9 @@ export default function PricingPage() {
                 <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">Credits: {wallet.credits}</span>
                 <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
                   Analysis: {wallet.pricing.analyze} credits
+                </span>
+                <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
+                  JD Match: {wallet.pricing.jd_match || wallet.pricing.analyze} credits
                 </span>
                 <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
                   AI Resume: {wallet.pricing.ai_resume_generation} credits
@@ -1024,7 +1037,7 @@ export default function PricingPage() {
         </article>
       </section>
 
-      <section className="mx-auto mt-10 grid max-w-7xl gap-5 md:grid-cols-2 xl:grid-cols-4">
+      <section className="mx-auto mt-10 grid max-w-7xl gap-5 md:grid-cols-2 xl:grid-cols-5">
         {creditRules.map((rule, index) => (
           <motion.article
             key={rule.title}

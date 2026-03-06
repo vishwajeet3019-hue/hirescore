@@ -19,6 +19,7 @@ type CreditWallet = {
   free_analysis_included: number;
   pricing: {
     analyze: number;
+    jd_match: number;
     ai_resume_generation: number;
     template_pdf_download: number;
   };

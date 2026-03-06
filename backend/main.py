@@ -195,6 +195,7 @@ else:
 WELCOME_FREE_CREDITS = 5
 CREDIT_COSTS: dict[str, int] = {
     "analyze": 5,
+    "jd_match": 5,
     "ai_resume_generation": 15,
     "template_pdf_download": 20,
 }
@@ -468,39 +469,47 @@ class ExportResumePdfAsyncRequest(ResumeExportRequest):
 PLAN_RULES: dict[str, dict[str, Any]] = {
     "free": {
         "analyze_limit": 8,
+        "jd_match_limit": 8,
         "suggest_limit": 8,
         "generation_limit": 1,
         "pdf_polish_limit": 0,
         "allowed_templates": ["minimal"],
         "can_upload_pdf": False,
         "can_ai_enhance": False,
+        "can_jd_match": True,
     },
     "starter": {
         "analyze_limit": 80,
+        "jd_match_limit": 80,
         "suggest_limit": 80,
         "generation_limit": 15,
         "pdf_polish_limit": 6,
         "allowed_templates": ["minimal", "executive", "dublin", "metro"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
+        "can_jd_match": True,
     },
     "pro": {
         "analyze_limit": 320,
+        "jd_match_limit": 320,
         "suggest_limit": 320,
         "generation_limit": 90,
         "pdf_polish_limit": 40,
         "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate", "metro"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
+        "can_jd_match": True,
     },
     "elite": {
         "analyze_limit": 1200,
+        "jd_match_limit": 1200,
         "suggest_limit": 1200,
         "generation_limit": 320,
         "pdf_polish_limit": 160,
         "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate", "metro"],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
+        "can_jd_match": True,
     },
 }
 
@@ -3026,6 +3035,7 @@ def wallet_payload(credits: int) -> dict[str, Any]:
         "welcome_credits": WELCOME_FREE_CREDITS,
         "pricing": {
             "analyze": CREDIT_COSTS["analyze"],
+            "jd_match": CREDIT_COSTS["jd_match"],
             "ai_resume_generation": CREDIT_COSTS["ai_resume_generation"],
             "template_pdf_download": CREDIT_COSTS["template_pdf_download"],
         },
@@ -3346,6 +3356,7 @@ def usage_bucket(plan: str, session_id: str) -> dict[str, int]:
     if key not in USAGE_TRACKER:
         USAGE_TRACKER[key] = {
             "analyze_used": 0,
+            "jd_match_used": 0,
             "suggest_used": 0,
             "generation_used": 0,
             "pdf_polish_used": 0,
@@ -3363,12 +3374,14 @@ def plan_enforcement_payload(plan: str, session_id: str) -> dict[str, Any]:
         "window": "daily",
         "usage": {
             "analyze_used": usage["analyze_used"],
+            "jd_match_used": usage["jd_match_used"],
             "suggest_used": usage["suggest_used"],
             "generation_used": usage["generation_used"],
             "pdf_polish_used": usage["pdf_polish_used"],
         },
         "limits": {
             "analyze_limit": rules["analyze_limit"],
+            "jd_match_limit": rules["jd_match_limit"],
             "suggest_limit": rules["suggest_limit"],
             "generation_limit": rules["generation_limit"],
             "pdf_polish_limit": rules["pdf_polish_limit"],
@@ -3377,6 +3390,7 @@ def plan_enforcement_payload(plan: str, session_id: str) -> dict[str, Any]:
             "allowed_templates": rules["allowed_templates"],
             "can_upload_pdf": rules["can_upload_pdf"],
             "can_ai_enhance": rules["can_ai_enhance"],
+            "can_jd_match": rules["can_jd_match"],
         },
     }
 
@@ -3414,6 +3428,22 @@ def consume_quota(plan: str, session_id: str, action: str) -> dict[str, Any]:
                 429,
             )
         usage["analyze_used"] += 1
+    elif action == "jd_match":
+        if not rules["can_jd_match"]:
+            raise quota_error(
+                f"JD Match is not available on the {plan.title()} plan. Upgrade to unlock this feature.",
+                plan,
+                session_id,
+                403,
+            )
+        if usage["jd_match_used"] >= rules["jd_match_limit"]:
+            raise quota_error(
+                f"{plan.title()} plan JD match limit reached for today. Upgrade for more JD matching runs.",
+                plan,
+                session_id,
+                429,
+            )
+        usage["jd_match_used"] += 1
     elif action == "suggest":
         if usage["suggest_used"] >= rules["suggest_limit"]:
             raise quota_error(
@@ -3466,7 +3496,13 @@ def rollback_quota(plan: str, session_id: str, action: str) -> None:
 
     usage = usage_bucket(plan, session_id)
 
-    if action == "generation" and usage["generation_used"] > 0:
+    if action == "analyze" and usage["analyze_used"] > 0:
+        usage["analyze_used"] -= 1
+    elif action == "jd_match" and usage["jd_match_used"] > 0:
+        usage["jd_match_used"] -= 1
+    elif action == "suggest" and usage["suggest_used"] > 0:
+        usage["suggest_used"] -= 1
+    elif action == "generation" and usage["generation_used"] > 0:
         usage["generation_used"] -= 1
     elif action == "pdf_polish":
         if usage["pdf_polish_used"] > 0:
@@ -7884,19 +7920,45 @@ def analysis_jd_match(data: JobDescriptionMatchRequest, request: Request) -> dic
     if len(resume_text) < 24:
         raise HTTPException(status_code=400, detail="Resume text is too short.")
 
-    payload = build_jd_match_payload(data.industry, data.role, resume_text, job_description)
-    log_analytics_event(
-        "analysis",
-        "analysis_jd_match_generated",
-        user_id=int(user["id"]),
-        meta={
-            "role": safe_text(data.role),
-            "industry": safe_text(data.industry),
-            "match_score": int(payload.get("match_score") or 0),
-            "missing_keywords": len(payload.get("missing_keywords") or []),
-        },
+    debit = debit_credits(
+        int(user["id"]),
+        "jd_match",
+        CREDIT_COSTS["jd_match"],
+        meta={"route": "/analysis/jd-match", "role": safe_text(data.role), "industry": safe_text(data.industry)},
     )
-    return payload
+    try:
+        payload = build_jd_match_payload(data.industry, data.role, resume_text, job_description)
+        payload["wallet"] = debit["wallet"]
+        payload["credit_transaction_id"] = debit["transaction_id"]
+        log_analytics_event(
+            "analysis",
+            "analysis_jd_match_generated",
+            user_id=int(user["id"]),
+            meta={
+                "role": safe_text(data.role),
+                "industry": safe_text(data.industry),
+                "match_score": int(payload.get("match_score") or 0),
+                "missing_keywords": len(payload.get("missing_keywords") or []),
+                "credit_transaction_id": debit["transaction_id"],
+            },
+        )
+        return payload
+    except HTTPException:
+        credit_credits(
+            int(user["id"]),
+            "refund_jd_match",
+            CREDIT_COSTS["jd_match"],
+            meta={"reason": "jd_match_failed"},
+        )
+        raise
+    except Exception as exc:
+        credit_credits(
+            int(user["id"]),
+            "refund_jd_match",
+            CREDIT_COSTS["jd_match"],
+            meta={"reason": "jd_match_failed_unhandled"},
+        )
+        raise HTTPException(status_code=500, detail="Unable to run JD match right now.") from exc
 
 
 @app.post("/analysis/jd-match/extract")
