@@ -163,7 +163,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState<(typeof planOptions)[number]>("all");
 
-  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
+  const [analytics, setAnalytics] = useState<AdminAnalytics>(DEFAULT_ADMIN_ANALYTICS);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [events, setEvents] = useState<AdminEvent[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<AdminFeedback[]>([]);
@@ -757,20 +757,18 @@ export default function AdminPage() {
   const inputClass =
     "rounded-xl border border-slate-300/18 bg-[#0b1120]/94 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-300/45 outline-none transition focus:border-sky-300/65";
 
-  const metricRows = analytics
-    ? [
-        { label: "Total Users", value: analytics.users_total },
-        { label: "Signups", value: analytics.signups_total },
-        { label: "Logins", value: analytics.logins_total },
-        { label: "Analyses", value: analytics.analyses_total },
-        { label: "Feedback", value: analytics.feedback_total },
-        { label: "Avg Rating", value: analytics.feedback_avg_rating },
-        { label: "Payments", value: analytics.payments_total },
-        { label: "Revenue (INR)", value: analytics.revenue_inr_total },
-        { label: "Credits Sold", value: analytics.credits_sold_total },
-        { label: "Gateway", value: (analytics.payment_gateway || "none").toUpperCase() },
-      ]
-    : [];
+  const metricRows = [
+    { label: "Total Users", value: analytics.users_total },
+    { label: "Signups", value: analytics.signups_total },
+    { label: "Logins", value: analytics.logins_total },
+    { label: "Analyses", value: analytics.analyses_total },
+    { label: "Feedback", value: analytics.feedback_total },
+    { label: "Avg Rating", value: analytics.feedback_avg_rating },
+    { label: "Payments", value: analytics.payments_total },
+    { label: "Revenue (INR)", value: analytics.revenue_inr_total },
+    { label: "Credits Sold", value: analytics.credits_sold_total },
+    { label: "Gateway", value: (analytics.payment_gateway || "none").toUpperCase() },
+  ];
 
   if (!connected) {
     return (
@@ -909,7 +907,7 @@ export default function AdminPage() {
                   setAdminToken("");
                   setAdminAuthMode("token");
                   setConnected(false);
-                  setAnalytics(null);
+                  setAnalytics(DEFAULT_ADMIN_ANALYTICS);
                   setUsers([]);
                   setEvents([]);
                   setFeedbackRows([]);
@@ -1007,16 +1005,14 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {analytics && (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                {metricRows.map((item) => (
-                  <article key={item.label} className={metricCardClass}>
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-slate-300/76">{item.label}</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-50">{item.value}</p>
-                  </article>
-                ))}
-              </div>
-            )}
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {metricRows.map((item) => (
+                <article key={item.label} className={metricCardClass}>
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-slate-300/76">{item.label}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-50">{item.value}</p>
+                </article>
+              ))}
+            </div>
 
             <section className="rounded-2xl border border-slate-200/14 bg-slate-900/38 p-3 sm:p-4">
               <div className="flex flex-wrap gap-2">
