@@ -19,9 +19,27 @@ type AuthPayload = {
   wallet?: CreditWallet;
 };
 
+type JdRelevancePayload = {
+  score: number;
+  verdict: string;
+  target_track: string;
+  detected_jd_track: string;
+  target_field_family?: string;
+  detected_field_family?: string;
+  is_field_mismatch: boolean;
+  reasoning?: string[];
+  ai?: {
+    used?: boolean;
+    model?: string | null;
+    blend?: number;
+    reason?: string;
+  };
+};
+
 type JdMatchPayload = {
   role_track: string;
   match_score: number;
+  match_percentage?: number;
   matched_keywords: string[];
   missing_keywords: string[];
   jd_keyword_count: number;
@@ -29,6 +47,10 @@ type JdMatchPayload = {
   critical_coverage: number;
   suggested_bullets: string[];
   alignment_summary: string;
+  feedback?: string[];
+  improvements?: string[];
+  next_steps?: string[];
+  jd_relevance?: JdRelevancePayload;
 };
 
 type JdExtractPayload = {
@@ -431,11 +453,25 @@ export default function JdMatcherClient() {
             <p className="mt-3 text-sm text-cyan-50/72">Run JD Match to see coverage score, missing keywords, and suggested bullets.</p>
           ) : (
             <>
+              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/10 p-3">
+                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Match Percentage</p>
+                <div className="mt-1 flex items-end gap-2">
+                  <p className="text-3xl font-semibold text-cyan-50">{Math.max(0, Math.min(100, jdMatch.match_percentage ?? jdMatch.match_score))}%</p>
+                  {jdMatch.jd_relevance?.verdict && (
+                    <span className="mb-1 rounded-full border border-cyan-100/26 bg-cyan-100/8 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/76">
+                      {jdMatch.jd_relevance.verdict.replace(/_/g, " ")}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-cyan-100/84">{jdMatch.alignment_summary}</p>
+              </div>
+
               <div className="mt-3 rounded-lg border border-cyan-100/20 bg-cyan-100/8 p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/70">AI Match Graphs</p>
                 <div className="mt-3 space-y-2.5">
                   {[
-                    { label: "Role Match", value: jdMatch.match_score },
+                    { label: "Role Match", value: jdMatch.match_percentage ?? jdMatch.match_score },
+                    { label: "JD Relevance", value: jdMatch.jd_relevance?.score ?? 0 },
                     { label: "Critical Coverage", value: jdMatch.critical_coverage },
                     {
                       label: "Keyword Coverage",
@@ -460,21 +496,41 @@ export default function JdMatcherClient() {
 
               <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">AI Feedback</p>
-                <p className="mt-2 text-sm text-cyan-100/84">{jdMatch.alignment_summary}</p>
+                <ul className="mt-2 space-y-1 text-sm text-cyan-100/84">
+                  {(jdMatch.feedback || [jdMatch.alignment_summary]).slice(0, 6).map((line, index) => (
+                    <li key={`${line}-${index}`}>- {line}</li>
+                  ))}
+                </ul>
+                {jdMatch.jd_relevance?.is_field_mismatch && (
+                  <p className="mt-2 text-xs text-amber-100">
+                    JD mismatch detected: uploaded JD appears closer to {jdMatch.jd_relevance.detected_jd_track.replace(/_/g, " ")}.
+                  </p>
+                )}
                 <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Matched Signals</p>
                 <p className="mt-1 text-sm text-cyan-50/78">{(jdMatch.matched_keywords || []).slice(0, 12).join(", ") || "None yet"}</p>
                 <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Gap Keywords</p>
                 <p className="mt-1 text-sm text-cyan-50/78">{(jdMatch.missing_keywords || []).slice(0, 16).join(", ") || "None"}</p>
               </div>
 
-              {(jdMatch.suggested_bullets || []).length > 0 && (
+              {((jdMatch.improvements || jdMatch.suggested_bullets) || []).length > 0 && (
                 <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Action Feedback</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Improvements</p>
                   <ul className="mt-2 space-y-1 text-sm text-cyan-50/80">
-                    {(jdMatch.suggested_bullets || []).slice(0, 5).map((line, index) => (
+                    {(jdMatch.improvements || jdMatch.suggested_bullets || []).slice(0, 6).map((line, index) => (
                       <li key={`${line}-${index}`}>- {line}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {(jdMatch.next_steps || []).length > 0 && (
+                <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Next Steps</p>
+                  <ol className="mt-2 space-y-1 text-sm text-cyan-50/80">
+                    {(jdMatch.next_steps || []).slice(0, 5).map((line, index) => (
+                      <li key={`${line}-${index}`}>{index + 1}. {line}</li>
+                    ))}
+                  </ol>
                 </div>
               )}
             </>

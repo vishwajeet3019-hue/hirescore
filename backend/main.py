@@ -104,6 +104,11 @@ try:
 except Exception:
     ANALYZE_LLM_BLEND = 0.28
 ANALYZE_LLM_BLEND = max(0.08, min(0.6, ANALYZE_LLM_BLEND))
+try:
+    JD_MATCH_LLM_BLEND = float((os.getenv("JD_MATCH_LLM_BLEND") or "0.32").strip())
+except Exception:
+    JD_MATCH_LLM_BLEND = 0.32
+JD_MATCH_LLM_BLEND = max(0.08, min(0.6, JD_MATCH_LLM_BLEND))
 ANALYZE_CACHE_ENABLED = env_flag("ANALYZE_CACHE_ENABLED", True)
 ANALYZE_SMART_ROUTING_ENABLED = env_flag("ANALYZE_SMART_ROUTING_ENABLED", True)
 ANALYZE_SELF_LEARNING_ENABLED = env_flag("ANALYZE_SELF_LEARNING_ENABLED", True)
@@ -8685,6 +8690,200 @@ def keyword_tokens_from_text(value: str, limit: int = 90) -> list[str]:
     return tokens
 
 
+def dedupe_text_list(values: list[str], limit: int = 6, max_item_len: int = 180) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        text = re.sub(r"\s+", " ", safe_text(value)).strip()
+        if not text:
+            continue
+        normalized = normalize_search_text(text)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(text[:max_item_len])
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def infer_track_from_document(text: str) -> tuple[str, int]:
+    normalized = normalize_search_text(text)
+    if not normalized:
+        return "general", 0
+    search_space = f" {normalized} "
+
+    def contains_phrase(phrase: str) -> bool:
+        normalized_phrase = normalize_search_text(phrase)
+        if not normalized_phrase:
+            return False
+        return f" {normalized_phrase} " in search_space
+
+    best_track = "general"
+    best_score = 0
+    for track, keywords in ROLE_TRACK_KEYWORDS.items():
+        score = 0
+        for keyword in keywords:
+            if contains_phrase(keyword):
+                score += 2 if " " in keyword else 1
+        blueprint = ROLE_BLUEPRINTS.get(track, ROLE_BLUEPRINTS["general"])
+        for core_skill in blueprint["core"][:6]:
+            if contains_phrase(core_skill):
+                score += 1
+        if score > best_score:
+            best_score = score
+            best_track = track
+    return best_track, best_score
+
+
+def jd_relevance_verdict_from_score(score: int, is_field_mismatch: bool) -> str:
+    if is_field_mismatch and score < 72:
+        return "likely_mismatch"
+    if score >= 78:
+        return "high_relevance"
+    if score >= 56:
+        return "moderate_relevance"
+    return "low_relevance"
+
+
+def normalize_jd_relevance_verdict(value: str, score: int, is_field_mismatch: bool) -> str:
+    normalized = normalize_search_text(value).replace(" ", "_")
+    if normalized in {"high_relevance", "moderate_relevance", "low_relevance", "likely_mismatch"}:
+        return normalized
+    return jd_relevance_verdict_from_score(score, is_field_mismatch)
+
+
+def build_jd_relevance_baseline(industry: str, role: str, job_description: str, target_track: str) -> dict[str, Any]:
+    resolved_target_track = safe_text(target_track) or infer_role_track(role, industry)
+    target_family = TRACK_FIELD_FAMILIES.get(resolved_target_track, "general")
+    detected_track, detected_track_score = infer_track_from_document(job_description)
+    detected_family = TRACK_FIELD_FAMILIES.get(detected_track, "general")
+    is_field_mismatch = (
+        resolved_target_track not in {"", "general"}
+        and detected_track not in {"", "general"}
+        and detected_family != target_family
+        and detected_track_score >= 3
+    )
+
+    blueprint = ROLE_BLUEPRINTS.get(resolved_target_track, ROLE_BLUEPRINTS["general"])
+    critical = ROLE_CRITICAL_SKILLS.get(resolved_target_track, ROLE_CRITICAL_SKILLS["general"])
+    target_phrases = dedupe_preserve_order(
+        [*ROLE_TRACK_KEYWORDS.get(resolved_target_track, []), *blueprint["core"], *critical]
+    )[:22]
+    target_hits = sum(1 for phrase in target_phrases if phrase_in_text(job_description, phrase))
+    target_signal = (target_hits / max(1, len(target_phrases))) * 100.0
+
+    detected_bonus = 14 if detected_track == resolved_target_track else 5 if detected_family == target_family else -20
+    confidence_bonus = min(10, detected_track_score * 2)
+    relevance_score = clamp(36 + target_signal * 0.44 + detected_bonus + confidence_bonus)
+    relevance_verdict = jd_relevance_verdict_from_score(relevance_score, is_field_mismatch)
+
+    reasoning: list[str] = []
+    if is_field_mismatch:
+        reasoning.append(
+            f"JD appears closer to {detected_track.replace('_', ' ')} while target role maps to {resolved_target_track.replace('_', ' ')}."
+        )
+    elif detected_track != "general":
+        reasoning.append(f"JD role language aligns with {detected_track.replace('_', ' ')} track signals.")
+    reasoning.append(f"{target_hits} of {max(1, len(target_phrases))} target-role phrases were detected in the JD.")
+    if relevance_score >= 75:
+        reasoning.append("JD context is strongly relevant to your selected target role.")
+    elif relevance_score >= 56:
+        reasoning.append("JD is partially relevant; role-specific signals are present but not complete.")
+    else:
+        reasoning.append("JD has weak role alignment signals for the selected target.")
+
+    return {
+        "score": relevance_score,
+        "verdict": relevance_verdict,
+        "target_track": resolved_target_track or "general",
+        "target_family": target_family,
+        "detected_jd_track": detected_track,
+        "detected_jd_track_score": detected_track_score,
+        "detected_family": detected_family,
+        "is_field_mismatch": is_field_mismatch,
+        "reasoning": dedupe_text_list(reasoning, limit=4, max_item_len=180),
+    }
+
+
+def request_jd_match_overlay(
+    industry: str,
+    role: str,
+    resume_text: str,
+    job_description: str,
+    deterministic_baseline: dict[str, Any],
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    if client is None:
+        return None, None, "OPENAI_API_KEY not configured"
+
+    models: list[str] = []
+    for model in [ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
+        cleaned = safe_text(model)
+        if cleaned and cleaned not in models:
+            models.append(cleaned)
+
+    prompt = f"""
+You are an expert hiring evaluator. Compare resume vs job description and return strict JSON only.
+
+Target role: {safe_text(role)}
+Target industry: {safe_text(industry)}
+
+Resume text:
+{safe_text(resume_text)[:6500]}
+
+Job description text:
+{safe_text(job_description)[:6500]}
+
+Deterministic baseline:
+{json.dumps(deterministic_baseline, ensure_ascii=False)}
+
+Rules:
+- Score true JD-resume fit, not generic keyword stuffing.
+- If JD appears from a different role field than target role, mark likely mismatch and explain.
+- Feedback should be specific and actionable.
+
+JSON schema (all keys required):
+{{
+  "match_percentage": <number 0-100>,
+  "jd_relevance_score": <number 0-100>,
+  "jd_relevance_verdict": "high_relevance|moderate_relevance|low_relevance|likely_mismatch",
+  "detected_jd_track": "<short track name>",
+  "feedback": ["feedback line 1", "feedback line 2", "feedback line 3"],
+  "improvements": ["improvement 1", "improvement 2", "improvement 3"],
+  "next_steps": ["next step 1", "next step 2", "next step 3"],
+  "reasoning": ["reason 1", "reason 2", "reason 3"]
+}}
+"""
+
+    last_error: str | None = None
+    for model in models:
+        for attempt in range(3):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "Return strict JSON only. No markdown."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.12,
+                )
+                content = extract_llm_text(response.choices[0].message.content if response.choices else "")
+                parsed = parse_llm_json_payload(content)
+                if isinstance(parsed, dict):
+                    return parsed, model, None
+                last_error = f"invalid_json_from_{model}"
+                logger.error("JD match LLM overlay returned non-JSON content for model '%s'.", model)
+                break
+            except Exception as exc:
+                last_error = f"{type(exc).__name__} on model {model}"
+                logger.exception("JD match LLM overlay failed for model '%s' (attempt %s).", model, attempt + 1)
+                if attempt < 2 and is_transient_openai_error(exc):
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                break
+    return None, None, last_error
+
+
 def build_jd_match_payload(industry: str, role: str, resume_text: str, job_description: str) -> dict[str, Any]:
     jd_skills = extract_skills_from_text(job_description)
     resume_skills = extract_skills_from_text(resume_text)
@@ -8702,7 +8901,12 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     critical_total = max(1, len(critical_skills))
     critical_hits = len([skill for skill in critical_skills if skill in resume_tokens])
     critical_coverage = (critical_hits / critical_total) * 100.0
-    match_score = clamp(0.68 * coverage + 0.32 * critical_coverage)
+    deterministic_match_score = clamp(0.68 * coverage + 0.32 * critical_coverage)
+
+    target_track = infer_role_track(role, industry)
+    if target_track == "general":
+        target_track = role_track
+    relevance = build_jd_relevance_baseline(industry, role, job_description, target_track=target_track)
 
     suggested_bullets: list[str] = []
     for skill in missing[:5]:
@@ -8712,22 +8916,156 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     if not suggested_bullets and matched:
         suggested_bullets.append("Your keyword alignment is strong. Focus on quantified outcomes and role-specific proof.")
 
+    deterministic_feedback: list[str] = []
+    if deterministic_match_score >= 75:
+        deterministic_feedback.append("Resume and JD show strong role alignment.")
+    elif deterministic_match_score >= 50:
+        deterministic_feedback.append("Resume is moderately aligned but key JD requirements are still missing.")
+    else:
+        deterministic_feedback.append("Current resume and JD alignment is low.")
+    deterministic_feedback.extend(relevance.get("reasoning") or [])
+
+    deterministic_improvements: list[str] = []
+    for keyword in missing[:4]:
+        deterministic_improvements.append(f"Add role-specific proof for '{keyword}' with measurable outcomes.")
+    if int(round(critical_coverage)) < 60:
+        deterministic_improvements.append("Strengthen must-have skills from the JD before applying.")
+    if not deterministic_improvements:
+        deterministic_improvements.append("Tighten bullets with metrics and business outcomes for stronger screening impact.")
+
+    deterministic_next_steps: list[str] = []
+    if relevance.get("is_field_mismatch"):
+        deterministic_next_steps.append(
+            f"Verify JD relevance: it appears closer to {safe_text(relevance.get('detected_jd_track')).replace('_', ' ') or 'another'} roles."
+        )
+        deterministic_next_steps.append(f"Upload or paste a JD specifically for {safe_text(role) or 'your target role'}.")
+    deterministic_next_steps.extend(
+        [
+            "Prioritize the top 3 missing JD keywords in your resume summary and latest experience bullets.",
+            "Re-run JD Match after edits to validate score uplift and coverage gains.",
+        ]
+    )
+
+    deterministic_baseline = {
+        "match_percentage": deterministic_match_score,
+        "critical_coverage": int(round(critical_coverage)),
+        "keyword_coverage": clamp(coverage),
+        "matched_keywords": matched[:12],
+        "missing_keywords": missing[:12],
+        "target_track": target_track,
+        "detected_jd_track": safe_text(relevance.get("detected_jd_track")),
+        "jd_relevance_score": int(relevance.get("score") or 0),
+        "jd_relevance_verdict": safe_text(relevance.get("verdict")),
+        "is_field_mismatch": bool(relevance.get("is_field_mismatch")),
+    }
+
+    llm_payload, llm_model, llm_error = request_jd_match_overlay(
+        industry=industry,
+        role=role,
+        resume_text=resume_text,
+        job_description=job_description,
+        deterministic_baseline=deterministic_baseline,
+    )
+
+    final_match_score = deterministic_match_score
+    relevance_score = int(relevance.get("score") or 0)
+    relevance_verdict = safe_text(relevance.get("verdict"))
+    detected_jd_track = safe_text(relevance.get("detected_jd_track")) or "general"
+    feedback = dedupe_text_list(deterministic_feedback, limit=6, max_item_len=180)
+    improvements = dedupe_text_list([*deterministic_improvements, *suggested_bullets], limit=6, max_item_len=180)
+    next_steps = dedupe_text_list(deterministic_next_steps, limit=5, max_item_len=180)
+    relevance_reasoning = dedupe_text_list(relevance.get("reasoning") or [], limit=4, max_item_len=180)
+    ai_used = False
+
+    if isinstance(llm_payload, dict):
+        llm_match = clamp_float(safe_float(llm_payload.get("match_percentage"), float(deterministic_match_score)), 0.0, 100.0)
+        llm_relevance = clamp_float(safe_float(llm_payload.get("jd_relevance_score"), float(relevance_score)), 0.0, 100.0)
+        final_match_score = clamp((1.0 - JD_MATCH_LLM_BLEND) * deterministic_match_score + JD_MATCH_LLM_BLEND * llm_match)
+        blended_relevance = clamp((1.0 - JD_MATCH_LLM_BLEND) * relevance_score + JD_MATCH_LLM_BLEND * llm_relevance)
+
+        llm_detected_track = safe_text(llm_payload.get("detected_jd_track"))
+        if llm_detected_track in ROLE_BLUEPRINTS:
+            detected_jd_track = llm_detected_track
+        detected_family = TRACK_FIELD_FAMILIES.get(detected_jd_track, "general")
+        target_family = TRACK_FIELD_FAMILIES.get(target_track, "general")
+        is_field_mismatch = (
+            target_track not in {"", "general"}
+            and detected_jd_track not in {"", "general"}
+            and target_family != detected_family
+        )
+
+        relevance_score = blended_relevance
+        relevance_verdict = normalize_jd_relevance_verdict(
+            safe_text(llm_payload.get("jd_relevance_verdict")),
+            relevance_score,
+            is_field_mismatch,
+        )
+
+        llm_feedback = normalize_string_list(llm_payload.get("feedback"), limit=6, max_item_len=180)
+        llm_improvements = normalize_string_list(llm_payload.get("improvements"), limit=6, max_item_len=180)
+        llm_next_steps = normalize_string_list(llm_payload.get("next_steps"), limit=5, max_item_len=180)
+        llm_reasoning = normalize_string_list(llm_payload.get("reasoning"), limit=4, max_item_len=180)
+
+        feedback = dedupe_text_list([*llm_feedback, *feedback], limit=6, max_item_len=180)
+        improvements = dedupe_text_list([*llm_improvements, *improvements], limit=6, max_item_len=180)
+        next_steps = dedupe_text_list([*llm_next_steps, *next_steps], limit=5, max_item_len=180)
+        relevance_reasoning = dedupe_text_list([*llm_reasoning, *relevance_reasoning], limit=4, max_item_len=180)
+        ai_used = True
+    else:
+        detected_family = TRACK_FIELD_FAMILIES.get(detected_jd_track, "general")
+        target_family = TRACK_FIELD_FAMILIES.get(target_track, "general")
+        is_field_mismatch = bool(relevance.get("is_field_mismatch"))
+
+    if is_field_mismatch or relevance_verdict == "likely_mismatch":
+        alignment_summary = (
+            f"Potential field mismatch: JD looks closer to {detected_jd_track.replace('_', ' ')} roles than {target_track.replace('_', ' ')}."
+        )
+    elif final_match_score >= 75 and relevance_score >= 70:
+        alignment_summary = "Strong role-JD alignment with good resume coverage for this target role."
+    elif final_match_score >= 50:
+        alignment_summary = "Moderate alignment. Improve missing must-have skills and quantified proof."
+    else:
+        alignment_summary = "Low alignment. Prioritize core JD requirements first."
+
+    if not feedback:
+        feedback = [alignment_summary]
+    if not improvements:
+        improvements = ["Add quantified achievements tied to the most important JD requirements."]
+    if not next_steps:
+        next_steps = ["Update the resume with missing role keywords and rerun JD Match."]
+
     return {
         "role_track": role_track,
-        "match_score": match_score,
+        "match_score": final_match_score,
+        "match_percentage": final_match_score,
         "matched_keywords": matched,
         "missing_keywords": missing,
         "jd_keyword_count": len(jd_tokens),
         "resume_keyword_count": len(resume_tokens),
         "critical_coverage": int(round(critical_coverage)),
-        "suggested_bullets": suggested_bullets,
-        "alignment_summary": (
-            "Strong role-JD alignment."
-            if match_score >= 75
-            else "Moderate alignment. Add missing must-have skills and stronger proof."
-            if match_score >= 50
-            else "Low alignment. Prioritize core JD requirements first."
-        ),
+        "suggested_bullets": improvements[:5] or suggested_bullets,
+        "alignment_summary": alignment_summary,
+        "feedback": feedback,
+        "improvements": improvements,
+        "next_steps": next_steps,
+        "jd_relevance": {
+            "score": relevance_score,
+            "verdict": relevance_verdict,
+            "target_track": target_track,
+            "detected_jd_track": detected_jd_track,
+            "target_field_family": target_family,
+            "detected_field_family": detected_family,
+            "is_field_mismatch": bool(is_field_mismatch or relevance_verdict == "likely_mismatch"),
+            "reasoning": relevance_reasoning,
+            "ai": {
+                "used": ai_used,
+                "model": llm_model,
+                "blend": JD_MATCH_LLM_BLEND if ai_used else 0.0,
+                "deterministic_match_score": deterministic_match_score,
+                "deterministic_relevance_score": int(relevance.get("score") or 0),
+                "reason": "hybrid" if ai_used else (llm_error or "rules_only"),
+            },
+        },
         "role_profile": {
             "core": blueprint["core"][:8],
             "critical": critical_skills[:5],
