@@ -43,6 +43,20 @@ type JdMatchPayload = {
   match_percentage?: number;
   matched_skills?: string[];
   missing_skills?: string[];
+  must_have_skills?: string[];
+  good_to_have_skills?: string[];
+  matched_must_have_skills?: string[];
+  missing_must_have_skills?: string[];
+  matched_good_to_have_skills?: string[];
+  missing_good_to_have_skills?: string[];
+  matched_skill_evidence?: Record<string, string[]>;
+  skill_breakdown?: {
+    must_have_coverage?: number;
+    good_to_have_coverage?: number;
+    gap_severity?: string;
+    must_have_total?: number;
+    good_to_have_total?: number;
+  };
   matched_keywords: string[];
   missing_keywords: string[];
   jd_keyword_count: number;
@@ -325,6 +339,65 @@ export default function JdMatcherClient() {
     !jdFileUploading &&
     !jdMatchLoading;
 
+  const downloadJdMatchReport = () => {
+    if (!jdMatch) return;
+    const matchPct = Math.max(0, Math.min(100, jdMatch.match_percentage ?? jdMatch.match_score));
+    const mustCov = Math.max(0, Math.min(100, jdMatch.skill_breakdown?.must_have_coverage ?? 0));
+    const goodCov = Math.max(0, Math.min(100, jdMatch.skill_breakdown?.good_to_have_coverage ?? 0));
+    const lines = [
+      "HireScore JD Match Report",
+      `Generated At: ${new Date().toLocaleString()}`,
+      "",
+      `Role: ${role.trim() || "Target role"}`,
+      `Industry: ${industry.trim() || "General"}`,
+      `Match Percentage: ${matchPct}%`,
+      `Critical Coverage: ${jdMatch.critical_coverage}%`,
+      `JD Relevance: ${jdMatch.jd_relevance?.score ?? 0}%`,
+      `Must-Have Coverage: ${mustCov}%`,
+      `Good-To-Have Coverage: ${goodCov}%`,
+      `Gap Severity: ${(jdMatch.skill_breakdown?.gap_severity || "unknown").toUpperCase()}`,
+      "",
+      "Alignment Summary:",
+      jdMatch.alignment_summary,
+      "",
+      "Matched Must-Have Skills:",
+      ...(jdMatch.matched_must_have_skills || []).map((item) => `- ${item}`),
+      "",
+      "Missing Must-Have Skills:",
+      ...(jdMatch.missing_must_have_skills || []).map((item) => `- ${item}`),
+      "",
+      "Matched Good-To-Have Skills:",
+      ...(jdMatch.matched_good_to_have_skills || []).map((item) => `- ${item}`),
+      "",
+      "Missing Good-To-Have Skills:",
+      ...(jdMatch.missing_good_to_have_skills || []).map((item) => `- ${item}`),
+      "",
+      "AI Feedback:",
+      ...((jdMatch.feedback || [jdMatch.alignment_summary]).slice(0, 6).map((item) => `- ${item}`)),
+      "",
+      "Improvements:",
+      ...((jdMatch.improvements || jdMatch.suggested_bullets || []).slice(0, 6).map((item) => `- ${item}`)),
+      "",
+      "Next Steps:",
+      ...((jdMatch.next_steps || []).slice(0, 5).map((item, index) => `${index + 1}. ${item}`)),
+      "",
+      "Matched Skill Evidence:",
+      ...Object.entries(jdMatch.matched_skill_evidence || {}).flatMap(([skill, evidence]) => [
+        `${skill}:`,
+        ...evidence.slice(0, 2).map((line) => `  - ${line}`),
+      ]),
+    ];
+    const blob = new Blob([`${lines.join("\n")}\n`], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `jd-match-report-${Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-6xl rounded-[2rem] border border-cyan-100/24 bg-[linear-gradient(150deg,rgba(8,28,52,0.93),rgba(5,18,34,0.96)_58%,rgba(18,46,58,0.86))] p-6 shadow-[0_26px_70px_rgba(2,8,22,0.48)] sm:p-8">
@@ -438,7 +511,17 @@ export default function JdMatcherClient() {
         </div>
 
         <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(7,27,50,0.86),rgba(4,18,36,0.9))] p-5">
-          <h2 className="text-lg font-semibold text-cyan-50">Match Result</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-cyan-50">Match Result</h2>
+            <button
+              type="button"
+              onClick={downloadJdMatchReport}
+              disabled={!jdMatch || jdMatchLoading}
+              className="rounded-lg border border-cyan-100/30 bg-cyan-100/10 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-100/16 disabled:opacity-55"
+            >
+              Download Report
+            </button>
+          </div>
           {jdMatchLoading ? (
             <div className="mt-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/8 p-4">
               <div className="mx-auto relative h-24 w-24">
@@ -472,6 +555,11 @@ export default function JdMatcherClient() {
                       {jdMatch.jd_relevance.verdict.replace(/_/g, " ")}
                     </span>
                   )}
+                  {jdMatch.skill_breakdown?.gap_severity && (
+                    <span className="mb-1 rounded-full border border-cyan-100/26 bg-cyan-100/8 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/76">
+                      Gap {jdMatch.skill_breakdown.gap_severity}
+                    </span>
+                  )}
                 </div>
                 <p className="mt-2 text-sm text-cyan-100/84">{jdMatch.alignment_summary}</p>
               </div>
@@ -483,6 +571,8 @@ export default function JdMatcherClient() {
                     { label: "Role Match", value: jdMatch.match_percentage ?? jdMatch.match_score },
                     { label: "JD Relevance", value: jdMatch.jd_relevance?.score ?? 0 },
                     { label: "Critical Coverage", value: jdMatch.critical_coverage },
+                    { label: "Must-Have Coverage", value: jdMatch.skill_breakdown?.must_have_coverage ?? 0 },
+                    { label: "Good-To-Have Coverage", value: jdMatch.skill_breakdown?.good_to_have_coverage ?? 0 },
                     {
                       label: "Keyword Coverage",
                       value: Math.min(100, Math.round((jdMatch.matched_keywords.length / Math.max(1, jdMatch.jd_keyword_count)) * 100)),
@@ -524,7 +614,53 @@ export default function JdMatcherClient() {
                 <p className="mt-1 text-sm text-cyan-50/78">
                   {(jdMatch.missing_skills || jdMatch.missing_keywords || []).slice(0, 16).join(", ") || "None"}
                 </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-cyan-100/16 bg-[#061a34]/68 p-2.5">
+                    <p className="text-[11px] uppercase tracking-[0.1em] text-cyan-100/72">Must-Have Skills</p>
+                    <p className="mt-1 text-[11px] text-cyan-100/74">
+                      Coverage: {Math.max(0, Math.min(100, jdMatch.skill_breakdown?.must_have_coverage ?? 0))}%
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-200/90">
+                      Matched: {(jdMatch.matched_must_have_skills || []).slice(0, 6).join(", ") || "None"}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-100/90">
+                      Missing: {(jdMatch.missing_must_have_skills || []).slice(0, 6).join(", ") || "None"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-cyan-100/16 bg-[#061a34]/68 p-2.5">
+                    <p className="text-[11px] uppercase tracking-[0.1em] text-cyan-100/72">Good-To-Have Skills</p>
+                    <p className="mt-1 text-[11px] text-cyan-100/74">
+                      Coverage: {Math.max(0, Math.min(100, jdMatch.skill_breakdown?.good_to_have_coverage ?? 0))}%
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-200/90">
+                      Matched: {(jdMatch.matched_good_to_have_skills || []).slice(0, 6).join(", ") || "None"}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-100/90">
+                      Missing: {(jdMatch.missing_good_to_have_skills || []).slice(0, 6).join(", ") || "None"}
+                    </p>
+                  </div>
+                </div>
               </div>
+
+              {Object.keys(jdMatch.matched_skill_evidence || {}).length > 0 && (
+                <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Matched Skill Evidence</p>
+                  <div className="mt-2 space-y-2">
+                    {Object.entries(jdMatch.matched_skill_evidence || {})
+                      .slice(0, 6)
+                      .map(([skill, lines]) => (
+                        <div key={`evidence-${skill}`}>
+                          <p className="text-xs font-semibold text-cyan-100">{skill}</p>
+                          {(lines || []).slice(0, 2).map((line, index) => (
+                            <p key={`line-${skill}-${index}`} className="mt-0.5 text-xs text-cyan-50/74">
+                              - {line}
+                            </p>
+                          ))}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
 
               {((jdMatch.improvements || jdMatch.suggested_bullets) || []).length > 0 && (
                 <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">

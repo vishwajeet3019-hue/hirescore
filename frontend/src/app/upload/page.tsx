@@ -253,6 +253,15 @@ type JdMatchPayload = {
   match_percentage?: number;
   matched_skills?: string[];
   missing_skills?: string[];
+  matched_must_have_skills?: string[];
+  missing_must_have_skills?: string[];
+  matched_good_to_have_skills?: string[];
+  missing_good_to_have_skills?: string[];
+  skill_breakdown?: {
+    must_have_coverage?: number;
+    good_to_have_coverage?: number;
+    gap_severity?: string;
+  };
   matched_keywords: string[];
   missing_keywords: string[];
   jd_keyword_count: number;
@@ -285,6 +294,12 @@ type InterviewPrepPayload = {
   coach_note: string;
   mock_questions: string[];
   prep_sprint: string[];
+  star_drills?: { title: string; prompt: string }[];
+  ai?: {
+    used?: boolean;
+    model?: string | null;
+    reason?: string;
+  };
 };
 
 type ApplicationPackPayload = {
@@ -296,6 +311,12 @@ type ApplicationPackPayload = {
   cover_letter_opening: string;
   jd_focus_keywords: string[];
   application_checklist: string[];
+  recruiter_follow_up?: string;
+  ai?: {
+    used?: boolean;
+    model?: string | null;
+    reason?: string;
+  };
 };
 
 type ApiErrorDetail = {
@@ -2721,12 +2742,21 @@ export default function UploadPage() {
                               {jdMatch && (
                                 <div className="mt-3 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
                                   <p className="text-xs text-cyan-50/78">{jdMatch.alignment_summary}</p>
+                                  <p className="mt-1 text-xs text-cyan-100/84">
+                                    Must-have coverage: {Math.max(0, Math.min(100, jdMatch.skill_breakdown?.must_have_coverage ?? 0))}% |
+                                    Good-to-have coverage: {Math.max(0, Math.min(100, jdMatch.skill_breakdown?.good_to_have_coverage ?? 0))}%
+                                  </p>
                                   <p className="mt-2 text-xs text-cyan-100/84">
                                     Matched skills: {(jdMatch.matched_skills || jdMatch.matched_keywords || []).slice(0, 8).join(", ") || "None yet"}
                                   </p>
                                   <p className="mt-1 text-xs text-cyan-100/84">
                                     Missing skills: {(jdMatch.missing_skills || jdMatch.missing_keywords || []).slice(0, 8).join(", ") || "None"}
                                   </p>
+                                  {(jdMatch.missing_must_have_skills || []).length > 0 && (
+                                    <p className="mt-1 text-xs text-amber-100/90">
+                                      Missing must-have: {(jdMatch.missing_must_have_skills || []).slice(0, 5).join(", ")}
+                                    </p>
+                                  )}
                                   {(jdMatch.feedback || []).length > 0 && (
                                     <ul className="mt-2 space-y-1 text-xs text-cyan-50/78">
                                       {(jdMatch.feedback || []).slice(0, 2).map((line, idx) => (
@@ -3019,6 +3049,12 @@ export default function UploadPage() {
                           <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/76">Job Apply Kit</p>
                           <p className="mt-2 text-xs text-cyan-50/80">Subject: {applicationPack.subject_line}</p>
                           <p className="mt-1 text-xs text-cyan-50/76">LinkedIn: {applicationPack.linkedin_message}</p>
+                          {applicationPack.recruiter_follow_up && (
+                            <p className="mt-1 text-xs text-cyan-50/76">Follow-up: {applicationPack.recruiter_follow_up}</p>
+                          )}
+                          {applicationPack.ai?.used && (
+                            <p className="mt-1 text-[11px] text-cyan-100/70">AI model: {applicationPack.ai.model || "hybrid"}</p>
+                          )}
                         </div>
                       )}
                     </div>

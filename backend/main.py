@@ -196,6 +196,7 @@ WELCOME_FREE_CREDITS = 5
 CREDIT_COSTS: dict[str, int] = {
     "analyze": 5,
     "jd_match": 5,
+    "interview_prep": 0,
     "ai_resume_generation": 15,
     "template_pdf_download": 20,
 }
@@ -3036,6 +3037,7 @@ def wallet_payload(credits: int) -> dict[str, Any]:
         "pricing": {
             "analyze": CREDIT_COSTS["analyze"],
             "jd_match": CREDIT_COSTS["jd_match"],
+            "interview_prep": CREDIT_COSTS["interview_prep"],
             "ai_resume_generation": CREDIT_COSTS["ai_resume_generation"],
             "template_pdf_download": CREDIT_COSTS["template_pdf_download"],
         },
@@ -8043,7 +8045,11 @@ def analysis_interview_prep(data: InterviewPrepRequest, request: Request) -> dic
         "analysis",
         "analysis_interview_prep_generated",
         user_id=int(user["id"]),
-        meta={"role": safe_text(data.role), "industry": safe_text(data.industry)},
+        meta={
+            "role": safe_text(data.role),
+            "industry": safe_text(data.industry),
+            "ai_used": bool((payload.get("ai") or {}).get("used")),
+        },
     )
     return payload
 
@@ -8056,7 +8062,11 @@ def analysis_application_pack(data: ApplicationPackRequest, request: Request) ->
         "analysis",
         "analysis_application_pack_generated",
         user_id=int(user["id"]),
-        meta={"role": safe_text(data.role), "industry": safe_text(data.industry)},
+        meta={
+            "role": safe_text(data.role),
+            "industry": safe_text(data.industry),
+            "ai_used": bool((payload.get("ai") or {}).get("used")),
+        },
     )
     return payload
 
@@ -8868,6 +8878,156 @@ def build_jd_relevance_baseline(industry: str, role: str, job_description: str, 
     }
 
 
+JD_REQUIRED_MARKERS = (
+    "must",
+    "must have",
+    "mandatory",
+    "required",
+    "requirements",
+    "essential",
+    "minimum",
+    "core",
+    "non negotiable",
+    "non-negotiable",
+)
+
+JD_PREFERRED_MARKERS = (
+    "nice to have",
+    "good to have",
+    "preferred",
+    "desirable",
+    "plus",
+    "bonus",
+    "optional",
+    "added advantage",
+)
+
+
+def normalize_skill_token(value: str) -> str:
+    return normalize_search_text(value).strip()
+
+
+def classify_jd_skill_priority(job_description: str, jd_skills: list[str], critical_skills: list[str]) -> dict[str, list[str]]:
+    normalized_jd = safe_text(job_description)
+    windows = [
+        safe_text(chunk)
+        for chunk in re.split(r"[\n\r]+|(?<=[.!?])\s+", normalized_jd)
+        if safe_text(chunk)
+    ]
+    if not windows:
+        windows = [normalized_jd]
+
+    critical_norm = {
+        normalize_skill_token(skill)
+        for skill in normalize_string_list(critical_skills, limit=32, max_item_len=80)
+        if normalize_skill_token(skill)
+    }
+    ordered_skills = dedupe_text_list(jd_skills, limit=36, max_item_len=80)
+    must_have: list[str] = []
+    good_to_have: list[str] = []
+
+    for skill in ordered_skills:
+        token = normalize_skill_token(skill)
+        if not token:
+            continue
+
+        matching_windows = [window for window in windows if phrase_in_text(window, skill)]
+        window_text = " ".join(matching_windows).lower()
+        has_required_marker = any(marker in window_text for marker in JD_REQUIRED_MARKERS)
+        has_preferred_marker = any(marker in window_text for marker in JD_PREFERRED_MARKERS)
+
+        if token in critical_norm or (has_required_marker and not has_preferred_marker):
+            must_have.append(skill)
+            continue
+        if has_preferred_marker:
+            good_to_have.append(skill)
+            continue
+        if len(must_have) < 6 and token in critical_norm:
+            must_have.append(skill)
+            continue
+        good_to_have.append(skill)
+
+    if not must_have:
+        seeded = dedupe_text_list([*critical_skills, *ordered_skills], limit=12, max_item_len=80)
+        must_have = seeded[: max(1, min(6, len(seeded)))]
+        must_norm = {normalize_skill_token(skill) for skill in must_have}
+        good_to_have = [skill for skill in ordered_skills if normalize_skill_token(skill) not in must_norm]
+
+    must_have = dedupe_text_list(must_have, limit=14, max_item_len=80)
+    must_norm = {normalize_skill_token(skill) for skill in must_have}
+    good_to_have = dedupe_text_list(
+        [skill for skill in good_to_have if normalize_skill_token(skill) not in must_norm],
+        limit=16,
+        max_item_len=80,
+    )
+    return {"must_have": must_have, "good_to_have": good_to_have}
+
+
+def extract_resume_skill_evidence(resume_text: str, skills: list[str], limit_per_skill: int = 2) -> dict[str, list[str]]:
+    lines = [
+        safe_text(re.sub(r"\s+", " ", line)).strip()
+        for line in safe_text(resume_text).replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        if safe_text(line)
+    ]
+    focused_lines = [line for line in lines if len(line) >= 18][:220]
+    evidence_map: dict[str, list[str]] = {}
+
+    for skill in dedupe_text_list(skills, limit=24, max_item_len=80):
+        hits: list[str] = []
+        for line in focused_lines:
+            if phrase_in_text(line, skill):
+                hits.append(line[:200])
+            if len(hits) >= max(1, limit_per_skill):
+                break
+        if hits:
+            evidence_map[skill] = dedupe_text_list(hits, limit=max(1, limit_per_skill), max_item_len=220)
+    return evidence_map
+
+
+def request_structured_json_with_llm(
+    prompt: str,
+    *,
+    temperature: float = 0.18,
+    system_prompt: str = "Return strict JSON only. No markdown.",
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    if client is None:
+        return None, None, "OPENAI_API_KEY not configured"
+
+    models: list[str] = []
+    for model in [ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
+        cleaned = safe_text(model)
+        if cleaned and cleaned not in models:
+            models.append(cleaned)
+
+    last_error: str | None = None
+    for model in models:
+        for attempt in range(3):
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=temperature,
+                )
+                content = extract_llm_text(response.choices[0].message.content if response.choices else "")
+                parsed = parse_llm_json_payload(content)
+                if isinstance(parsed, dict):
+                    return parsed, model, None
+                last_error = f"invalid_json_from_{model}"
+                logger.error("Structured LLM response returned non-JSON content for model '%s'.", model)
+                break
+            except Exception as exc:
+                last_error = f"{type(exc).__name__} on model {model}"
+                logger.exception("Structured LLM request failed for model '%s' (attempt %s).", model, attempt + 1)
+                if attempt < 2 and is_transient_openai_error(exc):
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                break
+    return None, None, last_error
+
+
 def request_jd_match_overlay(
     industry: str,
     role: str,
@@ -8969,6 +9129,10 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     coverage = (len(matched) / denominator) * 100.0
 
     role_track, blueprint, critical_skills, _ = resolve_role_profile(role, industry, resume_skills)
+    skill_priority = classify_jd_skill_priority(job_description, jd_skills, critical_skills)
+    must_have_skills = skill_priority.get("must_have") or []
+    good_to_have_skills = skill_priority.get("good_to_have") or []
+    missing_must_have_base = [skill for skill in must_have_skills if not phrase_in_text(resume_text, skill)]
     critical_total = max(1, len(critical_skills))
     critical_hits = len([skill for skill in critical_skills if skill in resume_tokens])
     critical_coverage = (critical_hits / critical_total) * 100.0
@@ -8980,7 +9144,7 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     relevance = build_jd_relevance_baseline(industry, role, job_description, target_track=target_track)
 
     suggested_bullets: list[str] = []
-    for skill in missing_skills_base[:5]:
+    for skill in [*missing_must_have_base, *missing_skills_base][:5]:
         suggested_bullets.append(
             f"Add one quantified bullet proving {skill} impact for {safe_text(role) or 'the target role'}."
         )
@@ -8997,7 +9161,7 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     deterministic_feedback.extend(relevance.get("reasoning") or [])
 
     deterministic_improvements: list[str] = []
-    for missing_skill in missing_skills_base[:4]:
+    for missing_skill in [*missing_must_have_base, *missing_skills_base][:4]:
         deterministic_improvements.append(f"Add role-specific proof for '{missing_skill}' with measurable outcomes.")
     if int(round(critical_coverage)) < 60:
         deterministic_improvements.append("Strengthen must-have skills from the JD before applying.")
@@ -9025,6 +9189,9 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
         "missing_keywords": missing[:12],
         "matched_skills": matched_skills_base[:12],
         "missing_skills": missing_skills_base[:12],
+        "must_have_skills": must_have_skills[:10],
+        "good_to_have_skills": good_to_have_skills[:10],
+        "missing_must_have_skills": missing_must_have_base[:8],
         "target_track": target_track,
         "detected_jd_track": safe_text(relevance.get("detected_jd_track")),
         "jd_relevance_score": int(relevance.get("score") or 0),
@@ -9117,6 +9284,42 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     if not missing_skills:
         missing_skills = dedupe_text_list(missing[:20], limit=20, max_item_len=80)
 
+    must_have_skills = dedupe_text_list(must_have_skills, limit=14, max_item_len=80)
+    must_have_norm = {normalize_skill_token(skill) for skill in must_have_skills if normalize_skill_token(skill)}
+    if not good_to_have_skills:
+        good_to_have_skills = [
+            skill
+            for skill in dedupe_text_list(jd_skills, limit=20, max_item_len=80)
+            if normalize_skill_token(skill) not in must_have_norm
+        ][:12]
+    good_to_have_skills = dedupe_text_list(good_to_have_skills, limit=16, max_item_len=80)
+    matched_norm = {normalize_skill_token(skill) for skill in matched_skills if normalize_skill_token(skill)}
+
+    def is_skill_covered(skill: str) -> bool:
+        token = normalize_skill_token(skill)
+        if not token:
+            return False
+        return token in matched_norm or phrase_in_text(resume_text, skill)
+
+    matched_must_have_skills = [skill for skill in must_have_skills if is_skill_covered(skill)]
+    missing_must_have_skills = [skill for skill in must_have_skills if skill not in matched_must_have_skills]
+    matched_good_to_have_skills = [skill for skill in good_to_have_skills if is_skill_covered(skill)]
+    missing_good_to_have_skills = [skill for skill in good_to_have_skills if skill not in matched_good_to_have_skills]
+    must_have_coverage = int(round((len(matched_must_have_skills) / max(1, len(must_have_skills))) * 100.0))
+    good_to_have_coverage = int(round((len(matched_good_to_have_skills) / max(1, len(good_to_have_skills))) * 100.0))
+    if must_have_coverage < 45 or len(missing_must_have_skills) >= 3:
+        gap_severity = "high"
+    elif must_have_coverage < 75 or len(missing_must_have_skills) >= 1:
+        gap_severity = "medium"
+    else:
+        gap_severity = "low"
+
+    matched_skill_evidence = extract_resume_skill_evidence(
+        resume_text,
+        [*matched_must_have_skills, *matched_good_to_have_skills, *matched_skills[:6]],
+        limit_per_skill=2,
+    )
+
     return {
         "role_track": role_track,
         "match_score": final_match_score,
@@ -9125,6 +9328,20 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
         "missing_keywords": missing,
         "matched_skills": matched_skills,
         "missing_skills": missing_skills,
+        "must_have_skills": must_have_skills,
+        "good_to_have_skills": good_to_have_skills,
+        "matched_must_have_skills": matched_must_have_skills,
+        "missing_must_have_skills": missing_must_have_skills,
+        "matched_good_to_have_skills": matched_good_to_have_skills,
+        "missing_good_to_have_skills": missing_good_to_have_skills,
+        "matched_skill_evidence": matched_skill_evidence,
+        "skill_breakdown": {
+            "must_have_coverage": must_have_coverage,
+            "good_to_have_coverage": good_to_have_coverage,
+            "gap_severity": gap_severity,
+            "must_have_total": len(must_have_skills),
+            "good_to_have_total": len(good_to_have_skills),
+        },
         "jd_keyword_count": len(jd_tokens),
         "resume_keyword_count": len(resume_tokens),
         "critical_coverage": int(round(critical_coverage)),
@@ -9358,6 +9575,125 @@ def serialize_async_job_payload(job: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def request_interview_prep_overlay(
+    role: str,
+    industry: str,
+    prep_focus: list[str],
+    job_description: str,
+    deterministic_payload: dict[str, Any],
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    prompt = f"""
+You are a senior interview coach.
+Return ONLY one strict JSON object. No markdown.
+
+Target role: {safe_text(role)}
+Target industry: {safe_text(industry)}
+Focus skills: {json.dumps(prep_focus[:8], ensure_ascii=False)}
+Job description:
+{safe_text(job_description)[:4500]}
+
+Deterministic baseline:
+{json.dumps(deterministic_payload, ensure_ascii=False)}
+
+Output schema:
+{{
+  "coach_note": "max 55 words",
+  "focus_skills": ["skill 1", "skill 2", "skill 3"],
+  "mock_questions": ["question 1", "question 2", "question 3", "question 4", "question 5", "question 6"],
+  "star_drills": [
+    {{"title": "drill title", "prompt": "drill prompt"}}
+  ],
+  "prep_sprint": ["day step 1", "day step 2", "day step 3", "day step 4", "day step 5"]
+}}
+
+Rules:
+- Keep advice specific for this role.
+- Questions should evaluate outcomes, decision quality, and stakeholder clarity.
+- Do not invent fake background details.
+"""
+
+    parsed, model, error = request_structured_json_with_llm(prompt, temperature=0.22)
+    if not isinstance(parsed, dict):
+        return None, model, error
+
+    star_drills_value = parsed.get("star_drills")
+    star_drills: list[dict[str, str]] = []
+    if isinstance(star_drills_value, list):
+        for item in star_drills_value:
+            if not isinstance(item, dict):
+                continue
+            title = safe_text(item.get("title"))[:80]
+            prompt_text = safe_text(item.get("prompt"))[:220]
+            if title and prompt_text:
+                star_drills.append({"title": title, "prompt": prompt_text})
+            if len(star_drills) >= 5:
+                break
+
+    payload = {
+        "coach_note": safe_text(parsed.get("coach_note"))[:320],
+        "focus_skills": normalize_string_list(parsed.get("focus_skills"), limit=8, max_item_len=64),
+        "mock_questions": normalize_string_list(parsed.get("mock_questions"), limit=6, max_item_len=220),
+        "prep_sprint": normalize_string_list(parsed.get("prep_sprint"), limit=5, max_item_len=140),
+        "star_drills": star_drills,
+    }
+    return payload, model, None
+
+
+def request_application_pack_overlay(
+    role: str,
+    industry: str,
+    resume_text: str,
+    job_description: str,
+    deterministic_payload: dict[str, Any],
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    prompt = f"""
+You are an expert job-application strategist.
+Return ONLY one strict JSON object. No markdown.
+
+Target role: {safe_text(role)}
+Target industry: {safe_text(industry)}
+Resume excerpt:
+{safe_text(resume_text)[:5200]}
+
+Job description:
+{safe_text(job_description)[:4200]}
+
+Deterministic baseline:
+{json.dumps(deterministic_payload, ensure_ascii=False)}
+
+Output schema:
+{{
+  "subject_line": "email subject",
+  "outreach_email": "plain-text email draft",
+  "linkedin_message": "short DM",
+  "cover_letter_opening": "opening paragraph",
+  "jd_focus_keywords": ["keyword 1", "keyword 2", "keyword 3"],
+  "application_checklist": ["checklist item 1", "checklist item 2", "checklist item 3"],
+  "recruiter_follow_up": "follow-up note after 5 days"
+}}
+
+Rules:
+- Keep claims factual and aligned to supplied content.
+- Keep language concise, professional, and role-specific.
+- Do not include placeholders like [Company] unless unavoidable.
+"""
+
+    parsed, model, error = request_structured_json_with_llm(prompt, temperature=0.22)
+    if not isinstance(parsed, dict):
+        return None, model, error
+
+    payload = {
+        "subject_line": safe_text(parsed.get("subject_line"))[:180],
+        "outreach_email": safe_text(parsed.get("outreach_email"))[:1800],
+        "linkedin_message": safe_text(parsed.get("linkedin_message"))[:420],
+        "cover_letter_opening": safe_text(parsed.get("cover_letter_opening"))[:600],
+        "jd_focus_keywords": normalize_string_list(parsed.get("jd_focus_keywords"), limit=8, max_item_len=64),
+        "application_checklist": normalize_string_list(parsed.get("application_checklist"), limit=8, max_item_len=180),
+        "recruiter_follow_up": safe_text(parsed.get("recruiter_follow_up"))[:420],
+    }
+    return payload, model, None
+
+
 def build_interview_prep_payload(data: InterviewPrepRequest) -> dict[str, Any]:
     role = safe_text(data.role) or "Target role"
     industry = safe_text(data.industry) or "General"
@@ -9397,23 +9733,11 @@ def build_interview_prep_payload(data: InterviewPrepRequest) -> dict[str, Any]:
     fallback_note = (
         f"Prepare answers around {', '.join(prep_focus[:3])}. Keep every answer metric-backed and role-specific for {role}."
     )
-    coach_note, ai_generated, _ = generate_with_llm(
-        system_prompt="You are an interview coach. Give concise and practical guidance.",
-        user_prompt=(
-            f"Role: {role}\nIndustry: {industry}\n"
-            f"Focus gaps: {', '.join(prep_focus)}\n"
-            "Write one short coaching note (max 55 words) to improve interview performance."
-        ),
-        temperature=0.2,
-        fallback_text=fallback_note,
-    )
-
-    return {
+    deterministic_payload = {
         "role": role,
         "industry": industry,
-        "focus_skills": prep_focus,
-        "coach_note": safe_text(coach_note) or fallback_note,
-        "coach_note_ai_generated": bool(ai_generated),
+        "focus_skills": prep_focus[:6],
+        "coach_note": fallback_note,
         "mock_questions": mock_questions[:6],
         "star_drills": star_drills,
         "prep_sprint": [
@@ -9423,6 +9747,82 @@ def build_interview_prep_payload(data: InterviewPrepRequest) -> dict[str, Any]:
             "Day 4: Mock interview with follow-up challenge questions.",
             "Day 5: Tighten weak answers and finalize interview cheat sheet.",
         ],
+    }
+
+    llm_overlay, llm_model, llm_error = request_interview_prep_overlay(
+        role=role,
+        industry=industry,
+        prep_focus=prep_focus,
+        job_description=safe_text(data.job_description),
+        deterministic_payload=deterministic_payload,
+    )
+
+    coach_note = fallback_note
+    coach_note_ai_generated = False
+    coach_note_ai_error: str | None = None
+    final_focus_skills = prep_focus[:6]
+    final_mock_questions = mock_questions[:6]
+    final_star_drills = star_drills
+    final_prep_sprint = deterministic_payload["prep_sprint"]
+    overlay_used = False
+
+    if isinstance(llm_overlay, dict):
+        overlay_used = True
+        final_focus_skills = dedupe_text_list(
+            [*normalize_string_list(llm_overlay.get("focus_skills"), limit=8, max_item_len=64), *prep_focus],
+            limit=8,
+            max_item_len=64,
+        )
+        final_mock_questions = dedupe_text_list(
+            [*normalize_string_list(llm_overlay.get("mock_questions"), limit=6, max_item_len=220), *mock_questions],
+            limit=6,
+            max_item_len=220,
+        )
+        overlay_star_drills = llm_overlay.get("star_drills") if isinstance(llm_overlay.get("star_drills"), list) else []
+        normalized_star_drills: list[dict[str, str]] = []
+        for item in overlay_star_drills:
+            if not isinstance(item, dict):
+                continue
+            title = safe_text(item.get("title"))[:80]
+            prompt_text = safe_text(item.get("prompt"))[:220]
+            if title and prompt_text:
+                normalized_star_drills.append({"title": title, "prompt": prompt_text})
+            if len(normalized_star_drills) >= 5:
+                break
+        final_star_drills = normalized_star_drills or final_star_drills
+        final_prep_sprint = dedupe_text_list(
+            [*normalize_string_list(llm_overlay.get("prep_sprint"), limit=5, max_item_len=140), *final_prep_sprint],
+            limit=5,
+            max_item_len=140,
+        )
+        coach_note = safe_text(llm_overlay.get("coach_note")) or coach_note
+        coach_note_ai_generated = True
+    else:
+        coach_note, coach_note_ai_generated, coach_note_ai_error = generate_with_llm(
+            system_prompt="You are an interview coach. Give concise and practical guidance.",
+            user_prompt=(
+                f"Role: {role}\nIndustry: {industry}\n"
+                f"Focus gaps: {', '.join(prep_focus)}\n"
+                "Write one short coaching note (max 55 words) to improve interview performance."
+            ),
+            temperature=0.2,
+            fallback_text=fallback_note,
+        )
+
+    return {
+        "role": role,
+        "industry": industry,
+        "focus_skills": final_focus_skills,
+        "coach_note": safe_text(coach_note) or fallback_note,
+        "coach_note_ai_generated": bool(coach_note_ai_generated),
+        "mock_questions": final_mock_questions,
+        "star_drills": final_star_drills,
+        "prep_sprint": final_prep_sprint,
+        "ai": {
+            "used": bool(overlay_used or coach_note_ai_generated),
+            "model": llm_model if overlay_used else (OPENAI_MODEL if coach_note_ai_generated else None),
+            "reason": "hybrid_overlay" if overlay_used else (coach_note_ai_error or llm_error or "rules_only"),
+        },
     }
 
 
@@ -9445,8 +9845,8 @@ def build_application_pack_payload(data: ApplicationPackRequest) -> dict[str, An
             "Outcome-focused bullets with measurable impact.",
         ]
 
-    subject_line = f"Application for {role} - measurable impact profile"
-    outreach_email = (
+    deterministic_subject_line = f"Application for {role} - measurable impact profile"
+    deterministic_outreach_email = (
         f"Hi Hiring Team,\n\n"
         f"I am applying for the {role} position in {industry}. I’ve aligned my profile to your role requirements and focused on quantified outcomes.\n\n"
         f"Highlights:\n"
@@ -9456,31 +9856,88 @@ def build_application_pack_payload(data: ApplicationPackRequest) -> dict[str, An
         "I would value an opportunity to discuss how this experience can contribute to your team goals.\n\n"
         "Regards,"
     )
-    linkedin_message = (
+    deterministic_linkedin_message = (
         f"Hi, I’m exploring {role} opportunities in {industry}. "
         f"I’ve recently refined my profile around {', '.join(jd_skills[:3]) or 'core role outcomes'} "
         "and would appreciate a quick conversation."
     )
-    cover_letter_opening = (
+    deterministic_cover_letter_opening = (
         f"I’m excited to apply for the {role} role. My profile combines execution depth in {industry} "
         "with measurable outcomes and recruiter-ready positioning."
     )
+    deterministic_checklist = [
+        "Resume title and summary aligned to role + industry.",
+        "Top 4 bullets include measurable business outcomes.",
+        "Core JD keywords appear naturally in resume sections.",
+        "Outreach message customized for role and company context.",
+        "Portfolio/proof links updated and working.",
+    ]
+    deterministic_follow_up = (
+        f"Hi, just following up on my {role} application shared earlier. "
+        "Happy to provide any additional context on role-fit impact and measurable outcomes."
+    )
+    deterministic_payload = {
+        "subject_line": deterministic_subject_line,
+        "outreach_email": deterministic_outreach_email,
+        "linkedin_message": deterministic_linkedin_message,
+        "cover_letter_opening": deterministic_cover_letter_opening,
+        "jd_focus_keywords": jd_skills[:6],
+        "application_checklist": deterministic_checklist,
+        "recruiter_follow_up": deterministic_follow_up,
+    }
+    llm_overlay, llm_model, llm_error = request_application_pack_overlay(
+        role=role,
+        industry=industry,
+        resume_text=resume_text,
+        job_description=job_description,
+        deterministic_payload=deterministic_payload,
+    )
+
+    subject_line = deterministic_subject_line
+    outreach_email = deterministic_outreach_email
+    linkedin_message = deterministic_linkedin_message
+    cover_letter_opening = deterministic_cover_letter_opening
+    jd_focus_keywords = jd_skills[:6]
+    application_checklist = deterministic_checklist
+    recruiter_follow_up = deterministic_follow_up
+    ai_used = False
+
+    if isinstance(llm_overlay, dict):
+        ai_used = True
+        subject_line = safe_text(llm_overlay.get("subject_line")) or subject_line
+        outreach_email = safe_text(llm_overlay.get("outreach_email")) or outreach_email
+        linkedin_message = safe_text(llm_overlay.get("linkedin_message")) or linkedin_message
+        cover_letter_opening = safe_text(llm_overlay.get("cover_letter_opening")) or cover_letter_opening
+        recruiter_follow_up = safe_text(llm_overlay.get("recruiter_follow_up")) or recruiter_follow_up
+        jd_focus_keywords = dedupe_text_list(
+            [*normalize_string_list(llm_overlay.get("jd_focus_keywords"), limit=8, max_item_len=64), *jd_focus_keywords],
+            limit=8,
+            max_item_len=64,
+        )
+        application_checklist = dedupe_text_list(
+            [
+                *normalize_string_list(llm_overlay.get("application_checklist"), limit=8, max_item_len=180),
+                *application_checklist,
+            ],
+            limit=8,
+            max_item_len=180,
+        )
 
     return {
         "role": role,
         "industry": industry,
-        "subject_line": subject_line,
-        "outreach_email": outreach_email,
-        "linkedin_message": linkedin_message,
-        "cover_letter_opening": cover_letter_opening,
-        "jd_focus_keywords": jd_skills[:6],
-        "application_checklist": [
-            "Resume title and summary aligned to role + industry.",
-            "Top 4 bullets include measurable business outcomes.",
-            "Core JD keywords appear naturally in resume sections.",
-            "Outreach message customized for role and company context.",
-            "Portfolio/proof links updated and working.",
-        ],
+        "subject_line": subject_line[:180],
+        "outreach_email": outreach_email[:1800],
+        "linkedin_message": linkedin_message[:420],
+        "cover_letter_opening": cover_letter_opening[:600],
+        "jd_focus_keywords": jd_focus_keywords,
+        "application_checklist": application_checklist,
+        "recruiter_follow_up": recruiter_follow_up[:420],
+        "ai": {
+            "used": ai_used,
+            "model": llm_model if ai_used else None,
+            "reason": "hybrid_overlay" if ai_used else (llm_error or "rules_only"),
+        },
     }
 
 

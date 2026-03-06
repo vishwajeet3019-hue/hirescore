@@ -98,7 +98,7 @@ type ApiErrorPayload = {
 const DEFAULT_FEATURE_PRICING = {
   analyze: 5,
   jd_match: 5,
-  interview_prep: 5,
+  interview_prep: 0,
   ai_resume_generation: 15,
   template_pdf_download: 20,
 };

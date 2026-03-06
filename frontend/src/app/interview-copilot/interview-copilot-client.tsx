@@ -28,9 +28,15 @@ type InterviewPrepPayload = {
   industry: string;
   focus_skills: string[];
   coach_note: string;
+  coach_note_ai_generated?: boolean;
   mock_questions: string[];
   prep_sprint: string[];
   star_drills?: { title: string; prompt: string }[];
+  ai?: {
+    used?: boolean;
+    model?: string | null;
+    reason?: string;
+  };
 };
 
 type ApplicationPackPayload = {
@@ -42,6 +48,12 @@ type ApplicationPackPayload = {
   cover_letter_opening: string;
   jd_focus_keywords: string[];
   application_checklist: string[];
+  recruiter_follow_up?: string;
+  ai?: {
+    used?: boolean;
+    model?: string | null;
+    reason?: string;
+  };
 };
 
 type JdExtractPayload = {
@@ -347,7 +359,7 @@ export default function InterviewCopilotClient() {
         {authEmail && <p className="mt-3 text-sm text-cyan-100/84">Signed in as: {authEmail}</p>}
         {wallet && (
           <p className="mt-1 text-xs text-cyan-100/76">
-            Wallet: {wallet.credits} credits | Analysis credit unit: {wallet.pricing.interview_prep || wallet.pricing.analyze}
+            Wallet: {wallet.credits} credits | Interview Copilot: Included
           </p>
         )}
         <p className="mt-3 rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/82">
@@ -478,6 +490,16 @@ export default function InterviewCopilotClient() {
             <p className="mt-3 text-sm text-cyan-50/72">Run Interview Copilot to generate mock Q&A prep and application-ready messaging.</p>
           ) : (
             <>
+              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
+                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">AI Engine</p>
+                <p className="mt-1 text-sm text-cyan-100/84">
+                  {interviewPrep.ai?.used || applicationPack.ai?.used ? "Hybrid AI + LLM personalization active" : "Rules-first fallback mode"}
+                </p>
+                {(interviewPrep.ai?.model || applicationPack.ai?.model) && (
+                  <p className="mt-1 text-xs text-cyan-100/72">Model: {interviewPrep.ai?.model || applicationPack.ai?.model}</p>
+                )}
+              </div>
+
               <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/10 p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Coach Note</p>
                 <p className="mt-1 text-sm text-cyan-100/84">{interviewPrep.coach_note}</p>
@@ -544,6 +566,12 @@ export default function InterviewCopilotClient() {
                 <pre className="mt-1 whitespace-pre-wrap rounded-lg border border-cyan-100/18 bg-[#061a34]/72 p-2 text-xs text-cyan-50/84">
                   {applicationPack.outreach_email}
                 </pre>
+                {applicationPack.recruiter_follow_up && (
+                  <>
+                    <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Recruiter Follow-Up</p>
+                    <p className="mt-1 text-sm text-cyan-50/84">{applicationPack.recruiter_follow_up}</p>
+                  </>
+                )}
                 {(applicationPack.application_checklist || []).length > 0 && (
                   <>
                     <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Checklist</p>
