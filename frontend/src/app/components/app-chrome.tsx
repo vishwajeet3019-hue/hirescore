@@ -70,18 +70,6 @@ export default function AppChrome({ children }: AppChromeProps) {
                 >
                   Success Stories
                 </TrackedLink>
-                <TrackedLink
-                  href={addUtmParams("/growth-kit", {
-                    source: "footer",
-                    medium: "internal",
-                    campaign: "site_footer",
-                  })}
-                  eventName="cta_view_growth_kit"
-                  eventParams={{ cta_location: "footer", cta_label: "Growth Kit" }}
-                  className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
-                >
-                  Growth Kit
-                </TrackedLink>
               </div>
             </div>
 

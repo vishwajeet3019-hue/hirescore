@@ -114,11 +114,6 @@ export default function Home() {
     medium: "referral",
     campaign: "share_prompt",
   });
-  const growthKitHref = addUtmParams("/growth-kit", {
-    source: "home",
-    medium: "organic",
-    campaign: "traffic_kit_teaser",
-  });
   const homeCaseStudiesHref = addUtmParams("/case-studies", {
     source: "home",
     medium: "organic",
@@ -341,14 +336,6 @@ export default function Home() {
               className="inline-flex rounded-xl border border-cyan-100/28 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/12"
             >
               View All Proof Stories
-            </TrackedLink>
-            <TrackedLink
-              href={growthKitHref}
-              eventName="cta_view_growth_kit"
-              eventParams={{ cta_location: "home_case_stories", cta_label: "Create Growth Content" }}
-              className="ml-3 inline-flex rounded-xl border border-cyan-100/28 bg-cyan-200/22 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28"
-            >
-              Growth Kit
             </TrackedLink>
           </div>
         </div>

@@ -33,7 +33,6 @@ const baseNavLinks: NavLink[] = [
   { href: "/studio", label: "Build Resume" },
   { href: "/case-studies", label: "Success Stories" },
   { href: "/resources", label: "Guides" },
-  { href: "/growth-kit", label: "Growth Kit" },
   { href: "/#workflow", label: "How It Works", isSection: true },
   { href: "/pricing", label: "Pricing" },
 ];
