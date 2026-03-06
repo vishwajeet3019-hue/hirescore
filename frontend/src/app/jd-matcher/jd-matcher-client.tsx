@@ -66,12 +66,15 @@ export default function JdMatcherClient() {
   const [industry, setIndustry] = useState("");
   const [role, setRole] = useState("");
   const [resumeText, setResumeText] = useState("");
+  const [resumeUploadedFileName, setResumeUploadedFileName] = useState("");
+  const [resumeFileUploading, setResumeFileUploading] = useState(false);
   const [jdInput, setJdInput] = useState("");
   const [jdUploadedFileName, setJdUploadedFileName] = useState("");
   const [jdFileUploading, setJdFileUploading] = useState(false);
   const [jdMatchLoading, setJdMatchLoading] = useState(false);
   const [jdMatchError, setJdMatchError] = useState("");
   const [jdMatch, setJdMatch] = useState<JdMatchPayload | null>(null);
+  const resumeFileInputRef = useRef<HTMLInputElement | null>(null);
   const jdFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const authHeader = useMemo(() => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined), [authToken]);
@@ -141,11 +144,9 @@ export default function JdMatcherClient() {
     return `Request failed (${response.status})`;
   };
 
-  const handleUploadJdFile = async (file: File | null) => {
-    if (!file) return;
+  const extractTextFromUpload = async (file: File, context: "resume" | "jd") => {
     if (!authToken || !authHeader) {
-      setJdMatchError("Login required to upload a JD file.");
-      return;
+      throw new Error(`Login required to upload ${context === "resume" ? "resume" : "JD"} file.`);
     }
 
     const normalizedName = file.name.toLowerCase();
@@ -153,40 +154,64 @@ export default function JdMatcherClient() {
     const isText = file.type.startsWith("text/") || normalizedName.endsWith(".txt");
     const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/.test(normalizedName);
     if (!isPdf && !isText && !isImage) {
-      setJdMatchError("Upload JD as PDF, TXT, or image (JPG/PNG/WebP).");
-      return;
+      throw new Error("Upload as PDF, TXT, or image (JPG/PNG/WebP).");
     }
     if (file.size > 12 * 1024 * 1024) {
-      setJdMatchError("JD file is too large. Keep it under 12 MB.");
-      return;
+      throw new Error("File is too large. Keep it under 12 MB.");
     }
 
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("auth_token", authToken);
+
+    const payload = await fetchJsonWithWakeAndRetry<JdExtractPayload>({
+      apiUrl,
+      path: "/analysis/jd-match/extract",
+      init: {
+        method: "POST",
+        headers: {
+          ...authHeader,
+        },
+        body: formData,
+      },
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+      parseError: parseApiError,
+      abortErrorMessage: `${context === "resume" ? "Resume" : "JD"} extraction is taking longer than expected. Please try again.`,
+    });
+
+    return payload;
+  };
+
+  const handleUploadResumeFile = async (file: File | null) => {
+    if (!file) return;
+    setJdMatchError("");
+    setJdMatch(null);
+    setResumeFileUploading(true);
+    try {
+      const payload = await extractTextFromUpload(file, "resume");
+      setResumeText(payload.job_description || "");
+      setResumeUploadedFileName(payload.file_name || file.name);
+    } catch (error) {
+      setResumeText("");
+      setResumeUploadedFileName("");
+      setJdMatchError(error instanceof Error ? error.message : "Unable to extract text from resume file.");
+    } finally {
+      setResumeFileUploading(false);
+    }
+  };
+
+  const handleUploadJdFile = async (file: File | null) => {
+    if (!file) return;
     setJdMatchError("");
     setJdMatch(null);
     setJdFileUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("auth_token", authToken);
-
-      const payload = await fetchJsonWithWakeAndRetry<JdExtractPayload>({
-        apiUrl,
-        path: "/analysis/jd-match/extract",
-        init: {
-          method: "POST",
-          headers: {
-            ...authHeader,
-          },
-          body: formData,
-        },
-        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
-        parseError: parseApiError,
-        abortErrorMessage: "JD file extraction is taking longer than expected. Please try again.",
-      });
-
+      const payload = await extractTextFromUpload(file, "jd");
       setJdInput(payload.job_description || "");
       setJdUploadedFileName(payload.file_name || file.name);
     } catch (error) {
+      setJdInput("");
+      setJdUploadedFileName("");
       setJdMatchError(error instanceof Error ? error.message : "Unable to extract JD text from uploaded file.");
     } finally {
       setJdFileUploading(false);
@@ -198,12 +223,16 @@ export default function JdMatcherClient() {
       setJdMatchError("Login required to run JD match.");
       return;
     }
+    if (!resumeUploadedFileName || !jdUploadedFileName) {
+      setJdMatchError("Upload both resume and JD files before running AI JD match.");
+      return;
+    }
     if (jdInput.trim().length < 24) {
-      setJdMatchError("Paste a fuller job description (at least 24 characters).");
+      setJdMatchError("Could not extract enough text from JD. Upload a clearer JD file.");
       return;
     }
     if (resumeText.trim().length < 24) {
-      setJdMatchError("Add resume text or skill summary so JD match can evaluate alignment.");
+      setJdMatchError("Could not extract enough text from resume. Upload a clearer resume file.");
       return;
     }
 
@@ -254,6 +283,14 @@ export default function JdMatcherClient() {
     }
   };
 
+  const canRunMatch =
+    Boolean(authToken) &&
+    Boolean(resumeUploadedFileName) &&
+    Boolean(jdUploadedFileName) &&
+    !resumeFileUploading &&
+    !jdFileUploading &&
+    !jdMatchLoading;
+
   return (
     <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-6xl rounded-[2rem] border border-cyan-100/24 bg-[linear-gradient(150deg,rgba(8,28,52,0.93),rgba(5,18,34,0.96)_58%,rgba(18,46,58,0.86))] p-6 shadow-[0_26px_70px_rgba(2,8,22,0.48)] sm:p-8">
@@ -268,6 +305,10 @@ export default function JdMatcherClient() {
             Wallet: {wallet.credits} credits | Analyze cost: {wallet.pricing.analyze} credits
           </p>
         )}
+        <p className="mt-3 rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/82">
+          Mandatory: Upload both your <span className="font-semibold text-cyan-50">Resume</span> and target{" "}
+          <span className="font-semibold text-cyan-50">JD</span> file before running AI JD Match.
+        </p>
         {authError && (
           <div className="mt-4 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
             <p className="text-sm text-amber-50">{authError}</p>
@@ -297,15 +338,26 @@ export default function JdMatcherClient() {
           </div>
           <textarea
             value={resumeText}
-            onChange={(event) => setResumeText(event.target.value)}
-            placeholder="Paste your current resume text or key skills summary"
+            readOnly
+            placeholder="Resume text preview appears after resume upload"
             className={`${textAreaClass} mt-3`}
           />
           <textarea
             value={jdInput}
-            onChange={(event) => setJdInput(event.target.value)}
-            placeholder="Paste target job description here"
+            readOnly
+            placeholder="JD text preview appears after JD upload"
             className={`${textAreaClass} mt-3`}
+          />
+          <input
+            ref={resumeFileInputRef}
+            type="file"
+            accept=".pdf,.txt,image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0] || null;
+              void handleUploadResumeFile(file);
+              event.currentTarget.value = "";
+            }}
           />
           <input
             ref={jdFileInputRef}
@@ -321,21 +373,30 @@ export default function JdMatcherClient() {
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <button
               type="button"
-              onClick={() => jdFileInputRef.current?.click()}
-              disabled={jdFileUploading}
+              onClick={() => resumeFileInputRef.current?.click()}
+              disabled={resumeFileUploading || jdMatchLoading}
               className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {jdFileUploading ? "Extracting..." : "Upload JD PDF / Image"}
+              {resumeFileUploading ? "Extracting Resume..." : "Upload Resume (Required)"}
+            </button>
+            <button
+              type="button"
+              onClick={() => jdFileInputRef.current?.click()}
+              disabled={jdFileUploading || jdMatchLoading}
+              className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {jdFileUploading ? "Extracting JD..." : "Upload JD (Required)"}
             </button>
             <button
               type="button"
               onClick={() => void handleRunJdMatch()}
-              disabled={jdMatchLoading}
+              disabled={!canRunMatch}
               className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {jdMatchLoading ? "Running AI Match..." : "Run AI JD Match"}
             </button>
           </div>
+          {resumeUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">Resume imported from: {resumeUploadedFileName}</p>}
           {jdUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">Imported from: {jdUploadedFileName}</p>}
           {jdMatchError && <p className="mt-2 text-xs text-amber-100">{jdMatchError}</p>}
         </div>
