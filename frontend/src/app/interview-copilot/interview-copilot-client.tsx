@@ -79,7 +79,7 @@ const INTERVIEW_COPILOT_MIN_LOADING_MS = 4800;
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
 const fieldClass =
-  "w-full rounded-xl border border-cyan-100/28 bg-[#08233f]/72 px-3 py-2.5 text-sm text-cyan-50 placeholder:text-cyan-100/36 outline-none transition focus:border-cyan-100/62";
+  "w-full rounded-xl border border-cyan-100/26 bg-[#081f38]/76 px-3 py-2.5 text-sm text-cyan-50 placeholder:text-cyan-100/34 outline-none transition focus:border-cyan-100/62";
 
 const textAreaClass = `${fieldClass} min-h-[130px] leading-relaxed`;
 
@@ -108,6 +108,7 @@ export default function InterviewCopilotClient() {
   const [copilotError, setCopilotError] = useState("");
   const [interviewPrep, setInterviewPrep] = useState<InterviewPrepPayload | null>(null);
   const [applicationPack, setApplicationPack] = useState<ApplicationPackPayload | null>(null);
+  const [outputView, setOutputView] = useState<"briefing" | "prep" | "pack">("briefing");
   const resumeFileInputRef = useRef<HTMLInputElement | null>(null);
   const jdFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -326,6 +327,7 @@ export default function InterviewCopilotClient() {
 
       setInterviewPrep(prepPayload);
       setApplicationPack(packPayload);
+      setOutputView("briefing");
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
       if (elapsedMs < INTERVIEW_COPILOT_MIN_LOADING_MS) {
@@ -347,245 +349,310 @@ export default function InterviewCopilotClient() {
     !resumeFileUploading &&
     !jdFileUploading &&
     !copilotLoading;
+  const copilotOutput = useMemo(
+    () => (interviewPrep && applicationPack ? { interviewPrep, applicationPack } : null),
+    [interviewPrep, applicationPack]
+  );
+  const hasOutput = Boolean(copilotOutput);
 
   return (
-    <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
-      <section className="mx-auto max-w-6xl rounded-[2rem] border border-cyan-100/24 bg-[linear-gradient(150deg,rgba(8,28,52,0.93),rgba(5,18,34,0.96)_58%,rgba(16,44,64,0.86))] p-6 shadow-[0_26px_70px_rgba(2,8,22,0.48)] sm:p-8">
-        <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/78">Dedicated Tool</p>
-        <h1 className="mt-3 text-3xl font-semibold text-cyan-50 sm:text-5xl">Interview Copilot</h1>
-        <p className="mt-3 max-w-3xl text-sm text-cyan-50/78 sm:text-base">
-          Run AI interview prep and generate recruiter-ready outreach assets from your resume plus target JD context.
-        </p>
-        {authEmail && <p className="mt-3 text-sm text-cyan-100/84">Signed in as: {authEmail}</p>}
-        {wallet && (
-          <p className="mt-1 text-xs text-cyan-100/76">
-            Wallet: {wallet.credits} credits | Interview Copilot: Included
-          </p>
-        )}
-        <p className="mt-3 rounded-xl border border-cyan-100/24 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/82">
-          Required: add your <span className="font-semibold text-cyan-50">Resume</span>. Optional: upload/paste{" "}
-          <span className="font-semibold text-cyan-50">JD</span> and missing skills.
-        </p>
-        {authError && (
-          <div className="mt-4 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
-            <p className="text-sm text-amber-50">{authError}</p>
-            <TrackedLink
-              href={openAnalysisHref}
-              eventName="cta_check_my_score_click"
-              eventParams={{ cta_location: "interview_copilot_page", cta_label: "Go To Analysis + Login" }}
-              className="mt-3 inline-flex rounded-lg border border-amber-100/40 bg-amber-100/14 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
-            >
-              Go To Analysis + Login
-            </TrackedLink>
+    <main className="min-h-screen px-4 pb-16 pt-8 sm:px-6 lg:px-8">
+      <input
+        ref={resumeFileInputRef}
+        type="file"
+        accept=".pdf,.txt,image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0] || null;
+          void handleUploadResumeFile(file);
+          event.currentTarget.value = "";
+        }}
+      />
+      <input
+        ref={jdFileInputRef}
+        type="file"
+        accept=".pdf,.txt,image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0] || null;
+          void handleUploadJdFile(file);
+          event.currentTarget.value = "";
+        }}
+      />
+
+      <section className="mx-auto max-w-[1320px] rounded-[2rem] border border-cyan-100/22 bg-[linear-gradient(150deg,rgba(8,26,48,0.94),rgba(4,14,30,0.96)_52%,rgba(7,30,52,0.92))] p-6 shadow-[0_20px_54px_rgba(2,8,22,0.48)] sm:p-8">
+        <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+          <div>
+            <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/78">Interview Operations Console</p>
+            <h1 className="mt-3 text-3xl font-semibold text-cyan-50 sm:text-5xl">Interview Copilot</h1>
+            <p className="mt-3 max-w-3xl text-sm text-cyan-50/78 sm:text-base">
+              Convert resume + role context into targeted interview preparation and an application-ready outreach kit.
+            </p>
+            <p className="mt-4 rounded-xl border border-cyan-100/22 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/80">
+              Required input: resume content. Optional input: JD and critical skill gaps.
+            </p>
           </div>
-        )}
+
+          <div className="rounded-2xl border border-cyan-100/22 bg-[#061a32]/72 p-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/72">Session Status</p>
+            <p className="mt-2 text-sm text-cyan-50/84">{authEmail ? `Signed in as ${authEmail}` : "Not signed in"}</p>
+            <p className="mt-1 text-xs text-cyan-100/74">{wallet ? `Wallet: ${wallet.credits} credits` : "Wallet unavailable"}</p>
+            {authError ? (
+              <div className="mt-3 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
+                <p className="text-xs text-amber-50">{authError}</p>
+                <TrackedLink
+                  href={openAnalysisHref}
+                  eventName="cta_check_my_score_click"
+                  eventParams={{ cta_location: "interview_copilot_page", cta_label: "Go To Analysis + Login" }}
+                  className="mt-3 inline-flex rounded-lg border border-amber-100/40 bg-amber-100/14 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
+                >
+                  Go To Analysis + Login
+                </TrackedLink>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </section>
 
-      <section className="mx-auto mt-6 grid max-w-6xl gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(7,27,50,0.86),rgba(4,18,36,0.9))] p-5">
-          <h2 className="text-lg font-semibold text-cyan-50">Inputs</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <input
-              value={industry}
-              onChange={(event) => setIndustry(event.target.value)}
-              placeholder="Industry (optional)"
-              className={fieldClass}
-            />
-            <input value={role} onChange={(event) => setRole(event.target.value)} placeholder="Role (optional)" className={fieldClass} />
-          </div>
-          <textarea
-            value={resumeText}
-            onChange={(event) => setResumeText(event.target.value)}
-            placeholder="Resume text (required): paste full summary, experience, and skills or upload resume file"
-            className={`${textAreaClass} mt-3`}
-          />
-          <textarea
-            value={jdInput}
-            onChange={(event) => setJdInput(event.target.value)}
-            placeholder="Target JD (optional): paste job description here or upload JD file"
-            className={`${textAreaClass} mt-3`}
-          />
-          <textarea
-            value={criticalSkillsInput}
-            onChange={(event) => setCriticalSkillsInput(event.target.value)}
-            placeholder="Critical missing skills (optional): e.g. system design, stakeholder management, roadmap ownership"
-            className={`${fieldClass} mt-3 min-h-[90px]`}
-          />
-          <input
-            ref={resumeFileInputRef}
-            type="file"
-            accept=".pdf,.txt,image/*"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0] || null;
-              void handleUploadResumeFile(file);
-              event.currentTarget.value = "";
-            }}
-          />
-          <input
-            ref={jdFileInputRef}
-            type="file"
-            accept=".pdf,.txt,image/*"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0] || null;
-              void handleUploadJdFile(file);
-              event.currentTarget.value = "";
-            }}
-          />
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <button
-              type="button"
-              onClick={() => resumeFileInputRef.current?.click()}
-              disabled={resumeFileUploading || copilotLoading}
-              className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {resumeFileUploading ? "Extracting Resume..." : "Upload Resume File"}
-            </button>
-            <button
-              type="button"
-              onClick={() => jdFileInputRef.current?.click()}
-              disabled={jdFileUploading || copilotLoading}
-              className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {jdFileUploading ? "Extracting JD..." : "Upload JD File"}
-            </button>
+      <section className="mx-auto mt-6 grid max-w-[1320px] gap-5 xl:grid-cols-12">
+        <aside className="space-y-4 xl:col-span-3">
+          <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(160deg,rgba(7,22,43,0.9),rgba(4,14,29,0.95))] p-4 xl:sticky xl:top-24">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Command Deck</p>
             <button
               type="button"
               onClick={() => void handleRunCopilot()}
               disabled={!canRunCopilot}
-              className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-3 w-full rounded-xl border border-cyan-100/38 bg-gradient-to-r from-cyan-200/20 via-cyan-200/16 to-emerald-200/14 px-3 py-2.5 text-sm font-semibold text-cyan-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {copilotLoading ? "Running Copilot..." : "Run Interview Copilot"}
             </button>
-          </div>
-          {resumeUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">Resume imported from: {resumeUploadedFileName}</p>}
-          {jdUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">JD imported from: {jdUploadedFileName}</p>}
-          {copilotError && <p className="mt-2 text-xs text-amber-100">{copilotError}</p>}
-        </div>
 
-        <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(7,27,50,0.86),rgba(4,18,36,0.9))] p-5">
-          <h2 className="text-lg font-semibold text-cyan-50">Copilot Output</h2>
-          {copilotLoading ? (
-            <div className="mt-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/8 p-4">
-              <div className="relative mx-auto h-24 w-24">
-                <div className="absolute inset-0 rounded-full border-2 border-cyan-100/22" />
-                <div className="absolute inset-2 animate-spin rounded-full border-2 border-cyan-200/45 border-t-transparent" />
-                <div className="absolute inset-6 animate-pulse rounded-full border border-emerald-200/40" />
-              </div>
-              <p className="mt-3 text-center text-sm font-semibold text-cyan-50">Synthesizing interview strategy and outreach pack...</p>
-              <div className="mt-3 space-y-2">
-                <div className="h-2 overflow-hidden rounded-full border border-cyan-100/22 bg-cyan-100/10">
-                  <div className="h-full w-[86%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
-                </div>
-                <div className="h-2 overflow-hidden rounded-full border border-cyan-100/22 bg-cyan-100/10">
-                  <div className="h-full w-[74%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
-                </div>
-                <div className="h-2 overflow-hidden rounded-full border border-cyan-100/22 bg-cyan-100/10">
-                  <div className="h-full w-[92%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
-                </div>
+            <div className="mt-3 grid gap-2">
+              <button
+                type="button"
+                onClick={() => resumeFileInputRef.current?.click()}
+                disabled={resumeFileUploading || copilotLoading}
+                className="rounded-xl border border-cyan-100/30 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {resumeFileUploading ? "Extracting Resume..." : "Upload Resume File"}
+              </button>
+              <button
+                type="button"
+                onClick={() => jdFileInputRef.current?.click()}
+                disabled={jdFileUploading || copilotLoading}
+                className="rounded-xl border border-cyan-100/30 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {jdFileUploading ? "Extracting JD..." : "Upload JD File"}
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2 rounded-xl border border-cyan-100/18 bg-cyan-100/6 p-3 text-xs text-cyan-100/78">
+              <p>Resume source: {resumeUploadedFileName || "Not imported yet"}</p>
+              <p>JD source: {jdUploadedFileName || "Optional"}</p>
+              <p>Status: {canRunCopilot ? "Ready to run" : "Add resume content to continue"}</p>
+            </div>
+            {copilotError && <p className="mt-3 text-xs text-amber-100">{copilotError}</p>}
+          </div>
+        </aside>
+
+        <section className="space-y-5 xl:col-span-5">
+          <article className="rounded-2xl border border-cyan-100/20 bg-[linear-gradient(150deg,rgba(8,24,44,0.88),rgba(5,16,31,0.94))] p-5">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Role Brief</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <input
+                value={industry}
+                onChange={(event) => setIndustry(event.target.value)}
+                placeholder="Industry (optional)"
+                className={fieldClass}
+              />
+              <input value={role} onChange={(event) => setRole(event.target.value)} placeholder="Role (optional)" className={fieldClass} />
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-cyan-100/20 bg-[linear-gradient(150deg,rgba(8,24,44,0.88),rgba(5,16,31,0.94))] p-5">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Resume Context (Required)</p>
+            <textarea
+              value={resumeText}
+              onChange={(event) => setResumeText(event.target.value)}
+              placeholder="Paste full resume summary, experience highlights, and skills."
+              className={`${textAreaClass} mt-3`}
+            />
+          </article>
+
+          <article className="rounded-2xl border border-cyan-100/20 bg-[linear-gradient(150deg,rgba(8,24,44,0.88),rgba(5,16,31,0.94))] p-5">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Job Context (Optional)</p>
+            <textarea
+              value={jdInput}
+              onChange={(event) => setJdInput(event.target.value)}
+              placeholder="Paste target job description to personalize prep and outreach."
+              className={`${textAreaClass} mt-3`}
+            />
+            <textarea
+              value={criticalSkillsInput}
+              onChange={(event) => setCriticalSkillsInput(event.target.value)}
+              placeholder="Critical missing skills (optional): e.g. system design, stakeholder management, roadmap ownership"
+              className={`${fieldClass} mt-3 min-h-[88px]`}
+            />
+          </article>
+        </section>
+
+        <section className="xl:col-span-4">
+          <article className="rounded-2xl border border-cyan-100/20 bg-[linear-gradient(150deg,rgba(8,24,44,0.88),rgba(5,16,31,0.94))] p-5 xl:sticky xl:top-24">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Output Console</p>
+              <div className="inline-flex rounded-xl border border-cyan-100/22 bg-cyan-100/8 p-1">
+                <button
+                  type="button"
+                  onClick={() => setOutputView("briefing")}
+                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                    outputView === "briefing" ? "bg-cyan-200/24 text-cyan-50" : "text-cyan-100/72"
+                  }`}
+                >
+                  Briefing
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutputView("prep")}
+                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                    outputView === "prep" ? "bg-cyan-200/24 text-cyan-50" : "text-cyan-100/72"
+                  }`}
+                >
+                  Interview Prep
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutputView("pack")}
+                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                    outputView === "pack" ? "bg-cyan-200/24 text-cyan-50" : "text-cyan-100/72"
+                  }`}
+                >
+                  Apply Pack
+                </button>
               </div>
             </div>
-          ) : !interviewPrep || !applicationPack ? (
-            <p className="mt-3 text-sm text-cyan-50/72">Run Interview Copilot to generate mock Q&A prep and application-ready messaging.</p>
-          ) : (
-            <>
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">AI Engine</p>
-                <p className="mt-1 text-sm text-cyan-100/84">
-                  {interviewPrep.ai?.used || applicationPack.ai?.used ? "Hybrid AI + LLM personalization active" : "Rules-first fallback mode"}
-                </p>
-                {(interviewPrep.ai?.model || applicationPack.ai?.model) && (
-                  <p className="mt-1 text-xs text-cyan-100/72">Model: {interviewPrep.ai?.model || applicationPack.ai?.model}</p>
-                )}
-              </div>
 
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/10 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Coach Note</p>
-                <p className="mt-1 text-sm text-cyan-100/84">{interviewPrep.coach_note}</p>
-              </div>
-
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Focus Skills</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(interviewPrep.focus_skills || []).slice(0, 8).map((skill) => (
-                    <span
-                      key={`focus-${skill}`}
-                      className="rounded-full border border-cyan-100/26 bg-cyan-100/12 px-2.5 py-1 text-[11px] font-medium text-cyan-50"
-                    >
-                      {skill}
-                    </span>
-                  ))}
+            {copilotLoading ? (
+              <div className="mt-4 space-y-3 rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-4">
+                <p className="text-sm font-semibold text-cyan-50">Synthesizing interview strategy and outreach assets...</p>
+                <div className="h-2 overflow-hidden rounded-full border border-cyan-100/22 bg-cyan-100/10">
+                  <div className="h-full w-[82%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
+                </div>
+                <div className="h-2 overflow-hidden rounded-full border border-cyan-100/22 bg-cyan-100/10">
+                  <div className="h-full w-[68%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
                 </div>
               </div>
-
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Mock Questions</p>
-                <ol className="mt-2 space-y-1 text-sm text-cyan-50/82">
-                  {(interviewPrep.mock_questions || []).slice(0, 6).map((question, index) => (
-                    <li key={`question-${index}`}>
-                      {index + 1}. {question}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-
-              {(interviewPrep.star_drills || []).length > 0 && (
-                <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">STAR Drills</p>
-                  <ul className="mt-2 space-y-1 text-sm text-cyan-50/82">
-                    {(interviewPrep.star_drills || []).slice(0, 4).map((drill, index) => (
-                      <li key={`drill-${index}`}>
-                        <span className="font-semibold text-cyan-100">{drill.title}:</span> {drill.prompt}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">5-Day Prep Sprint</p>
-                <ol className="mt-2 space-y-1 text-sm text-cyan-50/82">
-                  {(interviewPrep.prep_sprint || []).slice(0, 5).map((step, index) => (
-                    <li key={`sprint-${index}`}>
-                      {index + 1}. {step}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Job Apply Kit</p>
-                <p className="mt-2 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Subject Line</p>
-                <p className="mt-1 text-sm text-cyan-50/84">{applicationPack.subject_line}</p>
-                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">LinkedIn Message</p>
-                <p className="mt-1 text-sm text-cyan-50/84">{applicationPack.linkedin_message}</p>
-                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Cover Letter Opening</p>
-                <p className="mt-1 text-sm text-cyan-50/84">{applicationPack.cover_letter_opening}</p>
-                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Outreach Email Draft</p>
-                <pre className="mt-1 whitespace-pre-wrap rounded-lg border border-cyan-100/18 bg-[#061a34]/72 p-2 text-xs text-cyan-50/84">
-                  {applicationPack.outreach_email}
-                </pre>
-                {applicationPack.recruiter_follow_up && (
-                  <>
-                    <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Recruiter Follow-Up</p>
-                    <p className="mt-1 text-sm text-cyan-50/84">{applicationPack.recruiter_follow_up}</p>
-                  </>
+            ) : !hasOutput ? (
+              <p className="mt-4 text-sm text-cyan-50/72">Run Interview Copilot to generate role-specific prep and messaging outputs.</p>
+            ) : copilotOutput ? (
+              <>
+                {outputView === "briefing" && (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
+                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">AI Engine</p>
+                      <p className="mt-1 text-sm text-cyan-100/84">
+                        {copilotOutput.interviewPrep.ai?.used || copilotOutput.applicationPack.ai?.used
+                          ? "Hybrid AI + LLM personalization active"
+                          : "Rules-first fallback mode"}
+                      </p>
+                      {(copilotOutput.interviewPrep.ai?.model || copilotOutput.applicationPack.ai?.model) && (
+                        <p className="mt-1 text-xs text-cyan-100/72">
+                          Model: {copilotOutput.interviewPrep.ai?.model || copilotOutput.applicationPack.ai?.model}
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
+                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Coach Note</p>
+                      <p className="mt-1 text-sm text-cyan-100/84">{copilotOutput.interviewPrep.coach_note}</p>
+                    </div>
+                    <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
+                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Focus Skills</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(copilotOutput.interviewPrep.focus_skills || []).slice(0, 8).map((skill) => (
+                          <span
+                            key={`focus-${skill}`}
+                            className="rounded-full border border-cyan-100/26 bg-cyan-100/12 px-2.5 py-1 text-[11px] font-medium text-cyan-50"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 )}
-                {(applicationPack.application_checklist || []).length > 0 && (
-                  <>
-                    <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Checklist</p>
-                    <ul className="mt-1 space-y-1 text-sm text-cyan-50/82">
-                      {(applicationPack.application_checklist || []).slice(0, 6).map((item, index) => (
-                        <li key={`check-${index}`}>- {item}</li>
-                      ))}
-                    </ul>
-                  </>
+
+                {outputView === "prep" && (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
+                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Mock Questions</p>
+                      <ol className="mt-2 space-y-1 text-sm text-cyan-50/82">
+                        {(copilotOutput.interviewPrep.mock_questions || []).slice(0, 6).map((question, index) => (
+                          <li key={`question-${index}`}>
+                            {index + 1}. {question}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                    {(copilotOutput.interviewPrep.star_drills || []).length > 0 && (
+                      <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
+                        <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">STAR Drills</p>
+                        <ul className="mt-2 space-y-1 text-sm text-cyan-50/82">
+                          {(copilotOutput.interviewPrep.star_drills || []).slice(0, 4).map((drill, index) => (
+                            <li key={`drill-${index}`}>
+                              <span className="font-semibold text-cyan-100">{drill.title}:</span> {drill.prompt}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
+                      <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">5-Day Prep Sprint</p>
+                      <ol className="mt-2 space-y-1 text-sm text-cyan-50/82">
+                        {(copilotOutput.interviewPrep.prep_sprint || []).slice(0, 5).map((step, index) => (
+                          <li key={`sprint-${index}`}>
+                            {index + 1}. {step}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  </div>
                 )}
-              </div>
-            </>
-          )}
-        </div>
+
+                {outputView === "pack" && (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
+                      <p className="text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Subject Line</p>
+                      <p className="mt-1 text-sm text-cyan-50/84">{copilotOutput.applicationPack.subject_line}</p>
+                      <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">LinkedIn Message</p>
+                      <p className="mt-1 text-sm text-cyan-50/84">{copilotOutput.applicationPack.linkedin_message}</p>
+                      <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Cover Letter Opening</p>
+                      <p className="mt-1 text-sm text-cyan-50/84">{copilotOutput.applicationPack.cover_letter_opening}</p>
+                      <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Outreach Email Draft</p>
+                      <pre className="mt-1 whitespace-pre-wrap rounded-lg border border-cyan-100/18 bg-[#061a34]/72 p-2 text-xs text-cyan-50/84">
+                        {copilotOutput.applicationPack.outreach_email}
+                      </pre>
+                      {copilotOutput.applicationPack.recruiter_follow_up && (
+                        <>
+                          <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Recruiter Follow-Up</p>
+                          <p className="mt-1 text-sm text-cyan-50/84">{copilotOutput.applicationPack.recruiter_follow_up}</p>
+                        </>
+                      )}
+                      {(copilotOutput.applicationPack.application_checklist || []).length > 0 && (
+                        <>
+                          <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Checklist</p>
+                          <ul className="mt-1 space-y-1 text-sm text-cyan-50/82">
+                            {(copilotOutput.applicationPack.application_checklist || []).slice(0, 6).map((item, index) => (
+                              <li key={`check-${index}`}>- {item}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </article>
+        </section>
       </section>
     </main>
   );
