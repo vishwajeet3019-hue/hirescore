@@ -136,6 +136,7 @@ const defaultRowEditor = (): RowEditorState => ({
 });
 
 const planOptions = ["all", "free", "starter", "pro", "elite"] as const;
+const PAYMENT_ACTIONS = new Set(["stripe_credit_pack", "razorpay_credit_pack"]);
 
 const formatDateTime = (value: string): string => {
   const parsed = new Date(value);
@@ -146,6 +147,76 @@ const formatDateTime = (value: string): string => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const toFiniteNumber = (value: unknown): number => {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const mergeAnalyticsWithLoadedData = (
+  previous: AdminAnalytics,
+  usersData: AdminUser[] | null,
+  eventsData: AdminEvent[] | null,
+  feedbackData: AdminFeedback[] | null,
+  transactionsData: AdminCreditTx[] | null,
+): AdminAnalytics => {
+  const next: AdminAnalytics = { ...previous };
+
+  if (usersData) {
+    const derivedUsersTotal = usersData.length;
+    const derivedAnalysesTotal = usersData.reduce((sum, user) => sum + Math.max(0, Number(user.analyze_count || 0)), 0);
+    next.users_total = Math.max(toFiniteNumber(previous.users_total), derivedUsersTotal);
+    next.analyses_total = Math.max(toFiniteNumber(previous.analyses_total), derivedAnalysesTotal);
+  }
+
+  if (eventsData) {
+    const derivedSignups = eventsData.filter(
+      (event) => event.event_type === "auth" && event.event_name === "signup_success",
+    ).length;
+    const derivedLogins = eventsData.filter(
+      (event) => event.event_type === "auth" && event.event_name === "login_success",
+    ).length;
+    next.signups_total = Math.max(toFiniteNumber(previous.signups_total), derivedSignups);
+    next.logins_total = Math.max(toFiniteNumber(previous.logins_total), derivedLogins);
+  }
+
+  if (feedbackData) {
+    next.feedback_total = Math.max(toFiniteNumber(previous.feedback_total), feedbackData.length);
+    const ratingTotal = feedbackData.reduce((sum, row) => sum + toFiniteNumber(row.rating), 0);
+    const derivedAvgRating = feedbackData.length > 0 ? Number((ratingTotal / feedbackData.length).toFixed(2)) : 0;
+    next.feedback_avg_rating = toFiniteNumber(previous.feedback_avg_rating) > 0
+      ? toFiniteNumber(previous.feedback_avg_rating)
+      : derivedAvgRating;
+  }
+
+  if (transactionsData) {
+    const paymentRows = transactionsData.filter((row) => PAYMENT_ACTIONS.has(row.action));
+    const derivedPaymentsTotal = paymentRows.length;
+    const derivedCreditsSold = paymentRows.reduce((sum, row) => sum + Math.max(0, Number(row.delta || 0)), 0);
+    const derivedRevenue = paymentRows.reduce((sum, row) => {
+      const metaAmount = row.meta?.amount_inr;
+      return sum + Math.max(0, Math.floor(toFiniteNumber(metaAmount)));
+    }, 0);
+    next.payments_total = Math.max(toFiniteNumber(previous.payments_total), derivedPaymentsTotal);
+    next.credits_sold_total = Math.max(toFiniteNumber(previous.credits_sold_total), derivedCreditsSold);
+    next.revenue_inr_total = Math.max(toFiniteNumber(previous.revenue_inr_total), derivedRevenue);
+    const hasStripeRows = paymentRows.some((row) => row.action === "stripe_credit_pack");
+    const hasRazorpayRows = paymentRows.some((row) => row.action === "razorpay_credit_pack");
+    next.stripe_enabled = Boolean(previous.stripe_enabled || hasStripeRows);
+    next.razorpay_enabled = Boolean(previous.razorpay_enabled || hasRazorpayRows);
+    if (next.payment_gateway === "none" || !next.payment_gateway) {
+      if (next.stripe_enabled && next.razorpay_enabled) {
+        next.payment_gateway = "multiple";
+      } else if (next.stripe_enabled) {
+        next.payment_gateway = "stripe";
+      } else if (next.razorpay_enabled) {
+        next.payment_gateway = "razorpay";
+      }
+    }
+  }
+
+  return next;
 };
 
 export default function AdminPage() {
@@ -353,18 +424,43 @@ export default function AdminPage() {
           }
           warnings.push("Activity");
         }
+
+        if (analyticsResult.status === "rejected" && isAuthFailure(analyticsResult.reason)) {
+          throw toError(analyticsResult.reason);
+        }
+
+        const usersData = usersResult.status === "fulfilled" && usersResult.value ? usersResult.value.users || [] : null;
+        const activityData = activityResult.status === "fulfilled" && activityResult.value ? activityResult.value : null;
+
         if (analyticsResult.status === "fulfilled") {
-          setAnalytics(analyticsResult.value);
+          setAnalytics(
+            mergeAnalyticsWithLoadedData(
+              analyticsResult.value,
+              usersData,
+              activityData?.events || null,
+              activityData?.feedback || null,
+              activityData?.transactions || null,
+            ),
+          );
         } else {
-          setAnalytics((prev) => prev || DEFAULT_ADMIN_ANALYTICS);
+          warnings.push("Analytics");
+          setAnalytics((prev) =>
+            mergeAnalyticsWithLoadedData(
+              prev || DEFAULT_ADMIN_ANALYTICS,
+              usersData,
+              activityData?.events || null,
+              activityData?.feedback || null,
+              activityData?.transactions || null,
+            ),
+          );
         }
-        if (usersResult.status === "fulfilled" && usersResult.value) {
-          setUsers(usersResult.value.users || []);
+        if (usersData) {
+          setUsers(usersData);
         }
-        if (activityResult.status === "fulfilled" && activityResult.value) {
-          setEvents(activityResult.value.events);
-          setFeedbackRows(activityResult.value.feedback);
-          setTransactions(activityResult.value.transactions);
+        if (activityData) {
+          setEvents(activityData.events);
+          setFeedbackRows(activityData.feedback);
+          setTransactions(activityData.transactions);
           setHasLoadedActivity(true);
         }
         if (chatsResult.status === "fulfilled" && chatsResult.value) {
