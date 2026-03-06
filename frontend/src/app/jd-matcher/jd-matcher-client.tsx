@@ -1,0 +1,379 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
+import { addUtmParams } from "@/lib/utm";
+import TrackedLink from "../components/tracked-link";
+
+type CreditWallet = {
+  credits: number;
+  pricing: {
+    analyze: number;
+  };
+};
+
+type AuthPayload = {
+  user?: {
+    email?: string;
+  };
+  wallet?: CreditWallet;
+};
+
+type JdMatchPayload = {
+  role_track: string;
+  match_score: number;
+  matched_keywords: string[];
+  missing_keywords: string[];
+  jd_keyword_count: number;
+  resume_keyword_count: number;
+  critical_coverage: number;
+  suggested_bullets: string[];
+  alignment_summary: string;
+};
+
+type JdExtractPayload = {
+  job_description: string;
+  extracted_chars: number;
+  file_name: string;
+  file_type?: string;
+};
+
+type ApiErrorDetail = {
+  message?: string;
+  wallet?: CreditWallet;
+};
+
+type ApiErrorPayload = {
+  detail?: string | ApiErrorDetail;
+  wallet?: CreditWallet;
+};
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
+const AUTH_REQUEST_TIMEOUT_MS = 70000;
+const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+
+const fieldClass =
+  "w-full rounded-xl border border-cyan-100/28 bg-[#08233f]/72 px-3 py-2.5 text-sm text-cyan-50 placeholder:text-cyan-100/36 outline-none transition focus:border-cyan-100/62";
+
+const textAreaClass = `${fieldClass} min-h-[140px] leading-relaxed`;
+
+export default function JdMatcherClient() {
+  const [authToken, setAuthToken] = useState("");
+  const [wallet, setWallet] = useState<CreditWallet | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [role, setRole] = useState("");
+  const [resumeText, setResumeText] = useState("");
+  const [jdInput, setJdInput] = useState("");
+  const [jdUploadedFileName, setJdUploadedFileName] = useState("");
+  const [jdFileUploading, setJdFileUploading] = useState(false);
+  const [jdMatchLoading, setJdMatchLoading] = useState(false);
+  const [jdMatchError, setJdMatchError] = useState("");
+  const [jdMatch, setJdMatch] = useState<JdMatchPayload | null>(null);
+  const jdFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const authHeader = useMemo(() => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined), [authToken]);
+
+  const openAnalysisHref = addUtmParams("/upload", {
+    source: "jd_matcher_page",
+    medium: "internal",
+    campaign: "jd_matcher",
+  });
+
+  const openStudioHref = addUtmParams("/studio", {
+    source: "jd_matcher_page",
+    medium: "internal",
+    campaign: "jd_matcher",
+  });
+
+  useEffect(() => {
+    void warmBackend(apiUrl);
+  }, []);
+
+  useEffect(() => {
+    const syncAuth = async () => {
+      const token = window.localStorage.getItem("hirescore_auth_token") || "";
+      if (!token) {
+        setAuthToken("");
+        setWallet(null);
+        setAuthEmail("");
+        setAuthError("Login required to run JD match.");
+        return;
+      }
+
+      try {
+        const response = await fetch(apiUrl("/auth/me"), {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          window.localStorage.removeItem("hirescore_auth_token");
+          setAuthToken("");
+          setWallet(null);
+          setAuthEmail("");
+          setAuthError("Session expired. Login again to continue.");
+          return;
+        }
+        const payload = (await response.json()) as AuthPayload;
+        setAuthToken(token);
+        setWallet(payload.wallet || null);
+        setAuthEmail(payload.user?.email || "");
+        setAuthError("");
+      } catch {
+        setAuthError("Unable to verify your session right now.");
+      }
+    };
+    void syncAuth();
+  }, []);
+
+  const parseApiError = async (response: Response) => {
+    const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
+    if (payload?.wallet) {
+      setWallet(payload.wallet);
+    }
+    if (payload?.detail && typeof payload.detail === "object") {
+      if (payload.detail.wallet) {
+        setWallet(payload.detail.wallet);
+      }
+      return payload.detail.message || `Request failed (${response.status})`;
+    }
+    if (typeof payload?.detail === "string") {
+      return payload.detail;
+    }
+    return `Request failed (${response.status})`;
+  };
+
+  const handleUploadJdFile = async (file: File | null) => {
+    if (!file) return;
+    if (!authToken || !authHeader) {
+      setJdMatchError("Login required to upload a JD file.");
+      return;
+    }
+
+    const normalizedName = file.name.toLowerCase();
+    const isPdf = file.type === "application/pdf" || normalizedName.endsWith(".pdf");
+    const isText = file.type.startsWith("text/") || normalizedName.endsWith(".txt");
+    const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/.test(normalizedName);
+    if (!isPdf && !isText && !isImage) {
+      setJdMatchError("Upload JD as PDF, TXT, or image (JPG/PNG/WebP).");
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      setJdMatchError("JD file is too large. Keep it under 12 MB.");
+      return;
+    }
+
+    setJdMatchError("");
+    setJdMatch(null);
+    setJdFileUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("auth_token", authToken);
+
+      const payload = await fetchJsonWithWakeAndRetry<JdExtractPayload>({
+        apiUrl,
+        path: "/analysis/jd-match/extract",
+        init: {
+          method: "POST",
+          headers: {
+            ...authHeader,
+          },
+          body: formData,
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "JD file extraction is taking longer than expected. Please try again.",
+      });
+
+      setJdInput(payload.job_description || "");
+      setJdUploadedFileName(payload.file_name || file.name);
+    } catch (error) {
+      setJdMatchError(error instanceof Error ? error.message : "Unable to extract JD text from uploaded file.");
+    } finally {
+      setJdFileUploading(false);
+    }
+  };
+
+  const handleRunJdMatch = async () => {
+    if (!authToken || !authHeader) {
+      setJdMatchError("Login required to run JD match.");
+      return;
+    }
+    if (jdInput.trim().length < 24) {
+      setJdMatchError("Paste a fuller job description (at least 24 characters).");
+      return;
+    }
+    if (resumeText.trim().length < 24) {
+      setJdMatchError("Add resume text or skill summary so JD match can evaluate alignment.");
+      return;
+    }
+
+    setJdMatchError("");
+    setJdMatchLoading(true);
+    try {
+      const payload = await fetchJsonWithWakeAndRetry<JdMatchPayload>({
+        apiUrl,
+        path: "/analysis/jd-match",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            industry: industry.trim() || "General",
+            role: role.trim() || "Target role",
+            resume_text: resumeText.trim(),
+            job_description: jdInput.trim(),
+            auth_token: authToken,
+          }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "JD match is taking longer than expected. Please try again.",
+      });
+      setJdMatch(payload);
+    } catch (error) {
+      setJdMatch(null);
+      setJdMatchError(error instanceof Error ? error.message : "Unable to run JD match right now.");
+    } finally {
+      setJdMatchLoading(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl rounded-[2rem] border border-cyan-100/24 bg-[linear-gradient(150deg,rgba(8,28,52,0.93),rgba(5,18,34,0.96)_58%,rgba(18,46,58,0.86))] p-6 shadow-[0_26px_70px_rgba(2,8,22,0.48)] sm:p-8">
+        <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/78">Dedicated Tool</p>
+        <h1 className="mt-3 text-3xl font-semibold text-cyan-50 sm:text-5xl">JD Matcher Command Center</h1>
+        <p className="mt-3 max-w-3xl text-sm text-cyan-50/78 sm:text-base">
+          Paste a target JD, add your resume text, and get precise keyword-gap and role-fit signals.
+        </p>
+        {authEmail && <p className="mt-3 text-sm text-cyan-100/84">Signed in as: {authEmail}</p>}
+        {wallet && (
+          <p className="mt-1 text-xs text-cyan-100/76">
+            Wallet: {wallet.credits} credits | Analyze cost: {wallet.pricing.analyze} credits
+          </p>
+        )}
+        {authError && (
+          <div className="mt-4 rounded-xl border border-amber-100/34 bg-amber-100/12 p-3">
+            <p className="text-sm text-amber-50">{authError}</p>
+            <TrackedLink
+              href={openAnalysisHref}
+              eventName="cta_check_my_score_click"
+              eventParams={{ cta_location: "jd_matcher_page", cta_label: "Go To Analysis + Login" }}
+              className="mt-3 inline-flex rounded-lg border border-amber-100/40 bg-amber-100/14 px-3 py-2 text-xs font-semibold text-amber-50 transition hover:bg-amber-100/20"
+            >
+              Go To Analysis + Login
+            </TrackedLink>
+          </div>
+        )}
+      </section>
+
+      <section className="mx-auto mt-6 grid max-w-6xl gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(7,27,50,0.86),rgba(4,18,36,0.9))] p-5">
+          <h2 className="text-lg font-semibold text-cyan-50">Inputs</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <input
+              value={industry}
+              onChange={(event) => setIndustry(event.target.value)}
+              placeholder="Industry (optional)"
+              className={fieldClass}
+            />
+            <input value={role} onChange={(event) => setRole(event.target.value)} placeholder="Role (optional)" className={fieldClass} />
+          </div>
+          <textarea
+            value={resumeText}
+            onChange={(event) => setResumeText(event.target.value)}
+            placeholder="Paste your current resume text or key skills summary"
+            className={`${textAreaClass} mt-3`}
+          />
+          <textarea
+            value={jdInput}
+            onChange={(event) => setJdInput(event.target.value)}
+            placeholder="Paste target job description here"
+            className={`${textAreaClass} mt-3`}
+          />
+          <input
+            ref={jdFileInputRef}
+            type="file"
+            accept=".pdf,.txt,image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0] || null;
+              void handleUploadJdFile(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <button
+              type="button"
+              onClick={() => jdFileInputRef.current?.click()}
+              disabled={jdFileUploading}
+              className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {jdFileUploading ? "Extracting..." : "Upload JD PDF / Image"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleRunJdMatch()}
+              disabled={jdMatchLoading}
+              className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {jdMatchLoading ? "Matching..." : "Run JD Match"}
+            </button>
+            <TrackedLink
+              href={openStudioHref}
+              eventName="cta_studio_open"
+              eventParams={{ cta_location: "jd_matcher_page", cta_label: "Open AI Resume Studio" }}
+              className="rounded-xl border border-cyan-100/30 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-100/10"
+            >
+              Open AI Resume Studio
+            </TrackedLink>
+          </div>
+          {jdUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">Imported from: {jdUploadedFileName}</p>}
+          {jdMatchError && <p className="mt-2 text-xs text-amber-100">{jdMatchError}</p>}
+        </div>
+
+        <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(7,27,50,0.86),rgba(4,18,36,0.9))] p-5">
+          <h2 className="text-lg font-semibold text-cyan-50">Match Result</h2>
+          {!jdMatch ? (
+            <p className="mt-3 text-sm text-cyan-50/72">Run JD Match to see coverage score, missing keywords, and suggested bullets.</p>
+          ) : (
+            <>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-3 py-2 text-sm text-cyan-50">
+                  Match Score: <span className="font-semibold">{jdMatch.match_score}%</span>
+                </div>
+                <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-3 py-2 text-sm text-cyan-50">
+                  Critical Coverage: <span className="font-semibold">{jdMatch.critical_coverage}%</span>
+                </div>
+              </div>
+              <p className="mt-3 text-sm text-cyan-100/84">{jdMatch.alignment_summary}</p>
+
+              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
+                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Missing Keywords</p>
+                <p className="mt-2 text-sm text-cyan-50/80">{(jdMatch.missing_keywords || []).slice(0, 20).join(", ") || "None"}</p>
+              </div>
+
+              {(jdMatch.suggested_bullets || []).length > 0 && (
+                <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Suggested Bullet Upgrades</p>
+                  <ul className="mt-2 space-y-1 text-sm text-cyan-50/80">
+                    {(jdMatch.suggested_bullets || []).slice(0, 5).map((line, index) => (
+                      <li key={`${line}-${index}`}>- {line}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
