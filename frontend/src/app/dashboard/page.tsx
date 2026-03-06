@@ -23,12 +23,6 @@ type AuthPayload = {
   wallet?: CreditWallet;
 };
 
-type FeatureFlags = {
-  onboarding_copy_variant?: "A" | "B";
-  roadmap_prompt_variant?: "A" | "B";
-  pricing_cta_variant?: "A" | "B";
-};
-
 type AnalysisReportSummary = {
   id: number;
   source: string;
@@ -141,7 +135,6 @@ type DashboardBootstrapPayload = {
   analysis_comparison?: AnalysisComparison;
   weekly_execution_coach?: WeeklyExecutionCoach | null;
   role_benchmark?: RoleBenchmark | null;
-  feature_flags?: FeatureFlags;
 };
 
 type RoadmapCelebration = {
@@ -178,7 +171,6 @@ export default function DashboardPage() {
   const [token, setToken] = useState("");
   const [email, setEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({});
   const [reports, setReports] = useState<AnalysisReportSummary[]>([]);
   const [reportsError, setReportsError] = useState("");
   const [analysisComparison, setAnalysisComparison] = useState<AnalysisComparison | null>(null);
@@ -224,7 +216,6 @@ export default function DashboardPage() {
 
         setEmail(authPayload.user?.email || "");
         setWallet(authPayload.wallet || null);
-        setFeatureFlags(payload.feature_flags || {});
         setReports(reportsPayload);
         setReportsError("");
         setRoadmaps(roadmapTracks);
@@ -592,262 +583,44 @@ export default function DashboardPage() {
 
         {!loading && !error && (
           <>
-            <div className="mt-6 grid gap-4 xl:grid-cols-12">
-              <section className="cockpit-surface xl:col-span-8 rounded-[2rem] p-5 sm:p-7">
-                <div className="absolute -right-16 top-10 h-56 w-56 rounded-full bg-cyan-300/14 blur-[94px]" />
-                <div className="absolute -left-12 bottom-[-76px] h-52 w-52 rounded-full bg-amber-100/10 blur-[90px]" />
-                <div className="relative z-10 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-cyan-100/35 bg-cyan-100/10 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-100/84">
-                        Dashboard View
-                      </span>
-                      <span className="rounded-full border border-amber-100/34 bg-amber-100/10 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-amber-100/86">
-                        Professional Workflow
-                      </span>
-                    </div>
-                    <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Track profile quality and execution progress.</h2>
-                    <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cyan-100/74">Profile: {email || "User"}</p>
-                    <p className="mt-2 text-sm text-cyan-50/74">
-                      {nextMilestone
-                        ? `Next highest-impact move: ${nextMilestone.title}`
-                        : "Start a fresh analysis to unlock your next growth track."}
-                    </p>
+            <div className="mt-6 grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+              <aside className="neon-panel h-fit rounded-[2rem] p-5 xl:sticky xl:top-24">
+                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Operations</p>
+                <p className="mt-2 text-sm text-cyan-50/72">Use this rail to run analyses, manage credits, and switch workspace context.</p>
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-12">
-                      <article className="cockpit-kpi-card rounded-2xl p-4 sm:col-span-5">
-                        <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Wallet</p>
-                        <p className="mt-1 text-3xl font-semibold text-cyan-50">{wallet?.credits ?? 0}</p>
-                        <p className="text-xs text-cyan-100/64">Credits available</p>
-                      </article>
-                      <article className="cockpit-kpi-card rounded-2xl p-4 sm:col-span-3">
-                        <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Roadmap</p>
-                        <p className="mt-1 text-3xl font-semibold text-cyan-50">{roadmapProgress}%</p>
-                        <p className="text-xs text-cyan-100/64">Execution complete</p>
-                      </article>
-                      <article className="cockpit-kpi-card rounded-2xl p-4 sm:col-span-4">
-                        <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Runs Left</p>
-                        <p className="mt-1 text-3xl font-semibold text-cyan-50">{estimatedRunsLeft}</p>
-                        <p className="text-xs text-cyan-100/64">At {wallet?.pricing.analyze ?? 0} credits/run</p>
-                      </article>
-                    </div>
-                  </div>
-
-                  <article className="analysis-live-shell rounded-[1.5rem] p-4 sm:p-5">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/78">Analysis Snapshot</p>
-                    <p className="mt-2 text-sm font-semibold text-cyan-50">
-                      {analysisComparison?.latest ? `${analysisComparison.latest.role || "Latest role"} forecast` : "Awaiting first run"}
-                    </p>
-                    <p className="mt-1 text-xs text-cyan-100/72">
-                      {analysisComparison?.latest
-                        ? `Confidence ${analysisComparison.latest.confidence}% • Callback ${analysisComparison.latest.estimated_callback_rate}%`
-                        : "Run your first analysis to activate real-time conversion diagnostics."}
-                    </p>
-
-                    <div className="analysis-live-stage relative mt-4 overflow-hidden rounded-2xl border border-cyan-100/22 bg-cyan-100/8">
-                      <div className="analysis-live-grid left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-wave analysis-live-wave-a left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-wave analysis-live-wave-b left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-ring analysis-live-ring-outer left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-ring analysis-live-ring-mid left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-ring analysis-live-ring-inner left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-beam left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-                      <div className="analysis-live-orbit analysis-live-orbit-a left-1/2 top-1/2" />
-                      <div className="analysis-live-orbit analysis-live-orbit-b left-1/2 top-1/2" />
-                      <div className="analysis-live-orbit analysis-live-orbit-c left-1/2 top-1/2" />
-                      <div className="analysis-live-core absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                        <span className="analysis-live-core-value">
-                          {analysisComparison?.latest ? `${analysisComparison.latest.overall_score}%` : "--"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 rounded-xl border border-cyan-100/24 bg-cyan-100/10 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/76">Next Focus</p>
-                      <p className="mt-1 text-xs text-cyan-50/82">
-                        {nextMilestone ? nextMilestone.title : "No active roadmap milestone yet."}
-                      </p>
-                    </div>
-                  </article>
+                <div className="mt-4 space-y-2">
+                  <Link
+                    href="/upload"
+                    className="block rounded-xl border border-cyan-100/28 bg-cyan-100/10 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
+                  >
+                    Run New Analysis
+                  </Link>
+                  <Link
+                    href="/studio"
+                    className="block rounded-xl border border-cyan-100/28 bg-cyan-100/10 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
+                  >
+                    Open Resume Studio
+                  </Link>
+                  <Link
+                    href="/pricing"
+                    className="block rounded-xl border border-amber-100/34 bg-amber-100/12 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/18"
+                  >
+                    Upgrade Credits
+                  </Link>
                 </div>
 
-                <div className="relative z-10 mt-5 grid gap-3 sm:grid-cols-2">
-                  <article className="cockpit-kpi-card rounded-2xl p-4">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Latest Momentum</p>
-                    {analysisComparison?.latest ? (
-                      <>
-                        <p className="mt-1 text-sm font-semibold text-cyan-50">
-                          {analysisComparison.latest.role || "Latest run"} • {analysisComparison.latest.overall_score}%
-                        </p>
-                        <p className="mt-1 text-xs text-cyan-100/70">
-                          Confidence {analysisComparison.latest.confidence}% • {formatReportDate(analysisComparison.latest.created_at)}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="mt-1 text-sm text-cyan-50/72">No latest run yet. Launch analysis to start trend tracking.</p>
-                    )}
-                  </article>
-                  <article className="cockpit-kpi-card rounded-2xl p-4">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/80">Usage Insight</p>
-                    <p className="mt-1 text-sm font-semibold text-cyan-50">More runs = sharper positioning = higher shortlist odds.</p>
-                    <p className="mt-1 text-xs text-cyan-100/74">{premiumNudgeText}</p>
-                  </article>
+                <div className="mt-5 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/68">Credit Pricing</p>
+                  <p className="mt-2 text-xs text-cyan-50/76">Analyze: {wallet?.pricing.analyze ?? 0} credits</p>
+                  <p className="mt-1 text-xs text-cyan-50/76">AI Resume Build: {wallet?.pricing.ai_resume_generation ?? 0} credits</p>
+                  <p className="mt-1 text-xs text-cyan-50/76">PDF Download: {wallet?.pricing.template_pdf_download ?? 0} credits</p>
                 </div>
-              </section>
 
-              <aside className="cockpit-surface xl:col-span-4 rounded-[2rem] p-5 sm:p-6">
-                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/76">Credit & Usage</p>
-                <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Improve Interview Readiness</h3>
-                <p className="mt-2 text-sm text-cyan-50/82">
-                  Purchase credits to run focused analyses weekly, keep roadmap momentum, and improve callback conversion faster.
-                </p>
-                <div className="mt-4 space-y-2 rounded-2xl border border-amber-100/28 bg-amber-100/8 p-4 text-sm text-amber-100/84">
-                  <p>Analyze cost: {wallet?.pricing.analyze ?? 0} credits</p>
-                  <p>Resume AI build: {wallet?.pricing.ai_resume_generation ?? 0} credits</p>
-                  <p>PDF download: {wallet?.pricing.template_pdf_download ?? 0} credits</p>
-                </div>
-                <Link
-                  href="/pricing"
-                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-amber-100/42 bg-amber-200/20 px-4 py-3 text-sm font-semibold text-amber-50 transition hover:bg-amber-200/28"
-                >
-                  Upgrade Credits Now
-                </Link>
-                <Link
-                  href="/upload"
-                  className="mt-2 inline-flex w-full items-center justify-center rounded-xl border border-cyan-100/32 bg-cyan-100/10 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
-                >
-                  Run Analysis First
-                </Link>
-              </aside>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-12">
-              <Link
-                href="/upload"
-                className="cockpit-action-tile rounded-2xl px-4 py-4 text-left sm:col-span-5"
-              >
-                <p className="text-sm font-semibold text-cyan-50">Run New Analysis</p>
-                <p className="mt-1 text-xs text-cyan-100/72">Get fresh shortlist and callback intelligence.</p>
-              </Link>
-              <Link
-                href="/studio"
-                className="cockpit-action-tile rounded-2xl px-4 py-4 text-left sm:col-span-4"
-              >
-                <p className="text-sm font-semibold text-cyan-50">Resume Studio</p>
-                <p className="mt-1 text-xs text-cyan-100/72">Apply fixes with guided resume writing workflows.</p>
-              </Link>
-              <button
-                type="button"
-                onClick={() => setActiveWorkspace("roadmaps")}
-                className={`cockpit-action-tile rounded-2xl px-4 py-4 text-left sm:col-span-3 ${
-                  activeWorkspace === "roadmaps"
-                    ? "border-emerald-100/45 bg-emerald-200/16"
-                    : ""
-                }`}
-              >
-                <p className="text-sm font-semibold text-cyan-50">Roadmap Control</p>
-                <p className="mt-1 text-xs text-cyan-100/72">Track milestones and execution evidence.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveWorkspace("reports")}
-                className={`cockpit-action-tile rounded-2xl px-4 py-4 text-left sm:col-span-12 ${
-                  activeWorkspace === "reports"
-                    ? "border-emerald-100/45 bg-emerald-200/16"
-                    : ""
-                }`}
-              >
-                <p className="text-sm font-semibold text-cyan-50">Report Vault</p>
-                <p className="mt-1 text-xs text-cyan-100/72">Download past analysis reports instantly.</p>
-              </button>
-            </div>
-
-            <section className="mt-6 grid gap-4 lg:grid-cols-3">
-              <article className={cardClass}>
-                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Latest Analysis Delta</p>
-                {analysisComparison?.latest ? (
-                  <>
-                    <p className="mt-2 text-sm font-semibold text-cyan-50">
-                      {analysisComparison.latest.role || "Latest run"} • {formatReportDate(analysisComparison.latest.created_at)}
-                    </p>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2 py-1.5 text-cyan-100/82">
-                        Score {analysisComparison.latest.overall_score}%
-                      </div>
-                      <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2 py-1.5 text-cyan-100/82">
-                        Confidence {analysisComparison.latest.confidence}%
-                      </div>
-                    </div>
-                    {analysisComparison.delta && (
-                      <p className="mt-2 text-xs text-emerald-100">
-                        Score {formatDelta(analysisComparison.delta.overall_score)} • Callback{" "}
-                        {formatDelta(analysisComparison.delta.estimated_callback_rate, "%")}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="mt-2 text-sm text-cyan-50/72">Run analysis to unlock trend delta.</p>
-                )}
-              </article>
-
-              <article className={cardClass}>
-                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Weekly Execution Coach</p>
-                {weeklyCoach ? (
-                  <>
-                    <p className="mt-2 text-sm font-semibold text-cyan-50">{weeklyCoach.week_focus}</p>
-                    <p className="mt-1 text-xs text-cyan-50/70">{weeklyCoach.coach_note}</p>
-                    <ul className="mt-3 space-y-1.5 text-xs text-cyan-100/82">
-                      {(weeklyCoach.next_three_tasks || []).slice(0, 3).map((task) => (
-                        <li key={task.id || task.title}>• {task.title}</li>
-                      ))}
-                    </ul>
-                  </>
-                ) : (
-                  <p className="mt-2 text-sm text-cyan-50/72">No coach actions yet. Add your first roadmap track.</p>
-                )}
-              </article>
-
-              <article className={cardClass}>
-                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Role Benchmark</p>
-                {roleBenchmark ? (
-                  <>
-                    <p className="mt-2 text-sm font-semibold text-cyan-50">
-                      {roleBenchmark.band_label} • {roleBenchmark.percentile}th percentile
-                    </p>
-                    <p className="mt-1 text-xs text-cyan-50/70">
-                      {roleBenchmark.role} • {roleBenchmark.industry}
-                    </p>
-                    <p className="mt-1 text-xs text-cyan-100/82">
-                      Peer sample: {roleBenchmark.peer_count} • Score: {roleBenchmark.score}%
-                    </p>
-                    {roleBenchmark.benchmarks && (
-                      <p className="mt-2 text-[11px] text-cyan-100/74">
-                        P50 {roleBenchmark.benchmarks.p50}% • P75 {roleBenchmark.benchmarks.p75}% • P90 {roleBenchmark.benchmarks.p90}%
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="mt-2 text-sm text-cyan-50/72">Benchmark appears after your first analysis report.</p>
-                )}
-              </article>
-            </section>
-
-            <section className="mt-6 rounded-[2rem] border border-cyan-100/22 bg-cyan-100/6 p-5 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Workspace Navigator</p>
-                  <h2 className="mt-2 text-xl font-semibold text-cyan-50">Choose Your Workspace</h2>
-                  <p className="mt-1 text-sm text-cyan-50/70">
-                    {featureFlags.roadmap_prompt_variant === "B"
-                      ? "Switch between roadmap execution and report downloads based on your current objective."
-                      : "Use focused workspace modes to keep actions clear and measurable."}
-                  </p>
-                </div>
-                <div className="flex rounded-xl border border-cyan-100/24 bg-cyan-100/8 p-1">
+                <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl border border-cyan-100/22 bg-cyan-100/8 p-1">
                   <button
                     type="button"
                     onClick={() => setActiveWorkspace("roadmaps")}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
                       activeWorkspace === "roadmaps" ? "bg-cyan-200/22 text-cyan-50" : "text-cyan-100/74"
                     }`}
                   >
@@ -856,15 +629,177 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => setActiveWorkspace("reports")}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
                       activeWorkspace === "reports" ? "bg-cyan-200/22 text-cyan-50" : "text-cyan-100/74"
                     }`}
                   >
                     Reports
                   </button>
                 </div>
+              </aside>
+
+              <div className="space-y-6">
+                <section className="premium-panel rounded-[2rem] p-6 sm:p-7">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/70">Performance Board</p>
+                      <h2 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">Profile quality and execution status</h2>
+                      <p className="mt-2 text-xs uppercase tracking-[0.12em] text-cyan-100/70">Profile: {email || "User"}</p>
+                    </div>
+                    <p className="text-xs text-cyan-100/70">
+                      {analysisComparison?.latest ? `Updated ${formatReportDate(analysisComparison.latest.created_at)}` : "Awaiting first analysis run"}
+                    </p>
+                  </div>
+
+                  <dl className="mt-5 overflow-hidden rounded-xl border border-cyan-100/22 bg-cyan-100/7">
+                    <div className="grid gap-3 border-b border-cyan-100/14 px-4 py-3 sm:grid-cols-[1fr_auto]">
+                      <dt className="text-xs uppercase tracking-[0.12em] text-cyan-100/68">Wallet Credits</dt>
+                      <dd className="text-2xl font-semibold text-cyan-50">{wallet?.credits ?? 0}</dd>
+                    </div>
+                    <div className="grid gap-3 border-b border-cyan-100/14 px-4 py-3 sm:grid-cols-[1fr_auto]">
+                      <dt className="text-xs uppercase tracking-[0.12em] text-cyan-100/68">Roadmap Completion</dt>
+                      <dd className="text-2xl font-semibold text-cyan-50">{roadmapProgress}%</dd>
+                    </div>
+                    <div className="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_auto]">
+                      <dt className="text-xs uppercase tracking-[0.12em] text-cyan-100/68">Estimated Runs Left</dt>
+                      <dd className="text-2xl font-semibold text-cyan-50">{estimatedRunsLeft}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-5 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+                    <article className="neon-panel rounded-xl p-4">
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/68">Latest Analysis</p>
+                      {analysisComparison?.latest ? (
+                        <>
+                          <p className="mt-2 text-lg font-semibold text-cyan-50">
+                            {analysisComparison.latest.role || "Latest role"} • {analysisComparison.latest.overall_score}%
+                          </p>
+                          <div className="mt-3 space-y-2 text-xs">
+                            <div>
+                              <div className="mb-1 flex items-center justify-between text-cyan-100/72">
+                                <span>Confidence</span>
+                                <span>{analysisComparison.latest.confidence}%</span>
+                              </div>
+                              <div className="h-1.5 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/10">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-cyan-200 to-cyan-300 transition-all duration-700"
+                                  style={{ width: `${Math.min(100, Math.max(0, analysisComparison.latest.confidence))}%` }}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="mb-1 flex items-center justify-between text-cyan-100/72">
+                                <span>Estimated Callback</span>
+                                <span>{analysisComparison.latest.estimated_callback_rate}%</span>
+                              </div>
+                              <div className="h-1.5 overflow-hidden rounded-full border border-cyan-100/20 bg-cyan-100/10">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-amber-100 to-cyan-200 transition-all duration-700"
+                                  style={{
+                                    width: `${Math.min(100, Math.max(0, analysisComparison.latest.estimated_callback_rate))}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-sm text-cyan-50/72">Run your first analysis to unlock trend tracking.</p>
+                      )}
+                    </article>
+
+                    <article className="rounded-xl border border-cyan-100/20 bg-cyan-100/7 p-4">
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/68">Current Priority</p>
+                      <p className="mt-2 text-sm font-semibold text-cyan-50">
+                        {nextMilestone ? nextMilestone.title : "No active milestone yet"}
+                      </p>
+                      <p className="mt-2 text-xs text-cyan-50/74">
+                        {nextMilestone
+                          ? nextMilestone.detail || "Complete this milestone to advance roadmap progress."
+                          : "Run a fresh analysis to generate your next milestone."}
+                      </p>
+                      <div className="mt-4 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/68">Market Positioning</p>
+                        <p className="mt-1 text-xs text-cyan-50/76">{premiumNudgeText}</p>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+
+                <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                  <article className={cardClass}>
+                    <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Performance Delta</p>
+                    {analysisComparison?.latest ? (
+                      <>
+                        <p className="mt-2 text-sm font-semibold text-cyan-50">
+                          {analysisComparison.latest.role || "Latest run"} • {analysisComparison.latest.overall_score}%
+                        </p>
+                        <p className="mt-1 text-xs text-cyan-50/72">
+                          Confidence {analysisComparison.latest.confidence}% • Callback {analysisComparison.latest.estimated_callback_rate}%
+                        </p>
+                        {analysisComparison.delta ? (
+                          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                            <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-3 py-2 text-cyan-100/82">
+                              Score delta: {formatDelta(analysisComparison.delta.overall_score)}
+                            </div>
+                            <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-3 py-2 text-cyan-100/82">
+                              Callback delta: {formatDelta(analysisComparison.delta.estimated_callback_rate, "%")}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-cyan-50/70">Delta appears after you have at least two reports.</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm text-cyan-50/72">Run analysis to unlock trend delta.</p>
+                    )}
+                  </article>
+
+                  <div className="space-y-4">
+                    <article className={cardClass}>
+                      <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Weekly Execution Coach</p>
+                      {weeklyCoach ? (
+                        <>
+                          <p className="mt-2 text-sm font-semibold text-cyan-50">{weeklyCoach.week_focus}</p>
+                          <p className="mt-1 text-xs text-cyan-50/70">{weeklyCoach.coach_note}</p>
+                          <ul className="mt-3 space-y-1.5 text-xs text-cyan-100/82">
+                            {(weeklyCoach.next_three_tasks || []).slice(0, 3).map((task) => (
+                              <li key={task.id || task.title}>• {task.title}</li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-sm text-cyan-50/72">No coach actions yet. Add your first roadmap track.</p>
+                      )}
+                    </article>
+
+                    <article className={cardClass}>
+                      <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Role Benchmark</p>
+                      {roleBenchmark ? (
+                        <>
+                          <p className="mt-2 text-sm font-semibold text-cyan-50">
+                            {roleBenchmark.band_label} • {roleBenchmark.percentile}th percentile
+                          </p>
+                          <p className="mt-1 text-xs text-cyan-50/70">
+                            {roleBenchmark.role} • {roleBenchmark.industry}
+                          </p>
+                          <p className="mt-1 text-xs text-cyan-100/82">
+                            Peer sample: {roleBenchmark.peer_count} • Score: {roleBenchmark.score}%
+                          </p>
+                          {roleBenchmark.benchmarks && (
+                            <p className="mt-2 text-[11px] text-cyan-100/74">
+                              P50 {roleBenchmark.benchmarks.p50}% • P75 {roleBenchmark.benchmarks.p75}% • P90 {roleBenchmark.benchmarks.p90}%
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="mt-2 text-sm text-cyan-50/72">Benchmark appears after your first analysis report.</p>
+                      )}
+                    </article>
+                  </div>
+                </section>
               </div>
-            </section>
+            </div>
           </>
         )}
 
