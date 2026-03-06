@@ -46,6 +46,7 @@ export default function AppChrome({ children }: AppChromeProps) {
                 <p>Shortlist prediction by role intent</p>
                 <p>Actionable improvement roadmaps</p>
                 <p>In-platform resume building</p>
+                <p>JD matcher and interview copilot workflows</p>
                 <TrackedLink
                   href={addUtmParams("/resources", {
                     source: "footer",

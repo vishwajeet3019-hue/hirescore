@@ -38,6 +38,7 @@ const baseNavLinks: NavLink[] = [
       { href: "/analysis", label: "Analysis" },
       { href: "/ai-resume-studio", label: "AI Resume Studio" },
       { href: "/jd-matcher", label: "JD Matcher" },
+      { href: "/interview-copilot", label: "Interview Copilot" },
     ],
   },
   { href: "/case-studies", label: "Success Stories" },
@@ -147,10 +148,6 @@ export default function SiteHeader() {
       }
     };
     void syncAuth();
-  }, [pathname]);
-
-  useEffect(() => {
-    closeToolsDropdown();
   }, [pathname]);
 
   useEffect(() => {
@@ -363,7 +360,7 @@ export default function SiteHeader() {
           )}
         </nav>
         {showToolsMenu && toolsNavLinks.length > 0 && (
-          <div ref={mobileToolsPanelRef} className="mx-auto mt-2 grid w-full max-w-7xl gap-1.5 sm:grid-cols-3">
+          <div ref={mobileToolsPanelRef} className="mx-auto mt-2 grid w-full max-w-7xl gap-1.5 sm:grid-cols-2">
             {toolsNavLinks.map((child) => {
               const childActive = isLinkActive(pathname, hash, child);
               return (
