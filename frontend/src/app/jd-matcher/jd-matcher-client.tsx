@@ -50,6 +50,7 @@ type ApiErrorPayload = {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
+const JD_MATCH_MIN_LOADING_MS = 4500;
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
 const fieldClass =
@@ -76,12 +77,6 @@ export default function JdMatcherClient() {
   const authHeader = useMemo(() => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined), [authToken]);
 
   const openAnalysisHref = addUtmParams("/upload", {
-    source: "jd_matcher_page",
-    medium: "internal",
-    campaign: "jd_matcher",
-  });
-
-  const openStudioHref = addUtmParams("/studio", {
     source: "jd_matcher_page",
     medium: "internal",
     campaign: "jd_matcher",
@@ -214,6 +209,8 @@ export default function JdMatcherClient() {
 
     setJdMatchError("");
     setJdMatchLoading(true);
+    setJdMatch(null);
+    const startedAt = Date.now();
     try {
       const payload = await fetchJsonWithWakeAndRetry<JdMatchPayload>({
         apiUrl,
@@ -236,8 +233,20 @@ export default function JdMatcherClient() {
         parseError: parseApiError,
         abortErrorMessage: "JD match is taking longer than expected. Please try again.",
       });
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs < JD_MATCH_MIN_LOADING_MS) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, JD_MATCH_MIN_LOADING_MS - elapsedMs);
+        });
+      }
       setJdMatch(payload);
     } catch (error) {
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs < JD_MATCH_MIN_LOADING_MS) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, JD_MATCH_MIN_LOADING_MS - elapsedMs);
+        });
+      }
       setJdMatch(null);
       setJdMatchError(error instanceof Error ? error.message : "Unable to run JD match right now.");
     } finally {
@@ -249,7 +258,7 @@ export default function JdMatcherClient() {
     <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-6xl rounded-[2rem] border border-cyan-100/24 bg-[linear-gradient(150deg,rgba(8,28,52,0.93),rgba(5,18,34,0.96)_58%,rgba(18,46,58,0.86))] p-6 shadow-[0_26px_70px_rgba(2,8,22,0.48)] sm:p-8">
         <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/78">Dedicated Tool</p>
-        <h1 className="mt-3 text-3xl font-semibold text-cyan-50 sm:text-5xl">JD Matcher Command Center</h1>
+        <h1 className="mt-3 text-3xl font-semibold text-cyan-50 sm:text-5xl">JD Matcher</h1>
         <p className="mt-3 max-w-3xl text-sm text-cyan-50/78 sm:text-base">
           Paste a target JD, add your resume text, and get precise keyword-gap and role-fit signals.
         </p>
@@ -324,16 +333,8 @@ export default function JdMatcherClient() {
               disabled={jdMatchLoading}
               className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {jdMatchLoading ? "Matching..." : "Run JD Match"}
+              {jdMatchLoading ? "Running AI Match..." : "Run AI JD Match"}
             </button>
-            <TrackedLink
-              href={openStudioHref}
-              eventName="cta_studio_open"
-              eventParams={{ cta_location: "jd_matcher_page", cta_label: "Open AI Resume Studio" }}
-              className="rounded-xl border border-cyan-100/30 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-100/10"
-            >
-              Open AI Resume Studio
-            </TrackedLink>
           </div>
           {jdUploadedFileName && <p className="mt-2 text-xs text-cyan-100/78">Imported from: {jdUploadedFileName}</p>}
           {jdMatchError && <p className="mt-2 text-xs text-amber-100">{jdMatchError}</p>}
@@ -341,28 +342,69 @@ export default function JdMatcherClient() {
 
         <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(7,27,50,0.86),rgba(4,18,36,0.9))] p-5">
           <h2 className="text-lg font-semibold text-cyan-50">Match Result</h2>
-          {!jdMatch ? (
+          {jdMatchLoading ? (
+            <div className="mt-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/8 p-4">
+              <div className="mx-auto relative h-24 w-24">
+                <div className="absolute inset-0 rounded-full border-2 border-cyan-100/22" />
+                <div className="absolute inset-2 rounded-full border-2 border-cyan-200/45 border-t-transparent animate-spin" />
+                <div className="absolute inset-5 rounded-full border border-emerald-200/40 animate-pulse" />
+              </div>
+              <p className="mt-3 text-center text-sm font-semibold text-cyan-50">AI is evaluating role alignment...</p>
+              <div className="mt-3 space-y-2">
+                <div className="h-2 rounded-full border border-cyan-100/22 bg-cyan-100/10 overflow-hidden">
+                  <div className="h-full w-[86%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
+                </div>
+                <div className="h-2 rounded-full border border-cyan-100/22 bg-cyan-100/10 overflow-hidden">
+                  <div className="h-full w-[72%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
+                </div>
+                <div className="h-2 rounded-full border border-cyan-100/22 bg-cyan-100/10 overflow-hidden">
+                  <div className="h-full w-[92%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
+                </div>
+              </div>
+            </div>
+          ) : !jdMatch ? (
             <p className="mt-3 text-sm text-cyan-50/72">Run JD Match to see coverage score, missing keywords, and suggested bullets.</p>
           ) : (
             <>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-3 py-2 text-sm text-cyan-50">
-                  Match Score: <span className="font-semibold">{jdMatch.match_score}%</span>
-                </div>
-                <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-3 py-2 text-sm text-cyan-50">
-                  Critical Coverage: <span className="font-semibold">{jdMatch.critical_coverage}%</span>
+              <div className="mt-3 rounded-lg border border-cyan-100/20 bg-cyan-100/8 p-3">
+                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/70">AI Match Graphs</p>
+                <div className="mt-3 space-y-2.5">
+                  {[
+                    { label: "Role Match", value: jdMatch.match_score },
+                    { label: "Critical Coverage", value: jdMatch.critical_coverage },
+                    {
+                      label: "Keyword Coverage",
+                      value: Math.min(100, Math.round((jdMatch.matched_keywords.length / Math.max(1, jdMatch.jd_keyword_count)) * 100)),
+                    },
+                  ].map((metric) => (
+                    <div key={metric.label}>
+                      <div className="flex items-center justify-between text-xs text-cyan-100/80">
+                        <span>{metric.label}</span>
+                        <span>{metric.value}%</span>
+                      </div>
+                      <div className="mt-1 h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-[#061a34]">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-300 to-emerald-200 transition-all duration-700"
+                          style={{ width: `${Math.max(0, Math.min(100, metric.value))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <p className="mt-3 text-sm text-cyan-100/84">{jdMatch.alignment_summary}</p>
 
               <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Missing Keywords</p>
-                <p className="mt-2 text-sm text-cyan-50/80">{(jdMatch.missing_keywords || []).slice(0, 20).join(", ") || "None"}</p>
+                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">AI Feedback</p>
+                <p className="mt-2 text-sm text-cyan-100/84">{jdMatch.alignment_summary}</p>
+                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Matched Signals</p>
+                <p className="mt-1 text-sm text-cyan-50/78">{(jdMatch.matched_keywords || []).slice(0, 12).join(", ") || "None yet"}</p>
+                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Gap Keywords</p>
+                <p className="mt-1 text-sm text-cyan-50/78">{(jdMatch.missing_keywords || []).slice(0, 16).join(", ") || "None"}</p>
               </div>
 
               {(jdMatch.suggested_bullets || []).length > 0 && (
                 <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Suggested Bullet Upgrades</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Action Feedback</p>
                   <ul className="mt-2 space-y-1 text-sm text-cyan-50/80">
                     {(jdMatch.suggested_bullets || []).slice(0, 5).map((line, index) => (
                       <li key={`${line}-${index}`}>- {line}</li>
