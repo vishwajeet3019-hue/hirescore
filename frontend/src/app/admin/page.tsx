@@ -110,6 +110,20 @@ const apiUrl = (path: string) => {
   return `/api/admin-proxy${normalizedPath}`;
 };
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
+const DEFAULT_ADMIN_ANALYTICS: AdminAnalytics = {
+  users_total: 0,
+  signups_total: 0,
+  logins_total: 0,
+  analyses_total: 0,
+  feedback_total: 0,
+  feedback_avg_rating: 0,
+  payments_total: 0,
+  credits_sold_total: 0,
+  revenue_inr_total: 0,
+  stripe_enabled: false,
+  razorpay_enabled: false,
+  payment_gateway: "none",
+};
 
 const defaultRowEditor = (): RowEditorState => ({
   name: "",
@@ -342,7 +356,7 @@ export default function AdminPage() {
         if (analyticsResult.status === "fulfilled") {
           setAnalytics(analyticsResult.value);
         } else {
-          warnings.push("Analytics");
+          setAnalytics((prev) => prev || DEFAULT_ADMIN_ANALYTICS);
         }
         if (usersResult.status === "fulfilled" && usersResult.value) {
           setUsers(usersResult.value.users || []);
