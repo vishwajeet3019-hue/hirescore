@@ -169,10 +169,10 @@ export default function SiteHeader() {
         setShowToolsMenu(false);
       }
     };
-    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("click", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("click", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [showToolsMenu]);
@@ -187,6 +187,13 @@ export default function SiteHeader() {
       has_token: Boolean(authToken),
       analysis_count: analysisCount,
     });
+  };
+
+  const handleToolsLinkClick = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    closeToolsDropdown();
+    if (isStudioNav(href)) {
+      handleStudioNavClick(event);
+    }
   };
 
   return (
@@ -242,10 +249,10 @@ export default function SiteHeader() {
                   {link.label}
                 </button>
                 <div
-                  className={`pointer-events-none absolute left-0 top-full z-20 mt-2 min-w-[220px] rounded-xl border border-cyan-100/24 bg-[#05152a] p-2 shadow-[0_22px_55px_rgba(2,8,22,0.5)] transition-all duration-150 ${
+                  className={`absolute left-0 top-full z-20 mt-2 min-w-[220px] rounded-xl border border-cyan-100/24 bg-[#05152a] p-2 shadow-[0_22px_55px_rgba(2,8,22,0.5)] transition-all duration-150 ${
                     isToolsDropdownOpen(link)
                       ? "visible opacity-100 pointer-events-auto"
-                      : "invisible opacity-0"
+                      : "invisible opacity-0 pointer-events-none"
                   }`}
                 >
                   <div className="flex flex-col gap-1.5">
@@ -253,10 +260,7 @@ export default function SiteHeader() {
                       <Link
                         key={`${link.label}-${child.href}-${child.label}`}
                         href={child.href}
-                        onClick={isStudioNav(child.href) ? handleStudioNavClick : undefined}
-                        onClickCapture={() => {
-                          closeToolsDropdown();
-                        }}
+                        onClick={handleToolsLinkClick(child.href)}
                         className="rounded-lg border border-cyan-100/20 px-3 py-2 text-sm text-cyan-50 transition hover:bg-cyan-100/16 hover:text-cyan-100"
                       >
                         {child.label}
@@ -366,10 +370,7 @@ export default function SiteHeader() {
                 <Link
                   key={`mobile-tool-${child.label}`}
                   href={child.href}
-                  onClick={isStudioNav(child.href) ? handleStudioNavClick : undefined}
-                  onClickCapture={() => {
-                    closeToolsDropdown();
-                  }}
+                  onClick={handleToolsLinkClick(child.href)}
                   className={`rounded-lg border px-3 py-2 transition ${
                     childActive
                       ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
