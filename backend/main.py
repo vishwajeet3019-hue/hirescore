@@ -8910,6 +8910,8 @@ JSON schema (all keys required):
   "jd_relevance_score": <number 0-100>,
   "jd_relevance_verdict": "high_relevance|moderate_relevance|low_relevance|likely_mismatch",
   "detected_jd_track": "<short track name>",
+  "matched_skills": ["skill 1", "skill 2", "skill 3"],
+  "missing_skills": ["skill 1", "skill 2", "skill 3"],
   "feedback": ["feedback line 1", "feedback line 2", "feedback line 3"],
   "improvements": ["improvement 1", "improvement 2", "improvement 3"],
   "next_steps": ["next step 1", "next step 2", "next step 3"],
@@ -8949,6 +8951,7 @@ JSON schema (all keys required):
 def build_jd_match_payload(industry: str, role: str, resume_text: str, job_description: str) -> dict[str, Any]:
     jd_skills = extract_skills_from_text(job_description)
     resume_skills = extract_skills_from_text(resume_text)
+    resume_skill_set = set(resume_skills)
     jd_tokens = dedupe_preserve_order([*jd_skills, *keyword_tokens_from_text(job_description, limit=120)])[:80]
     resume_tokens = set(dedupe_preserve_order([*resume_skills, *keyword_tokens_from_text(resume_text, limit=120)]))
     if not jd_tokens:
@@ -8956,6 +8959,12 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
 
     matched = [token for token in jd_tokens if token in resume_tokens][:20]
     missing = [token for token in jd_tokens if token not in resume_tokens][:20]
+    matched_skills_base = [skill for skill in jd_skills if skill in resume_skill_set][:20]
+    missing_skills_base = [skill for skill in jd_skills if skill not in resume_skill_set][:20]
+    if not matched_skills_base:
+        matched_skills_base = matched[:20]
+    if not missing_skills_base:
+        missing_skills_base = missing[:20]
     denominator = max(1, len(jd_tokens))
     coverage = (len(matched) / denominator) * 100.0
 
@@ -8971,11 +8980,11 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     relevance = build_jd_relevance_baseline(industry, role, job_description, target_track=target_track)
 
     suggested_bullets: list[str] = []
-    for skill in missing[:5]:
+    for skill in missing_skills_base[:5]:
         suggested_bullets.append(
             f"Add one quantified bullet proving {skill} impact for {safe_text(role) or 'the target role'}."
         )
-    if not suggested_bullets and matched:
+    if not suggested_bullets and matched_skills_base:
         suggested_bullets.append("Your keyword alignment is strong. Focus on quantified outcomes and role-specific proof.")
 
     deterministic_feedback: list[str] = []
@@ -8988,8 +8997,8 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     deterministic_feedback.extend(relevance.get("reasoning") or [])
 
     deterministic_improvements: list[str] = []
-    for keyword in missing[:4]:
-        deterministic_improvements.append(f"Add role-specific proof for '{keyword}' with measurable outcomes.")
+    for missing_skill in missing_skills_base[:4]:
+        deterministic_improvements.append(f"Add role-specific proof for '{missing_skill}' with measurable outcomes.")
     if int(round(critical_coverage)) < 60:
         deterministic_improvements.append("Strengthen must-have skills from the JD before applying.")
     if not deterministic_improvements:
@@ -9003,7 +9012,7 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
         deterministic_next_steps.append(f"Upload or paste a JD specifically for {safe_text(role) or 'your target role'}.")
     deterministic_next_steps.extend(
         [
-            "Prioritize the top 3 missing JD keywords in your resume summary and latest experience bullets.",
+            "Prioritize the top 3 missing JD skills in your resume summary and latest experience bullets.",
             "Re-run JD Match after edits to validate score uplift and coverage gains.",
         ]
     )
@@ -9014,6 +9023,8 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
         "keyword_coverage": clamp(coverage),
         "matched_keywords": matched[:12],
         "missing_keywords": missing[:12],
+        "matched_skills": matched_skills_base[:12],
+        "missing_skills": missing_skills_base[:12],
         "target_track": target_track,
         "detected_jd_track": safe_text(relevance.get("detected_jd_track")),
         "jd_relevance_score": int(relevance.get("score") or 0),
@@ -9033,6 +9044,8 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     relevance_score = int(relevance.get("score") or 0)
     relevance_verdict = safe_text(relevance.get("verdict"))
     detected_jd_track = safe_text(relevance.get("detected_jd_track")) or "general"
+    matched_skills = dedupe_text_list(matched_skills_base, limit=20, max_item_len=80)
+    missing_skills = dedupe_text_list(missing_skills_base, limit=20, max_item_len=80)
     feedback = dedupe_text_list(deterministic_feedback, limit=6, max_item_len=180)
     improvements = dedupe_text_list([*deterministic_improvements, *suggested_bullets], limit=6, max_item_len=180)
     next_steps = dedupe_text_list(deterministic_next_steps, limit=5, max_item_len=180)
@@ -9067,7 +9080,11 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
         llm_improvements = normalize_string_list(llm_payload.get("improvements"), limit=6, max_item_len=180)
         llm_next_steps = normalize_string_list(llm_payload.get("next_steps"), limit=5, max_item_len=180)
         llm_reasoning = normalize_string_list(llm_payload.get("reasoning"), limit=4, max_item_len=180)
+        llm_matched_skills = normalize_string_list(llm_payload.get("matched_skills"), limit=20, max_item_len=80)
+        llm_missing_skills = normalize_string_list(llm_payload.get("missing_skills"), limit=20, max_item_len=80)
 
+        matched_skills = dedupe_text_list([*llm_matched_skills, *matched_skills], limit=20, max_item_len=80)
+        missing_skills = dedupe_text_list([*llm_missing_skills, *missing_skills], limit=20, max_item_len=80)
         feedback = dedupe_text_list([*llm_feedback, *feedback], limit=6, max_item_len=180)
         improvements = dedupe_text_list([*llm_improvements, *improvements], limit=6, max_item_len=180)
         next_steps = dedupe_text_list([*llm_next_steps, *next_steps], limit=5, max_item_len=180)
@@ -9094,7 +9111,11 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     if not improvements:
         improvements = ["Add quantified achievements tied to the most important JD requirements."]
     if not next_steps:
-        next_steps = ["Update the resume with missing role keywords and rerun JD Match."]
+        next_steps = ["Update the resume with missing role skills and rerun JD Match."]
+    if not matched_skills:
+        matched_skills = dedupe_text_list(matched[:20], limit=20, max_item_len=80)
+    if not missing_skills:
+        missing_skills = dedupe_text_list(missing[:20], limit=20, max_item_len=80)
 
     return {
         "role_track": role_track,
@@ -9102,6 +9123,8 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
         "match_percentage": final_match_score,
         "matched_keywords": matched,
         "missing_keywords": missing,
+        "matched_skills": matched_skills,
+        "missing_skills": missing_skills,
         "jd_keyword_count": len(jd_tokens),
         "resume_keyword_count": len(resume_tokens),
         "critical_coverage": int(round(critical_coverage)),

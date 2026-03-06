@@ -41,6 +41,8 @@ type JdMatchPayload = {
   role_track: string;
   match_score: number;
   match_percentage?: number;
+  matched_skills?: string[];
+  missing_skills?: string[];
   matched_keywords: string[];
   missing_keywords: string[];
   jd_keyword_count: number;
@@ -514,10 +516,14 @@ export default function JdMatcherClient() {
                     JD mismatch detected: uploaded JD appears closer to {jdMatch.jd_relevance.detected_jd_track.replace(/_/g, " ")}.
                   </p>
                 )}
-                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Matched Signals</p>
-                <p className="mt-1 text-sm text-cyan-50/78">{(jdMatch.matched_keywords || []).slice(0, 12).join(", ") || "None yet"}</p>
-                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Gap Keywords</p>
-                <p className="mt-1 text-sm text-cyan-50/78">{(jdMatch.missing_keywords || []).slice(0, 16).join(", ") || "None"}</p>
+                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Matched Skills</p>
+                <p className="mt-1 text-sm text-cyan-50/78">
+                  {(jdMatch.matched_skills || jdMatch.matched_keywords || []).slice(0, 12).join(", ") || "None yet"}
+                </p>
+                <p className="mt-3 text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Missing Skills</p>
+                <p className="mt-1 text-sm text-cyan-50/78">
+                  {(jdMatch.missing_skills || jdMatch.missing_keywords || []).slice(0, 16).join(", ") || "None"}
+                </p>
               </div>
 
               {((jdMatch.improvements || jdMatch.suggested_bullets) || []).length > 0 && (

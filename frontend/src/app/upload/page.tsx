@@ -251,6 +251,8 @@ type JdMatchPayload = {
   role_track: string;
   match_score: number;
   match_percentage?: number;
+  matched_skills?: string[];
+  missing_skills?: string[];
   matched_keywords: string[];
   missing_keywords: string[];
   jd_keyword_count: number;
@@ -2720,7 +2722,10 @@ export default function UploadPage() {
                                 <div className="mt-3 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
                                   <p className="text-xs text-cyan-50/78">{jdMatch.alignment_summary}</p>
                                   <p className="mt-2 text-xs text-cyan-100/84">
-                                    Missing keywords: {(jdMatch.missing_keywords || []).slice(0, 8).join(", ") || "None"}
+                                    Matched skills: {(jdMatch.matched_skills || jdMatch.matched_keywords || []).slice(0, 8).join(", ") || "None yet"}
+                                  </p>
+                                  <p className="mt-1 text-xs text-cyan-100/84">
+                                    Missing skills: {(jdMatch.missing_skills || jdMatch.missing_keywords || []).slice(0, 8).join(", ") || "None"}
                                   </p>
                                   {(jdMatch.feedback || []).length > 0 && (
                                     <ul className="mt-2 space-y-1 text-xs text-cyan-50/78">
