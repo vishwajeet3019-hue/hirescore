@@ -241,16 +241,14 @@ body::after {
     radial-gradient(circle at 88% 14%, rgba(121, 150, 255, 0.2), transparent 44%),
     radial-gradient(circle at 50% 100%, rgba(109, 252, 227, 0.12), transparent 44%),
     linear-gradient(150deg, rgba(6, 24, 48, 0.95) 0%, rgba(8, 20, 44, 0.94) 48%, rgba(9, 34, 58, 0.95) 100%);
-  box-shadow:
-    inset 0 0 0 1px rgba(202, 244, 255, 0.14),
-    0 34px 90px rgba(2, 8, 22, 0.64),
-    0 0 62px rgba(99, 214, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(202, 244, 255, 0.14), 0 18px 42px rgba(2, 8, 22, 0.52);
   transform: translateZ(0);
   will-change: transform, opacity;
+  contain: paint;
 }
 
 .analysis-live-shell::before {
-  content: "";
+  content: none;
   position: absolute;
   inset: -42%;
   background: conic-gradient(
@@ -261,8 +259,8 @@ body::after {
     rgba(133, 255, 226, 0.14),
     rgba(129, 239, 255, 0.1)
   );
-  filter: blur(14px);
-  animation: analysisShellSpin 22s linear infinite;
+  filter: none;
+  animation: analysisShellSpin 28s linear infinite;
   pointer-events: none;
   will-change: transform;
 }
@@ -279,7 +277,7 @@ body::after {
 }
 
 .analysis-live-stage {
-  height: 198px;
+  height: 178px;
 }
 
 .analysis-live-grid {
@@ -293,8 +291,8 @@ body::after {
     linear-gradient(to bottom, rgba(136, 221, 255, 0.12) 1px, transparent 1px);
   background-size: 18px 18px;
   transform: rotate(45deg);
-  opacity: 0.32;
-  animation: analysisGridDrift 12s ease-in-out infinite;
+  opacity: 0.2;
+  animation: none;
   pointer-events: none;
 }
 
@@ -337,9 +335,7 @@ body::after {
 }
 
 .analysis-live-wave-b {
-  width: 228px;
-  height: 228px;
-  animation: analysisWaveBurst 4.8s ease-in-out infinite 2.4s;
+  display: none;
 }
 
 .analysis-live-ring {
@@ -365,22 +361,19 @@ body::after {
 }
 
 .analysis-live-ring-inner {
-  width: 66px;
-  height: 66px;
-  border-color: rgba(143, 255, 230, 0.72);
-  animation: analysisRingSpin 4.2s linear infinite;
+  display: none;
 }
 
 .analysis-live-beam {
   position: absolute;
   width: 146px;
-  height: 16px;
+  height: 12px;
   border-radius: 999px;
   background: linear-gradient(90deg, transparent 0%, rgba(198, 245, 255, 0.95) 50%, transparent 100%);
   opacity: 0;
   animation: analysisBeamSweep 4.4s ease-in-out infinite;
   pointer-events: none;
-  filter: blur(1px);
+  filter: none;
 }
 
 .analysis-live-orbit {
@@ -400,11 +393,11 @@ body::after {
 }
 
 .analysis-live-orbit-b {
-  animation: analysisOrbitB 5.2s linear infinite;
+  display: none;
 }
 
 .analysis-live-orbit-c {
-  animation: analysisOrbitC 6.2s linear infinite;
+  display: none;
 }
 
 .analysis-live-core {
@@ -413,13 +406,11 @@ body::after {
   border-radius: 999px;
   border: 1px solid rgba(171, 242, 255, 0.6);
   background: radial-gradient(circle, rgba(24, 55, 86, 0.96) 0%, rgba(11, 29, 54, 0.95) 100%);
-  box-shadow:
-    0 0 0 1px rgba(195, 246, 255, 0.12),
-    0 0 22px rgba(127, 228, 255, 0.3);
+  box-shadow: 0 0 0 1px rgba(195, 246, 255, 0.12), 0 0 12px rgba(127, 228, 255, 0.22);
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: analysisCorePulse 2.4s ease-in-out infinite;
+  animation: analysisCorePulse 2.9s ease-in-out infinite;
 }
 
 .analysis-live-core-value {
@@ -435,9 +426,7 @@ body::after {
 }
 
 .analysis-live-step-active {
-  box-shadow:
-    inset 0 0 0 1px rgba(181, 238, 255, 0.2),
-    0 0 22px rgba(95, 202, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(181, 238, 255, 0.16), 0 0 12px rgba(95, 202, 255, 0.16);
 }
 
 .analysis-orbit-card {
@@ -493,16 +482,14 @@ body::after {
     radial-gradient(circle at 88% 14%, rgba(255, 121, 218, 0.2), transparent 42%),
     radial-gradient(circle at 50% 92%, rgba(255, 212, 124, 0.17), transparent 44%),
     linear-gradient(154deg, rgba(9, 20, 42, 0.96) 0%, rgba(22, 13, 46, 0.95) 52%, rgba(17, 22, 45, 0.96) 100%);
-  box-shadow:
-    inset 0 0 0 1px rgba(200, 246, 255, 0.16),
-    0 30px 64px rgba(3, 6, 20, 0.58),
-    0 0 46px rgba(123, 203, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(200, 246, 255, 0.16), 0 18px 40px rgba(3, 6, 20, 0.5);
   transform: translateZ(0);
   will-change: transform, opacity;
+  contain: paint;
 }
 
 .auth-live-shell::before {
-  content: "";
+  content: none;
   position: absolute;
   inset: -40%;
   background: conic-gradient(
@@ -512,8 +499,8 @@ body::after {
     rgba(255, 220, 137, 0.1),
     rgba(123, 236, 255, 0.12)
   );
-  filter: blur(14px);
-  animation: authShellSpin 22s linear infinite;
+  filter: none;
+  animation: authShellSpin 28s linear infinite;
   transform: translateZ(0);
   will-change: transform;
   pointer-events: none;
@@ -547,7 +534,7 @@ body::after {
   width: 150px;
   height: 150px;
   background: radial-gradient(circle, rgba(118, 240, 255, 0.2) 0%, rgba(255, 125, 217, 0.1) 45%, transparent 72%);
-  filter: blur(2px);
+  filter: none;
   animation: authHaloBreathe 6.2s ease-in-out infinite;
 }
 
@@ -581,10 +568,7 @@ body::after {
 }
 
 .auth-live-orb-inner {
-  width: 54px;
-  height: 54px;
-  border-color: rgba(255, 214, 132, 0.74);
-  animation: authOrbitInner 4.2s linear infinite;
+  display: none;
 }
 
 .auth-live-arc {
@@ -607,12 +591,7 @@ body::after {
 }
 
 .auth-live-arc-b {
-  width: 78px;
-  height: 78px;
-  border-width: 3px;
-  border-left-color: rgba(255, 126, 218, 0.78);
-  border-bottom-color: rgba(255, 214, 132, 0.66);
-  animation: authArcSpinB 5.2s linear infinite;
+  display: none;
 }
 
 .auth-live-spark {
@@ -632,11 +611,11 @@ body::after {
 }
 
 .auth-live-spark-b {
-  animation: authSparkOrbitB 5.6s linear infinite;
+  display: none;
 }
 
 .auth-live-spark-c {
-  animation: authSparkOrbitC 6.4s linear infinite;
+  display: none;
 }
 
 .auth-live-core-dot {
@@ -644,12 +623,10 @@ body::after {
   height: 14px;
   border-radius: 999px;
   background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(136, 246, 255, 1) 38%, rgba(255, 139, 223, 0.96) 72%, rgba(255, 213, 130, 0.95) 100%);
-  box-shadow:
-    0 0 18px rgba(160, 244, 255, 0.8),
-    0 0 34px rgba(255, 132, 221, 0.58);
+  box-shadow: 0 0 12px rgba(160, 244, 255, 0.64), 0 0 20px rgba(255, 132, 221, 0.4);
   transform: translateZ(0);
   will-change: transform, opacity;
-  animation: authCorePulse 2.4s ease-in-out infinite;
+  animation: authCorePulse 2.9s ease-in-out infinite;
 }
 
 @media (max-width: 1024px), (hover: none), (pointer: coarse) {
@@ -885,13 +862,10 @@ body.performance-lite .auth-live-shell {
 
 @keyframes analysisShellSpin {
   0% {
-    transform: rotate(0deg) scale(1);
-  }
-  50% {
-    transform: rotate(180deg) scale(1.06);
+    transform: rotate(0deg);
   }
   100% {
-    transform: rotate(360deg) scale(1);
+    transform: rotate(360deg);
   }
 }
 
@@ -1009,22 +983,19 @@ body.performance-lite .auth-live-shell {
 @keyframes analysisCorePulse {
   0%,
   100% {
-    transform: scale(0.9);
+    transform: scale(0.96);
   }
   50% {
-    transform: scale(1.12);
+    transform: scale(1.04);
   }
 }
 
 @keyframes authShellSpin {
   0% {
-    transform: rotate(0deg) scale(1);
-  }
-  50% {
-    transform: rotate(180deg) scale(1.05);
+    transform: rotate(0deg);
   }
   100% {
-    transform: rotate(360deg) scale(1);
+    transform: rotate(360deg);
   }
 }
 
@@ -1168,10 +1139,10 @@ body.performance-lite .auth-live-shell {
 @keyframes authCorePulse {
   0%,
   100% {
-    transform: scale(0.84);
+    transform: scale(0.92);
   }
   50% {
-    transform: scale(1.22);
+    transform: scale(1.08);
   }
 }
 

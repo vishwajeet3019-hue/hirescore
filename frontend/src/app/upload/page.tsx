@@ -533,21 +533,22 @@ export default function UploadPage() {
     const startedAt = performance.now();
     const totalSteps = ANALYSIS_LOADING_STEPS.length;
     const stepDuration = MIN_ANALYSIS_LOADING_MS / totalSteps;
-    let frameId = 0;
+    let intervalId = 0;
 
     const tick = () => {
       const elapsed = performance.now() - startedAt;
       const cappedElapsed = Math.min(elapsed, MIN_ANALYSIS_LOADING_MS);
       const progress = 12 + (cappedElapsed / MIN_ANALYSIS_LOADING_MS) * 82;
       const stepIndex = Math.min(totalSteps - 1, Math.floor(cappedElapsed / stepDuration));
-      setLoadingProgress(Math.round(progress));
-      setLoadingStepIndex(stepIndex);
-      frameId = window.requestAnimationFrame(tick);
+      const roundedProgress = Math.round(progress);
+      setLoadingProgress((previous) => (previous === roundedProgress ? previous : roundedProgress));
+      setLoadingStepIndex((previous) => (previous === stepIndex ? previous : stepIndex));
     };
 
-    frameId = window.requestAnimationFrame(tick);
+    tick();
+    intervalId = window.setInterval(tick, 96);
 
-    return () => window.cancelAnimationFrame(frameId);
+    return () => window.clearInterval(intervalId);
   }, [loading]);
 
   useEffect(() => {
@@ -718,17 +719,18 @@ export default function UploadPage() {
 
     const totalSteps = AUTH_LIVE_LOADING_STEPS.length;
     const stepDuration = MIN_AUTH_LIVE_LOADING_MS / totalSteps;
-    let frameId = 0;
+    let intervalId = 0;
     const tick = () => {
       const elapsed = performance.now() - startedAt;
       const cappedElapsed = Math.min(elapsed, MIN_AUTH_LIVE_LOADING_MS);
       const progress = 10 + (cappedElapsed / MIN_AUTH_LIVE_LOADING_MS) * 85;
       const stepIndex = Math.min(totalSteps - 1, Math.floor(cappedElapsed / stepDuration));
-      setAuthLiveProgress(Math.round(progress));
-      setAuthLiveStepIndex(stepIndex);
-      frameId = window.requestAnimationFrame(tick);
+      const roundedProgress = Math.round(progress);
+      setAuthLiveProgress((previous) => (previous === roundedProgress ? previous : roundedProgress));
+      setAuthLiveStepIndex((previous) => (previous === stepIndex ? previous : stepIndex));
     };
-    frameId = window.requestAnimationFrame(tick);
+    tick();
+    intervalId = window.setInterval(tick, 96);
 
     try {
       return await task();
@@ -740,7 +742,7 @@ export default function UploadPage() {
           window.setTimeout(() => resolve(), waitMs);
         });
       }
-      window.cancelAnimationFrame(frameId);
+      window.clearInterval(intervalId);
       setAuthLiveProgress(100);
       await new Promise<void>((resolve) => {
         window.setTimeout(() => resolve(), 220);
@@ -2339,7 +2341,7 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[320] flex items-center justify-center bg-[#030412]/58 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[320] flex items-center justify-center bg-[#02040f]/78 px-4"
           >
             <div className="auth-live-shell w-full max-w-md rounded-[1.8rem] p-6 sm:p-7">
               <div className="auth-live-stage relative flex items-center justify-center">
@@ -2361,7 +2363,7 @@ export default function UploadPage() {
 
               <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/40 bg-cyan-100/10">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-fuchsia-200 to-amber-200 transition-[width] duration-150 ease-linear"
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-fuchsia-200 to-amber-200 transition-[width] duration-280 ease-out"
                   style={{ width: `${authLiveProgress}%` }}
                 />
               </div>
@@ -2375,7 +2377,7 @@ export default function UploadPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-[#010716]/86 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-[#010613]/88 px-4"
           >
             <div className="analysis-live-shell w-full max-w-3xl rounded-[2rem] p-6 sm:p-8">
               <div className="analysis-live-stage relative flex items-center justify-center">
@@ -2401,7 +2403,7 @@ export default function UploadPage() {
 
                 <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/24 bg-cyan-100/8">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200 transition-[width] duration-150 ease-linear"
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200 transition-[width] duration-280 ease-out"
                     style={{ width: `${loadingProgress}%` }}
                   />
                 </div>
@@ -2414,15 +2416,14 @@ export default function UploadPage() {
                   {ANALYSIS_LOADING_STEPS.map((step, index) => {
                     const active = index === loadingStepIndex;
                     return (
-                      <motion.div
+                      <div
                         key={step}
-                        animate={{ opacity: active ? 1 : 0.56, scale: active ? 1.01 : 1 }}
                         className={`analysis-live-step rounded-xl border px-3 py-2.5 text-sm ${
                           active ? "analysis-live-step-active border-cyan-100/52 bg-cyan-200/18 text-cyan-50" : "border-cyan-100/16 bg-cyan-100/5 text-cyan-50/72"
                         }`}
                       >
                         {step}
-                      </motion.div>
+                      </div>
                     );
                   })}
                 </div>
