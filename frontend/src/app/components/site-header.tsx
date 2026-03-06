@@ -35,8 +35,8 @@ const baseNavLinks: NavLink[] = [
     href: "/tools",
     label: "Tools",
     children: [
-      { href: "/upload", label: "Analysis" },
-      { href: "/studio", label: "AI Resume Studio" },
+      { href: "/analysis", label: "Analysis" },
+      { href: "/ai-resume-studio", label: "AI Resume Studio" },
       { href: "/jd-matcher", label: "JD Matcher" },
     ],
   },
@@ -68,6 +68,7 @@ export default function SiteHeader() {
   const [showStudioLockModal, setShowStudioLockModal] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
+  const mobileToolsPanelRef = useRef<HTMLDivElement | null>(null);
   const portalReady = typeof window !== "undefined";
   const navLinks = useMemo(
     () => (authToken ? baseNavLinks.filter((link) => link.href !== "/resources") : baseNavLinks),
@@ -80,7 +81,7 @@ export default function SiteHeader() {
   });
   const isToolsActive = (link: NavLink) =>
     link.children?.some((child) => isLinkActive(pathname, hash, child)) || false;
-  const isStudioNav = (href: string) => href === "/studio";
+  const isStudioNav = (href: string) => href === "/studio" || href === "/ai-resume-studio";
   const toolsNavLinks = navLinks.find((link) => link.children?.length)?.children || [];
   const isToolsDropdownOpen = (link: NavLink) => (link.children ? showToolsMenu : false);
 
@@ -157,7 +158,9 @@ export default function SiteHeader() {
     const closeOnOutsideClick = (event: Event) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (toolsMenuRef.current && !toolsMenuRef.current.contains(target)) {
+      const clickedInsideDesktopTools = Boolean(toolsMenuRef.current && toolsMenuRef.current.contains(target));
+      const clickedInsideMobileTools = Boolean(mobileToolsPanelRef.current && mobileToolsPanelRef.current.contains(target));
+      if (!clickedInsideDesktopTools && !clickedInsideMobileTools) {
         setShowToolsMenu(false);
       }
     };
@@ -356,7 +359,7 @@ export default function SiteHeader() {
           )}
         </nav>
         {showToolsMenu && toolsNavLinks.length > 0 && (
-          <div className="mx-auto mt-2 grid w-full max-w-7xl gap-1.5 sm:grid-cols-3">
+          <div ref={mobileToolsPanelRef} className="mx-auto mt-2 grid w-full max-w-7xl gap-1.5 sm:grid-cols-3">
             {toolsNavLinks.map((child) => {
               const childActive = isLinkActive(pathname, hash, child);
               return (
