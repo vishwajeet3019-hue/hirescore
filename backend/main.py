@@ -287,6 +287,7 @@ if configured_simulator_tts_models:
 else:
     INTERVIEW_SIMULATOR_TTS_FALLBACK_MODELS = [model for model in ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"] if model != INTERVIEW_SIMULATOR_TTS_MODEL]
 INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE = (os.getenv("INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE") or "alloy").strip().lower() or "alloy"
+INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE = (os.getenv("INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE") or "verse").strip().lower() or "verse"
 INTERVIEW_SIMULATOR_TTS_RESPONSE_FORMAT = (os.getenv("INTERVIEW_SIMULATOR_TTS_RESPONSE_FORMAT") or "mp3").strip().lower() or "mp3"
 INTERVIEW_SIMULATOR_TTS_MAX_CHARS = max(
     120,
@@ -8568,6 +8569,8 @@ Output JSON schema:
             session_payload["id"] = session_id
         INTERVIEW_SIMULATOR_SESSIONS[session_id] = session_payload
 
+    queue_interview_simulator_tts_prefetch(session_id, opening_question, requested_voice=INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE)
+
     log_analytics_event(
         "interview",
         "interview_simulator_started",
@@ -8770,6 +8773,13 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             refreshed["questions"] = refreshed_questions
         refreshed["updated_at"] = now_utc_iso()
         refreshed["expires_at_ts"] = time.time() + INTERVIEW_SIMULATOR_TTL_SECONDS
+
+    if next_question:
+        queue_interview_simulator_tts_prefetch(
+            session_id,
+            next_question,
+            requested_voice=INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE,
+        )
 
     if completed and report_payload:
         log_analytics_event(
@@ -11576,6 +11586,84 @@ def cleanup_interview_simulator_tts_cache(cache: dict[str, Any], now_ts: float) 
     sortable.sort(key=lambda item: item[1], reverse=True)
     for key, _ in sortable[INTERVIEW_SIMULATOR_TTS_CACHE_MAX_ITEMS :]:
         cache.pop(key, None)
+
+
+def queue_interview_simulator_tts_prefetch(session_id: str, question_text: str, requested_voice: str | None = None) -> None:
+    if not INTERVIEW_SIMULATOR_TTS_ENABLED:
+        return
+    normalized_session_id = re.sub(r"[^A-Za-z0-9]", "", safe_text(session_id))[:32]
+    if len(normalized_session_id) < 8:
+        return
+    script_text = build_interview_simulator_tts_script(question_text)
+    if len(script_text) < 8:
+        return
+    preferred_voice = normalize_interview_simulator_tts_voice(
+        requested_voice or INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE or INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE
+    )
+    cache_key = build_interview_simulator_tts_cache_key(script_text, preferred_voice)
+    now_ts = time.time()
+
+    with INTERVIEW_SIMULATOR_LOCK:
+        session_payload = INTERVIEW_SIMULATOR_SESSIONS.get(normalized_session_id)
+        if not session_payload:
+            return
+        tts_cache = session_payload.get("tts_cache") if isinstance(session_payload.get("tts_cache"), dict) else {}
+        if not isinstance(session_payload.get("tts_cache"), dict):
+            session_payload["tts_cache"] = tts_cache
+        cleanup_interview_simulator_tts_cache(tts_cache, now_ts)
+        cache_entry = tts_cache.get(cache_key)
+        if isinstance(cache_entry, dict) and isinstance(cache_entry.get("audio"), (bytes, bytearray)):
+            return
+
+        inflight = session_payload.get("tts_prefetch_inflight")
+        if isinstance(inflight, set):
+            inflight_keys = inflight
+        elif isinstance(inflight, (list, tuple)):
+            inflight_keys = {safe_text(item) for item in inflight if safe_text(item)}
+            session_payload["tts_prefetch_inflight"] = inflight_keys
+        else:
+            inflight_keys = set()
+            session_payload["tts_prefetch_inflight"] = inflight_keys
+        if cache_key in inflight_keys:
+            return
+        inflight_keys.add(cache_key)
+
+    def _worker() -> None:
+        audio_bytes, model, _, resolved_voice = generate_interview_simulator_tts_audio(script_text, preferred_voice)
+        with INTERVIEW_SIMULATOR_LOCK:
+            session_payload = INTERVIEW_SIMULATOR_SESSIONS.get(normalized_session_id)
+            if not session_payload:
+                return
+            inflight = session_payload.get("tts_prefetch_inflight")
+            if isinstance(inflight, set):
+                inflight.discard(cache_key)
+            elif isinstance(inflight, list):
+                session_payload["tts_prefetch_inflight"] = [item for item in inflight if safe_text(item) != cache_key]
+
+            if not audio_bytes:
+                return
+            tts_cache = session_payload.get("tts_cache") if isinstance(session_payload.get("tts_cache"), dict) else {}
+            if not isinstance(session_payload.get("tts_cache"), dict):
+                session_payload["tts_cache"] = tts_cache
+            cleanup_interview_simulator_tts_cache(tts_cache, time.time())
+            tts_cache[cache_key] = {
+                "audio": audio_bytes,
+                "model": safe_text(model),
+                "voice": resolved_voice,
+                "created_at_ts": time.time(),
+            }
+            cleanup_interview_simulator_tts_cache(tts_cache, time.time())
+
+    try:
+        ASYNC_JOB_EXECUTOR.submit(_worker)
+    except Exception:
+        with INTERVIEW_SIMULATOR_LOCK:
+            session_payload = INTERVIEW_SIMULATOR_SESSIONS.get(normalized_session_id)
+            if not session_payload:
+                return
+            inflight = session_payload.get("tts_prefetch_inflight")
+            if isinstance(inflight, set):
+                inflight.discard(cache_key)
 
 
 def collect_interview_simulator_focus_skills(role: str, industry: str, resume_text: str, job_description: str) -> list[str]:
