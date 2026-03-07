@@ -32,6 +32,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     {
+      url: `${SITE_URL}/instant-fit`,
+      lastModified: now,
+      changeFrequency: "daily",
+      priority: 0.92,
+    },
+    {
       url: `${SITE_URL}/studio`,
       lastModified: now,
       changeFrequency: "weekly",
@@ -50,10 +56,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
+      url: `${SITE_URL}/application-copilot`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.85,
+    },
+    {
       url: `${SITE_URL}/interview-copilot`,
       lastModified: now,
       changeFrequency: "weekly",
       priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/interview-simulator`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.84,
     },
     {
       url: `${SITE_URL}/case-studies`,

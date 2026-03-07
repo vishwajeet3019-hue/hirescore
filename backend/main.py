@@ -265,6 +265,59 @@ AUTH_DB_LOCK = threading.Lock()
 ASYNC_JOB_LOCK = threading.Lock()
 ASYNC_JOB_STORE: dict[str, dict[str, Any]] = {}
 ASYNC_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=ASYNC_JOB_WORKERS)
+INTERVIEW_SIMULATOR_LOCK = threading.Lock()
+INTERVIEW_SIMULATOR_SESSIONS: dict[str, dict[str, Any]] = {}
+INTERVIEW_SIMULATOR_TTL_SECONDS = max(
+    30 * 60, min(48 * 60 * 60, int((os.getenv("INTERVIEW_SIMULATOR_TTL_SECONDS") or "21600").strip()))
+)
+INTERVIEW_SIMULATOR_MIN_ROUNDS = 3
+INTERVIEW_SIMULATOR_MAX_ROUNDS = 8
+try:
+    INTERVIEW_SIMULATOR_LLM_BLEND = float((os.getenv("INTERVIEW_SIMULATOR_LLM_BLEND") or "0.34").strip())
+except Exception:
+    INTERVIEW_SIMULATOR_LLM_BLEND = 0.34
+INTERVIEW_SIMULATOR_LLM_BLEND = max(0.08, min(0.65, INTERVIEW_SIMULATOR_LLM_BLEND))
+INTERVIEW_SIMULATOR_TTS_ENABLED = env_flag("INTERVIEW_SIMULATOR_TTS_ENABLED", True)
+INTERVIEW_SIMULATOR_TTS_MODEL = (os.getenv("INTERVIEW_SIMULATOR_TTS_MODEL") or "gpt-4o-mini-tts").strip()
+configured_simulator_tts_models = [
+    model.strip() for model in (os.getenv("INTERVIEW_SIMULATOR_TTS_FALLBACK_MODELS") or "").split(",") if model.strip()
+]
+if configured_simulator_tts_models:
+    INTERVIEW_SIMULATOR_TTS_FALLBACK_MODELS = configured_simulator_tts_models
+else:
+    INTERVIEW_SIMULATOR_TTS_FALLBACK_MODELS = [model for model in ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"] if model != INTERVIEW_SIMULATOR_TTS_MODEL]
+INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE = (os.getenv("INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE") or "alloy").strip().lower() or "alloy"
+INTERVIEW_SIMULATOR_TTS_RESPONSE_FORMAT = (os.getenv("INTERVIEW_SIMULATOR_TTS_RESPONSE_FORMAT") or "mp3").strip().lower() or "mp3"
+INTERVIEW_SIMULATOR_TTS_MAX_CHARS = max(
+    120,
+    min(1600, int((os.getenv("INTERVIEW_SIMULATOR_TTS_MAX_CHARS") or "520").strip())),
+)
+INTERVIEW_SIMULATOR_TTS_CACHE_TTL_SECONDS = max(
+    60,
+    min(24 * 60 * 60, int((os.getenv("INTERVIEW_SIMULATOR_TTS_CACHE_TTL_SECONDS") or "14400").strip())),
+)
+INTERVIEW_SIMULATOR_TTS_CACHE_MAX_ITEMS = max(
+    1,
+    min(16, int((os.getenv("INTERVIEW_SIMULATOR_TTS_CACHE_MAX_ITEMS") or "6").strip())),
+)
+PUBLIC_INSTANT_LOCK = threading.Lock()
+PUBLIC_INSTANT_REQUEST_STATE: dict[str, dict[str, Any]] = {}
+PUBLIC_INSTANT_RESULT_STORE: dict[str, dict[str, Any]] = {}
+PUBLIC_INSTANT_SHARE_STORE: dict[str, dict[str, Any]] = {}
+PUBLIC_INSTANT_FILE_MAX_BYTES = 12 * 1024 * 1024
+PUBLIC_INSTANT_MAX_TEXT_CHARS = max(5000, min(30000, int((os.getenv("PUBLIC_INSTANT_MAX_TEXT_CHARS") or "18000").strip())))
+PUBLIC_INSTANT_REQUEST_WINDOW_SECONDS = max(
+    600, min(24 * 60 * 60, int((os.getenv("PUBLIC_INSTANT_REQUEST_WINDOW_SECONDS") or "3600").strip()))
+)
+PUBLIC_INSTANT_REQUEST_LIMIT = max(1, min(80, int((os.getenv("PUBLIC_INSTANT_REQUEST_LIMIT") or "8").strip())))
+PUBLIC_INSTANT_UPLOAD_LIMIT = max(1, min(120, int((os.getenv("PUBLIC_INSTANT_UPLOAD_LIMIT") or "12").strip())))
+PUBLIC_INSTANT_RESULT_TTL_SECONDS = max(
+    15 * 60, min(14 * 24 * 60 * 60, int((os.getenv("PUBLIC_INSTANT_RESULT_TTL_SECONDS") or "172800").strip()))
+)
+PUBLIC_INSTANT_SHARE_TTL_SECONDS = max(
+    60 * 60, min(120 * 24 * 60 * 60, int((os.getenv("PUBLIC_INSTANT_SHARE_TTL_SECONDS") or "1209600").strip()))
+)
+APPLICATION_COPILOT_TRACK_STATUSES = {"saved", "applied", "interview", "offer", "rejected"}
 
 
 class AuthRequest(BaseModel):
@@ -443,6 +496,19 @@ class JobDescriptionMatchRequest(BaseModel):
     auth_token: str | None = None
 
 
+class PublicInstantFitCheckRequest(BaseModel):
+    industry: str | None = None
+    role: str | None = None
+    resume_text: str
+    job_description: str
+    session_id: str | None = None
+
+
+class PublicInstantFitShareRequest(BaseModel):
+    result_id: str
+    session_id: str | None = None
+
+
 class InterviewPrepRequest(BaseModel):
     industry: str
     role: str
@@ -451,11 +517,66 @@ class InterviewPrepRequest(BaseModel):
     auth_token: str | None = None
 
 
+class InterviewSimulatorStartRequest(BaseModel):
+    industry: str
+    role: str
+    job_description: str | None = None
+    resume_text: str | None = None
+    difficulty: str | None = None
+    rounds: int | None = None
+    auth_token: str | None = None
+
+
+class InterviewSimulatorTurnRequest(BaseModel):
+    session_id: str
+    answer_text: str
+    response_time_seconds: int | None = None
+    session_secret: str | None = None
+    auth_token: str | None = None
+
+
+class InterviewSimulatorReportRequest(BaseModel):
+    session_id: str
+    session_secret: str | None = None
+    auth_token: str | None = None
+
+
+class InterviewSimulatorTtsRequest(BaseModel):
+    session_id: str
+    session_secret: str | None = None
+    text: str | None = None
+    voice: str | None = None
+    auth_token: str | None = None
+
+
 class ApplicationPackRequest(BaseModel):
     industry: str
     role: str
     resume_text: str
     job_description: str | None = None
+    auth_token: str | None = None
+
+
+class ApplicationCopilotRequest(BaseModel):
+    industry: str
+    role: str
+    resume_text: str
+    job_description: str
+    company: str | None = None
+    auth_token: str | None = None
+
+
+class ApplicationCopilotTrackCreateRequest(BaseModel):
+    role: str
+    industry: str | None = None
+    company: str | None = None
+    status: str | None = None
+    copilot_payload: dict[str, Any] | None = None
+    auth_token: str | None = None
+
+
+class ApplicationCopilotTrackStatusRequest(BaseModel):
+    status: str
     auth_token: str | None = None
 
 
@@ -1924,6 +2045,26 @@ def init_auth_db() -> None:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS application_job_tracks (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL REFERENCES users (id),
+                        role TEXT NOT NULL,
+                        industry TEXT,
+                        company TEXT,
+                        status TEXT NOT NULL DEFAULT 'saved',
+                        match_percentage INTEGER NOT NULL DEFAULT 0,
+                        matched_skills_json TEXT NOT NULL DEFAULT '[]',
+                        missing_skills_json TEXT NOT NULL DEFAULT '[]',
+                        feedback_json TEXT NOT NULL DEFAULT '[]',
+                        next_steps_json TEXT NOT NULL DEFAULT '[]',
+                        payload_json TEXT NOT NULL DEFAULT '{}',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS analysis_semantic_cache (
                         id BIGSERIAL PRIMARY KEY,
                         cache_key TEXT NOT NULL UNIQUE,
@@ -2119,6 +2260,27 @@ def init_auth_db() -> None:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS application_job_tracks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        role TEXT NOT NULL,
+                        industry TEXT,
+                        company TEXT,
+                        status TEXT NOT NULL DEFAULT 'saved',
+                        match_percentage INTEGER NOT NULL DEFAULT 0,
+                        matched_skills_json TEXT NOT NULL DEFAULT '[]',
+                        missing_skills_json TEXT NOT NULL DEFAULT '[]',
+                        feedback_json TEXT NOT NULL DEFAULT '[]',
+                        next_steps_json TEXT NOT NULL DEFAULT '[]',
+                        payload_json TEXT NOT NULL DEFAULT '{}',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS analysis_semantic_cache (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         cache_key TEXT NOT NULL UNIQUE,
@@ -2177,6 +2339,7 @@ def init_auth_db() -> None:
             cursor.execute("DROP INDEX IF EXISTS idx_goal_roadmap_user_unique")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_roadmap_user_time ON user_goal_roadmaps (user_id, updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_roadmap_updated ON user_goal_roadmaps (updated_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_job_tracks_user_time ON application_job_tracks (user_id, updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_semantic_cache_updated ON analysis_semantic_cache (updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_learning_memory_track_time ON analysis_learning_memory (role_track, updated_at)")
             connection.commit()
@@ -3094,6 +3257,13 @@ def require_authenticated_user(request: Request, explicit_auth_token: str | None
     return user
 
 
+def resolve_optional_authenticated_user(request: Request, explicit_auth_token: str | None = None) -> sqlite3.Row | None:
+    try:
+        return require_authenticated_user(request, explicit_auth_token)
+    except HTTPException:
+        return None
+
+
 def credit_error(user_row: sqlite3.Row, message: str, status_code: int = 402) -> HTTPException:
     return HTTPException(
         status_code=status_code,
@@ -3351,6 +3521,136 @@ def normalize_plan(plan: str | None) -> str:
 def normalize_session_id(session_id: str | None) -> str:
     token = safe_text(session_id)
     return token or "anonymous"
+
+
+def request_source_ip(request: Request) -> str:
+    forwarded_for = safe_text(request.headers.get("x-forwarded-for"))
+    if forwarded_for:
+        first_ip = safe_text(forwarded_for.split(",")[0]).strip()
+        if first_ip:
+            return first_ip[:80]
+    x_real_ip = safe_text(request.headers.get("x-real-ip"))
+    if x_real_ip:
+        return x_real_ip[:80]
+    if request.client and request.client.host:
+        return safe_text(request.client.host)[:80] or "unknown"
+    return "unknown"
+
+
+def public_instant_client_key(request: Request, session_id: str | None = None) -> str:
+    source_ip = request_source_ip(request)
+    session_key = normalize_session_id(session_id)[:120]
+    user_agent = safe_text(request.headers.get("user-agent"))[:160]
+    fingerprint = f"{source_ip}|{session_key}|{user_agent}"
+    return hashlib.sha256(fingerprint.encode("utf-8", errors="ignore")).hexdigest()[:36]
+
+
+def cleanup_public_instant_stores(now_ts: float) -> None:
+    request_expiry = now_ts - max(PUBLIC_INSTANT_REQUEST_WINDOW_SECONDS * 4, 4 * 60 * 60)
+    result_expiry = now_ts - PUBLIC_INSTANT_RESULT_TTL_SECONDS
+    share_expiry = now_ts - PUBLIC_INSTANT_SHARE_TTL_SECONDS
+
+    stale_request_keys = [key for key, value in PUBLIC_INSTANT_REQUEST_STATE.items() if float(value.get("last_seen") or 0) < request_expiry]
+    for key in stale_request_keys:
+        PUBLIC_INSTANT_REQUEST_STATE.pop(key, None)
+
+    stale_result_keys = [key for key, value in PUBLIC_INSTANT_RESULT_STORE.items() if float(value.get("created_at_ts") or 0) < result_expiry]
+    for key in stale_result_keys:
+        PUBLIC_INSTANT_RESULT_STORE.pop(key, None)
+
+    stale_share_keys = [key for key, value in PUBLIC_INSTANT_SHARE_STORE.items() if float(value.get("created_at_ts") or 0) < share_expiry]
+    for key in stale_share_keys:
+        PUBLIC_INSTANT_SHARE_STORE.pop(key, None)
+
+
+def consume_public_instant_quota(request: Request, session_id: str | None, action: str) -> tuple[str, int, int]:
+    if action not in {"analyze", "extract"}:
+        raise HTTPException(status_code=400, detail="Invalid public action.")
+
+    action_limit = PUBLIC_INSTANT_REQUEST_LIMIT if action == "analyze" else PUBLIC_INSTANT_UPLOAD_LIMIT
+    action_key = f"{action}:{public_instant_client_key(request, session_id)}"
+    now_ts = time.time()
+
+    with PUBLIC_INSTANT_LOCK:
+        cleanup_public_instant_stores(now_ts)
+        usage_state = PUBLIC_INSTANT_REQUEST_STATE.get(action_key)
+        if not usage_state or now_ts - float(usage_state.get("window_started") or 0) >= PUBLIC_INSTANT_REQUEST_WINDOW_SECONDS:
+            usage_state = {
+                "window_started": now_ts,
+                "count": 0,
+                "last_seen": now_ts,
+            }
+        current_count = int(usage_state.get("count") or 0)
+        if current_count >= action_limit:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "Too many requests right now. "
+                    f"You can run up to {action_limit} public {action} request(s) every "
+                    f"{max(1, int(PUBLIC_INSTANT_REQUEST_WINDOW_SECONDS / 60))} minutes."
+                ),
+            )
+
+        updated_count = current_count + 1
+        usage_state["count"] = updated_count
+        usage_state["last_seen"] = now_ts
+        PUBLIC_INSTANT_REQUEST_STATE[action_key] = usage_state
+
+    remaining = max(0, action_limit - updated_count)
+    return action_key, updated_count, remaining
+
+
+def build_public_instant_fit_result(payload: dict[str, Any], role: str, industry: str) -> dict[str, Any]:
+    raw_match = float(payload.get("match_percentage") or payload.get("match_score") or 0.0)
+    match_percentage = int(round(clamp_float(raw_match, 0.0, 100.0)))
+    matched_skills = dedupe_text_list(payload.get("matched_skills") or payload.get("matched_keywords") or [], limit=14, max_item_len=90)
+    missing_skills = dedupe_text_list(payload.get("missing_skills") or payload.get("missing_keywords") or [], limit=16, max_item_len=90)
+    feedback = dedupe_text_list(payload.get("feedback") or [payload.get("alignment_summary")], limit=5, max_item_len=200)
+    improvements = dedupe_text_list(payload.get("improvements") or payload.get("suggested_bullets") or [], limit=5, max_item_len=200)
+    next_steps = dedupe_text_list(payload.get("next_steps") or [], limit=4, max_item_len=200)
+    skill_breakdown = payload.get("skill_breakdown") if isinstance(payload.get("skill_breakdown"), dict) else {}
+    jd_relevance = payload.get("jd_relevance") if isinstance(payload.get("jd_relevance"), dict) else {}
+    ai_meta = jd_relevance.get("ai") if isinstance(jd_relevance.get("ai"), dict) else {}
+
+    metrics = {
+        "match_percentage": match_percentage,
+        "jd_relevance": int(clamp_float(float(jd_relevance.get("score") or 0), 0.0, 100.0)),
+        "must_have_coverage": int(clamp_float(float(skill_breakdown.get("must_have_coverage") or 0), 0.0, 100.0)),
+        "good_to_have_coverage": int(clamp_float(float(skill_breakdown.get("good_to_have_coverage") or 0), 0.0, 100.0)),
+        "critical_coverage": int(clamp_float(float(payload.get("critical_coverage") or 0), 0.0, 100.0)),
+    }
+
+    return {
+        "role": safe_text(role) or "Target role",
+        "industry": safe_text(industry) or "General",
+        "match_percentage": metrics["match_percentage"],
+        "alignment_summary": safe_text(payload.get("alignment_summary")) or "Role-fit summary generated.",
+        "metrics": metrics,
+        "matched_skills": matched_skills,
+        "missing_skills": missing_skills,
+        "feedback": feedback,
+        "improvements": improvements,
+        "next_steps": next_steps,
+        "jd_relevance": {
+            "score": metrics["jd_relevance"],
+            "verdict": safe_text(jd_relevance.get("verdict")) or "moderate_relevance",
+            "detected_jd_track": safe_text(jd_relevance.get("detected_jd_track")) or "general",
+            "is_field_mismatch": bool(jd_relevance.get("is_field_mismatch")),
+            "reasoning": dedupe_text_list(jd_relevance.get("reasoning") or [], limit=4, max_item_len=180),
+        },
+        "skill_breakdown": {
+            "must_have_coverage": metrics["must_have_coverage"],
+            "good_to_have_coverage": metrics["good_to_have_coverage"],
+            "gap_severity": safe_text(skill_breakdown.get("gap_severity")) or "medium",
+        },
+        "ai": {
+            "used": bool(ai_meta.get("used")),
+            "model": safe_text(ai_meta.get("model")) or None,
+            "blend": clamp_float(float(ai_meta.get("blend") or 0.0), 0.0, 1.0),
+            "mode": "hybrid_llm_plus_rules" if bool(ai_meta.get("used")) else "rules_only",
+            "reason": safe_text(ai_meta.get("reason")) or "",
+        },
+    }
 
 
 def usage_bucket(plan: str, session_id: str) -> dict[str, int]:
@@ -7912,6 +8212,153 @@ def user_goal_roadmap_milestone_evidence(
     return evidence_roadmap_milestone_handler(None, milestone_id, data, request)
 
 
+@app.post("/public/instant-fit-check")
+def public_instant_fit_check(data: PublicInstantFitCheckRequest, request: Request) -> dict[str, Any]:
+    session_id = normalize_session_id(data.session_id)
+    _usage_key, usage_count, remaining = consume_public_instant_quota(request, session_id, action="analyze")
+    role = safe_text(data.role) or "Target role"
+    industry = safe_text(data.industry) or "General"
+    resume_text = safe_text(data.resume_text).strip()
+    job_description = safe_text(data.job_description).strip()
+
+    if len(resume_text) < 24:
+        raise HTTPException(status_code=400, detail="Resume text is too short.")
+    if len(job_description) < 24:
+        raise HTTPException(status_code=400, detail="Job description text is too short.")
+
+    resume_text = resume_text[:PUBLIC_INSTANT_MAX_TEXT_CHARS]
+    job_description = job_description[:PUBLIC_INSTANT_MAX_TEXT_CHARS]
+
+    try:
+        jd_match_payload = build_jd_match_payload(industry, role, resume_text, job_description)
+        instant_result = build_public_instant_fit_result(jd_match_payload, role=role, industry=industry)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to run instant JD fit check right now.") from exc
+
+    result_id = secrets.token_urlsafe(10).replace("-", "").replace("_", "")[:16]
+    created_at_iso = now_utc_iso()
+    now_ts = time.time()
+    client_key = public_instant_client_key(request, session_id)
+    with PUBLIC_INSTANT_LOCK:
+        cleanup_public_instant_stores(now_ts)
+        PUBLIC_INSTANT_RESULT_STORE[result_id] = {
+            "created_at": created_at_iso,
+            "created_at_ts": now_ts,
+            "client_key": client_key,
+            "session_id": session_id,
+            "result": instant_result,
+        }
+
+    log_analytics_event(
+        "analysis",
+        "analysis_public_instant_fit_generated",
+        meta={
+            "match_percentage": int(instant_result.get("match_percentage") or 0),
+            "missing_skills": len(instant_result.get("missing_skills") or []),
+            "is_field_mismatch": bool((instant_result.get("jd_relevance") or {}).get("is_field_mismatch")),
+            "usage_count": usage_count,
+        },
+    )
+    return {
+        **instant_result,
+        "result_id": result_id,
+        "created_at": created_at_iso,
+        "rate_limit": {
+            "window_seconds": PUBLIC_INSTANT_REQUEST_WINDOW_SECONDS,
+            "limit": PUBLIC_INSTANT_REQUEST_LIMIT,
+            "remaining": remaining,
+        },
+    }
+
+
+@app.post("/public/instant-fit-check/extract")
+async def public_instant_fit_check_extract(
+    request: Request,
+    file: UploadFile = File(...),
+    session_id: str | None = Form(None),
+) -> dict[str, Any]:
+    consume_public_instant_quota(request, session_id, action="extract")
+    file_name = safe_text(file.filename) or "uploaded-document"
+    content_type = safe_text(file.content_type)
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(contents) > PUBLIC_INSTANT_FILE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="File is too large. Upload a file smaller than 12 MB.")
+
+    extracted_text = extract_job_description_text_from_upload(file_name, content_type, contents).strip()
+    if len(extracted_text) < 24:
+        raise HTTPException(status_code=400, detail="Could not extract enough text. Upload a clearer file or paste text.")
+
+    return {
+        "extracted_text": extracted_text[:PUBLIC_INSTANT_MAX_TEXT_CHARS],
+        "extracted_chars": len(extracted_text),
+        "file_name": file_name,
+        "file_type": content_type or "",
+    }
+
+
+@app.post("/public/instant-fit-check/share")
+def public_instant_fit_share_create(data: PublicInstantFitShareRequest, request: Request) -> dict[str, Any]:
+    result_id = safe_text(data.result_id)
+    if len(result_id) < 8:
+        raise HTTPException(status_code=400, detail="Invalid result id.")
+
+    client_key = public_instant_client_key(request, data.session_id)
+    share_id = secrets.token_urlsafe(9).replace("-", "").replace("_", "")[:14]
+    now_iso = now_utc_iso()
+    now_ts = time.time()
+
+    with PUBLIC_INSTANT_LOCK:
+        cleanup_public_instant_stores(now_ts)
+        result_entry = PUBLIC_INSTANT_RESULT_STORE.get(result_id)
+        if not result_entry:
+            raise HTTPException(status_code=404, detail="Result not found. Run Instant Fit Check again.")
+        if safe_text(result_entry.get("client_key")) != client_key:
+            raise HTTPException(status_code=403, detail="This result belongs to a different session.")
+
+        while share_id in PUBLIC_INSTANT_SHARE_STORE:
+            share_id = secrets.token_urlsafe(9).replace("-", "").replace("_", "")[:14]
+
+        PUBLIC_INSTANT_SHARE_STORE[share_id] = {
+            "share_id": share_id,
+            "source_result_id": result_id,
+            "created_at": now_iso,
+            "created_at_ts": now_ts,
+            "result": result_entry.get("result") if isinstance(result_entry.get("result"), dict) else {},
+        }
+
+    return {
+        "share_id": share_id,
+        "share_path": f"/instant-fit/share/{share_id}",
+        "created_at": now_iso,
+        "expires_in_seconds": PUBLIC_INSTANT_SHARE_TTL_SECONDS,
+    }
+
+
+@app.get("/public/instant-fit-check/share/{share_id}")
+def public_instant_fit_share_fetch(share_id: str) -> dict[str, Any]:
+    normalized_share_id = re.sub(r"[^A-Za-z0-9]", "", safe_text(share_id))[:32]
+    if len(normalized_share_id) < 8:
+        raise HTTPException(status_code=400, detail="Invalid share id.")
+
+    now_ts = time.time()
+    with PUBLIC_INSTANT_LOCK:
+        cleanup_public_instant_stores(now_ts)
+        share_entry = PUBLIC_INSTANT_SHARE_STORE.get(normalized_share_id)
+        if not share_entry:
+            raise HTTPException(status_code=404, detail="Shared result not found or expired.")
+
+    result_payload = share_entry.get("result") if isinstance(share_entry.get("result"), dict) else {}
+    return {
+        "share_id": normalized_share_id,
+        "created_at": safe_text(share_entry.get("created_at")) or "",
+        "result": result_payload,
+    }
+
+
 @app.post("/analysis/jd-match")
 def analysis_jd_match(data: JobDescriptionMatchRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
@@ -8054,6 +8501,479 @@ def analysis_interview_prep(data: InterviewPrepRequest, request: Request) -> dic
     return payload
 
 
+@app.post("/analysis/interview-simulator/start")
+def analysis_interview_simulator_start(data: InterviewSimulatorStartRequest, request: Request) -> dict[str, Any]:
+    user = resolve_optional_authenticated_user(request, data.auth_token)
+    role = safe_text(data.role).strip()
+    industry = safe_text(data.industry).strip() or "General"
+    if len(role) < 2:
+        raise HTTPException(status_code=400, detail="Enter a valid role before starting the simulator.")
+
+    difficulty = normalize_interview_simulator_difficulty(data.difficulty)
+    total_rounds = normalize_interview_simulator_rounds(data.rounds)
+    resume_text = safe_text(data.resume_text)[:14000]
+    job_description = safe_text(data.job_description)[:14000]
+    focus_skills = collect_interview_simulator_focus_skills(role, industry, resume_text, job_description)
+    opening_question = build_interview_simulator_opening_question(role, industry, difficulty, focus_skills)
+
+    opener_model: str | None = None
+    opener_error: str | None = None
+    if client is not None:
+        opener_prompt = f"""
+You are an interview panel. Generate one concise opening question for a live interview simulation.
+Role: {safe_text(role)}
+Industry: {safe_text(industry)}
+Difficulty: {safe_text(difficulty)}
+Focus skills: {json.dumps(focus_skills[:8], ensure_ascii=False)}
+Output JSON schema:
+{{"opening_question":"question text"}}
+"""
+        opener_payload, opener_model, opener_error = request_structured_json_with_llm(opener_prompt, temperature=0.18)
+        if isinstance(opener_payload, dict):
+            candidate = safe_text(opener_payload.get("opening_question"))
+            if len(candidate) >= 12:
+                opening_question = candidate[:240]
+
+    session_id = secrets.token_urlsafe(14).replace("-", "").replace("_", "")[:22]
+    session_secret = secrets.token_urlsafe(16).replace("-", "").replace("_", "")[:28]
+    now_iso = now_utc_iso()
+    now_ts = time.time()
+    owner_user_id = int(user["id"]) if user else 0
+    session_payload = {
+        "id": session_id,
+        "session_secret": session_secret,
+        "user_id": owner_user_id,
+        "role": role,
+        "industry": industry,
+        "difficulty": difficulty,
+        "focus_skills": focus_skills,
+        "total_rounds": total_rounds,
+        "questions": [opening_question],
+        "turns": [],
+        "status": "active",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "created_at_ts": now_ts,
+        "expires_at_ts": now_ts + INTERVIEW_SIMULATOR_TTL_SECONDS,
+        "ai": {
+            "used": bool(opener_model),
+            "model": opener_model,
+            "reason": opener_error or ("llm_opening" if opener_model else "rules_opening"),
+        },
+    }
+    with INTERVIEW_SIMULATOR_LOCK:
+        cleanup_interview_simulator_sessions(now_ts)
+        while session_id in INTERVIEW_SIMULATOR_SESSIONS:
+            session_id = secrets.token_urlsafe(14).replace("-", "").replace("_", "")[:22]
+            session_payload["id"] = session_id
+        INTERVIEW_SIMULATOR_SESSIONS[session_id] = session_payload
+
+    log_analytics_event(
+        "interview",
+        "interview_simulator_started",
+        user_id=owner_user_id or None,
+        meta={
+            "role": role,
+            "industry": industry,
+            "difficulty": difficulty,
+            "total_rounds": total_rounds,
+            "focus_skills": focus_skills[:6],
+            "guest_mode": owner_user_id <= 0,
+        },
+    )
+    return {
+        "session_id": session_id,
+        "session_secret": session_secret,
+        "role": role,
+        "industry": industry,
+        "difficulty": difficulty,
+        "focus_skills": focus_skills[:8],
+        "round_number": 1,
+        "total_rounds": total_rounds,
+        "progress_percent": int(round((1 / max(1, total_rounds)) * 100)),
+        "current_question": opening_question,
+        "status": "active",
+        "report": None,
+        "ai": session_payload["ai"],
+    }
+
+
+@app.post("/analysis/interview-simulator/turn")
+def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, request: Request) -> dict[str, Any]:
+    user = resolve_optional_authenticated_user(request, data.auth_token)
+    session_id = re.sub(r"[^A-Za-z0-9]", "", safe_text(data.session_id))[:32]
+    session_secret = safe_text(data.session_secret)[:64]
+    answer_text = safe_text(data.answer_text).strip()
+    if len(session_id) < 8:
+        raise HTTPException(status_code=400, detail="Invalid simulator session id.")
+    if len(answer_text) < 18:
+        raise HTTPException(status_code=400, detail="Answer is too short. Add more context before submitting.")
+
+    now_ts = time.time()
+    with INTERVIEW_SIMULATOR_LOCK:
+        cleanup_interview_simulator_sessions(now_ts)
+        existing = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Simulator session not found or expired.")
+        owner_user_id = int(existing.get("user_id") or 0)
+        requester_user_id = int(user["id"]) if user else 0
+        secret_matches = session_secret and safe_text(existing.get("session_secret")) == session_secret
+        if owner_user_id > 0:
+            if requester_user_id != owner_user_id and not secret_matches:
+                raise HTTPException(status_code=403, detail="This simulator session belongs to a different user.")
+        elif not secret_matches:
+            raise HTTPException(status_code=401, detail="Session secret mismatch. Restart the simulator.")
+        if safe_text(existing.get("status")) == "completed":
+            report_payload = build_interview_simulator_report_payload(existing)
+            return {
+                "session_id": session_id,
+                "completed": True,
+                "round_number": len(existing.get("turns") or []),
+                "total_rounds": int(existing.get("total_rounds") or 0),
+                "progress_percent": 100,
+                "next_question": None,
+                "turn_feedback": None,
+                "report": report_payload,
+                "status": "completed",
+            }
+        turns = existing.get("turns") if isinstance(existing.get("turns"), list) else []
+        questions = existing.get("questions") if isinstance(existing.get("questions"), list) else []
+        expected_turn_count = len(turns)
+        question = safe_text(questions[-1]) if questions else build_interview_simulator_opening_question(
+            safe_text(existing.get("role")) or "Target role",
+            safe_text(existing.get("industry")) or "General",
+            normalize_interview_simulator_difficulty(safe_text(existing.get("difficulty"))),
+            dedupe_text_list(existing.get("focus_skills") or [], limit=8, max_item_len=80),
+        )
+        role = safe_text(existing.get("role")) or "Target role"
+        industry = safe_text(existing.get("industry")) or "General"
+        difficulty = normalize_interview_simulator_difficulty(safe_text(existing.get("difficulty")))
+        focus_skills = dedupe_text_list(existing.get("focus_skills") or [], limit=10, max_item_len=80)
+        total_rounds = int(clamp_float(float(existing.get("total_rounds") or 5), INTERVIEW_SIMULATOR_MIN_ROUNDS, INTERVIEW_SIMULATOR_MAX_ROUNDS))
+        round_number = expected_turn_count + 1
+
+    heuristic_payload = build_interview_turn_heuristics(
+        question=question,
+        answer_text=answer_text,
+        focus_skills=focus_skills,
+        response_time_seconds=data.response_time_seconds,
+        difficulty=difficulty,
+    )
+    llm_overlay, llm_model, llm_error = request_interview_simulator_turn_overlay(
+        role=role,
+        industry=industry,
+        difficulty=difficulty,
+        round_number=round_number,
+        total_rounds=total_rounds,
+        focus_skills=focus_skills,
+        question=question,
+        answer_text=answer_text,
+        heuristic_payload=heuristic_payload,
+    )
+
+    scores = dict((heuristic_payload.get("scores") or {}))
+    strengths = dedupe_text_list(heuristic_payload.get("strengths") or [], limit=4, max_item_len=180)
+    improvements = dedupe_text_list(heuristic_payload.get("improvements") or [], limit=4, max_item_len=180)
+    feedback_summary = safe_text(heuristic_payload.get("feedback_summary"))[:220]
+    next_focus_skill = ""
+    follow_up_question = ""
+    ai_used = False
+
+    if isinstance(llm_overlay, dict):
+        ai_used = True
+        scores["communication"] = clamp(
+            (1.0 - INTERVIEW_SIMULATOR_LLM_BLEND) * safe_float(scores.get("communication"), 0.0)
+            + INTERVIEW_SIMULATOR_LLM_BLEND * safe_float(llm_overlay.get("communication_score"), 0.0)
+        )
+        scores["clarity"] = clamp(
+            (1.0 - INTERVIEW_SIMULATOR_LLM_BLEND) * safe_float(scores.get("clarity"), 0.0)
+            + INTERVIEW_SIMULATOR_LLM_BLEND * safe_float(llm_overlay.get("clarity_score"), 0.0)
+        )
+        scores["domain_depth"] = clamp(
+            (1.0 - INTERVIEW_SIMULATOR_LLM_BLEND) * safe_float(scores.get("domain_depth"), 0.0)
+            + INTERVIEW_SIMULATOR_LLM_BLEND * safe_float(llm_overlay.get("domain_depth_score"), 0.0)
+        )
+        scores["confidence"] = clamp(
+            (1.0 - INTERVIEW_SIMULATOR_LLM_BLEND) * safe_float(scores.get("confidence"), 0.0)
+            + INTERVIEW_SIMULATOR_LLM_BLEND * safe_float(llm_overlay.get("confidence_score"), 0.0)
+        )
+        feedback_summary = safe_text(llm_overlay.get("feedback_summary"))[:220] or feedback_summary
+        strengths = dedupe_text_list([*normalize_string_list(llm_overlay.get("strengths"), limit=4, max_item_len=180), *strengths], limit=4, max_item_len=180)
+        improvements = dedupe_text_list([*normalize_string_list(llm_overlay.get("improvements"), limit=4, max_item_len=180), *improvements], limit=4, max_item_len=180)
+        next_focus_skill = safe_text(llm_overlay.get("next_focus_skill"))[:72]
+        follow_up_question = safe_text(llm_overlay.get("follow_up_question"))[:240]
+
+    scores["overall"] = clamp(
+        0.27 * safe_float(scores.get("communication"), 0.0)
+        + 0.23 * safe_float(scores.get("clarity"), 0.0)
+        + 0.32 * safe_float(scores.get("domain_depth"), 0.0)
+        + 0.18 * safe_float(scores.get("confidence"), 0.0)
+    )
+
+    turn_payload = {
+        "round_number": round_number,
+        "question": question[:240],
+        "answer": answer_text[:5000],
+        "answer_word_count": int(heuristic_payload.get("word_count") or 0),
+        "response_time_seconds": int(heuristic_payload.get("response_time_seconds") or 0),
+        "scores": {
+            "communication": clamp(safe_float(scores.get("communication"), 0.0)),
+            "clarity": clamp(safe_float(scores.get("clarity"), 0.0)),
+            "domain_depth": clamp(safe_float(scores.get("domain_depth"), 0.0)),
+            "confidence": clamp(safe_float(scores.get("confidence"), 0.0)),
+            "overall": clamp(safe_float(scores.get("overall"), 0.0)),
+        },
+        "matched_focus_skills": dedupe_text_list(heuristic_payload.get("matched_focus_skills") or [], limit=6, max_item_len=80),
+        "missing_focus_skills": dedupe_text_list(heuristic_payload.get("missing_focus_skills") or [], limit=6, max_item_len=80),
+        "feedback_summary": feedback_summary,
+        "strengths": strengths,
+        "improvements": improvements,
+        "next_focus_skill": next_focus_skill,
+        "ai": {
+            "used": ai_used,
+            "model": llm_model if ai_used else None,
+            "reason": "hybrid_overlay" if ai_used else (llm_error or "rules_only"),
+        },
+        "created_at": now_utc_iso(),
+    }
+
+    report_payload: dict[str, Any] | None = None
+    next_question: str | None = None
+    completed = round_number >= total_rounds
+
+    with INTERVIEW_SIMULATOR_LOCK:
+        refreshed = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
+        if not refreshed:
+            raise HTTPException(status_code=404, detail="Simulator session expired. Start a new one.")
+        refreshed_turns = refreshed.get("turns") if isinstance(refreshed.get("turns"), list) else []
+        if len(refreshed_turns) != expected_turn_count:
+            raise HTTPException(status_code=409, detail="Session was updated from another tab. Refresh and continue.")
+
+        refreshed_turns.append(turn_payload)
+        refreshed["turns"] = refreshed_turns
+        refreshed_questions = refreshed.get("questions") if isinstance(refreshed.get("questions"), list) else []
+        if completed:
+            refreshed["status"] = "completed"
+            report_payload = build_interview_simulator_report_payload(refreshed)
+        else:
+            next_question = build_interview_simulator_follow_up_question(
+                role=role,
+                industry=industry,
+                round_number=round_number,
+                total_rounds=total_rounds,
+                focus_skills=focus_skills,
+                missing_focus_skills=turn_payload.get("missing_focus_skills") or [],
+                improvements=improvements,
+                fallback_question=follow_up_question,
+            )[:260]
+            refreshed_questions.append(next_question)
+            refreshed["questions"] = refreshed_questions
+        refreshed["updated_at"] = now_utc_iso()
+        refreshed["expires_at_ts"] = time.time() + INTERVIEW_SIMULATOR_TTL_SECONDS
+
+    if completed and report_payload:
+        log_analytics_event(
+            "interview",
+            "interview_simulator_completed",
+            user_id=owner_user_id or None,
+            meta={
+                "role": role,
+                "industry": industry,
+                "rounds_completed": round_number,
+                "overall_score": int(report_payload.get("overall_score") or 0),
+                "readiness": safe_text(report_payload.get("readiness_label")),
+                "ai_used": ai_used,
+                "guest_mode": owner_user_id <= 0,
+            },
+        )
+    else:
+        log_analytics_event(
+            "interview",
+            "interview_simulator_turn_scored",
+            user_id=owner_user_id or None,
+            meta={
+                "role": role,
+                "industry": industry,
+                "round_number": round_number,
+                "overall": int((turn_payload.get("scores") or {}).get("overall") or 0),
+                "ai_used": ai_used,
+                "guest_mode": owner_user_id <= 0,
+            },
+        )
+
+    return {
+        "session_id": session_id,
+        "completed": completed,
+        "round_number": round_number,
+        "total_rounds": total_rounds,
+        "progress_percent": int(round((round_number / max(1, total_rounds)) * 100)),
+        "next_question": next_question,
+        "turn_feedback": turn_payload,
+        "report": report_payload,
+        "status": "completed" if completed else "active",
+    }
+
+
+@app.post("/analysis/interview-simulator/report")
+def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, request: Request) -> dict[str, Any]:
+    user = resolve_optional_authenticated_user(request, data.auth_token)
+    session_id = re.sub(r"[^A-Za-z0-9]", "", safe_text(data.session_id))[:32]
+    session_secret = safe_text(data.session_secret)[:64]
+    if len(session_id) < 8:
+        raise HTTPException(status_code=400, detail="Invalid simulator session id.")
+
+    now_ts = time.time()
+    with INTERVIEW_SIMULATOR_LOCK:
+        cleanup_interview_simulator_sessions(now_ts)
+        session_payload = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
+        if not session_payload:
+            raise HTTPException(status_code=404, detail="Simulator session not found or expired.")
+        owner_user_id = int(session_payload.get("user_id") or 0)
+        requester_user_id = int(user["id"]) if user else 0
+        secret_matches = session_secret and safe_text(session_payload.get("session_secret")) == session_secret
+        if owner_user_id > 0:
+            if requester_user_id != owner_user_id and not secret_matches:
+                raise HTTPException(status_code=403, detail="This simulator session belongs to a different user.")
+        elif not secret_matches:
+            raise HTTPException(status_code=401, detail="Session secret mismatch. Restart the simulator.")
+
+        report_payload = build_interview_simulator_report_payload(session_payload)
+        turns = session_payload.get("turns") if isinstance(session_payload.get("turns"), list) else []
+        questions = session_payload.get("questions") if isinstance(session_payload.get("questions"), list) else []
+
+    return {
+        "session_id": session_id,
+        "role": safe_text(session_payload.get("role")) or "Target role",
+        "industry": safe_text(session_payload.get("industry")) or "General",
+        "difficulty": normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty"))),
+        "total_rounds": int(session_payload.get("total_rounds") or 0),
+        "status": safe_text(session_payload.get("status")) or "active",
+        "focus_skills": dedupe_text_list(session_payload.get("focus_skills") or [], limit=8, max_item_len=80),
+        "questions": [safe_text(item)[:260] for item in questions[:20] if safe_text(item)],
+        "turns": turns,
+        "report": report_payload,
+    }
+
+
+@app.post("/analysis/interview-simulator/tts")
+def analysis_interview_simulator_tts(data: InterviewSimulatorTtsRequest, request: Request) -> StreamingResponse:
+    if not INTERVIEW_SIMULATOR_TTS_ENABLED:
+        raise HTTPException(status_code=503, detail="AI voice is temporarily unavailable.")
+    user = resolve_optional_authenticated_user(request, data.auth_token)
+    session_id = re.sub(r"[^A-Za-z0-9]", "", safe_text(data.session_id))[:32]
+    session_secret = safe_text(data.session_secret)[:64]
+    if len(session_id) < 8:
+        raise HTTPException(status_code=400, detail="Invalid simulator session id.")
+
+    now_ts = time.time()
+    source_text = safe_text(data.text).strip()
+    fallback_question = ""
+    owner_user_id = 0
+    with INTERVIEW_SIMULATOR_LOCK:
+        cleanup_interview_simulator_sessions(now_ts)
+        session_payload = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
+        if not session_payload:
+            raise HTTPException(status_code=404, detail="Simulator session not found or expired.")
+        owner_user_id = int(session_payload.get("user_id") or 0)
+        requester_user_id = int(user["id"]) if user else 0
+        secret_matches = session_secret and safe_text(session_payload.get("session_secret")) == session_secret
+        if owner_user_id > 0:
+            if requester_user_id != owner_user_id and not secret_matches:
+                raise HTTPException(status_code=403, detail="This simulator session belongs to a different user.")
+        elif not secret_matches:
+            raise HTTPException(status_code=401, detail="Session secret mismatch. Restart the simulator.")
+        questions = session_payload.get("questions") if isinstance(session_payload.get("questions"), list) else []
+        fallback_question = safe_text(questions[-1]) if questions else ""
+        session_payload["updated_at"] = now_utc_iso()
+        session_payload["expires_at_ts"] = time.time() + INTERVIEW_SIMULATOR_TTL_SECONDS
+
+    source_text = source_text or fallback_question
+    script_text = build_interview_simulator_tts_script(source_text)
+    if len(script_text) < 8:
+        raise HTTPException(status_code=400, detail="Question text is empty. Generate a question first.")
+    requested_voice = normalize_interview_simulator_tts_voice(data.voice)
+    cache_key = build_interview_simulator_tts_cache_key(script_text, requested_voice)
+    cache_hit = False
+    cached_audio_bytes: bytes | None = None
+    cached_model = ""
+    cached_voice = requested_voice
+
+    with INTERVIEW_SIMULATOR_LOCK:
+        session_payload = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
+        if session_payload:
+            tts_cache = session_payload.get("tts_cache") if isinstance(session_payload.get("tts_cache"), dict) else {}
+            if not isinstance(session_payload.get("tts_cache"), dict):
+                session_payload["tts_cache"] = tts_cache
+            cleanup_interview_simulator_tts_cache(tts_cache, now_ts)
+            cache_entry = tts_cache.get(cache_key)
+            if isinstance(cache_entry, dict) and isinstance(cache_entry.get("audio"), (bytes, bytearray)):
+                cached_audio_bytes = bytes(cache_entry.get("audio") or b"")
+                cached_model = safe_text(cache_entry.get("model"))
+                cached_voice = safe_text(cache_entry.get("voice")) or requested_voice
+                cache_hit = bool(cached_audio_bytes)
+
+    audio_bytes: bytes | None = cached_audio_bytes
+    model: str | None = cached_model or None
+    resolved_voice = cached_voice
+    if not audio_bytes:
+        generated_audio_bytes, generated_model, tts_error, generated_voice = generate_interview_simulator_tts_audio(
+            script_text,
+            requested_voice,
+        )
+        if not generated_audio_bytes:
+            raise HTTPException(status_code=503, detail=tts_error or "Unable to synthesize AI voice right now.")
+        audio_bytes = generated_audio_bytes
+        model = generated_model
+        resolved_voice = generated_voice
+
+        with INTERVIEW_SIMULATOR_LOCK:
+            session_payload = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
+            if session_payload:
+                tts_cache = session_payload.get("tts_cache") if isinstance(session_payload.get("tts_cache"), dict) else {}
+                if not isinstance(session_payload.get("tts_cache"), dict):
+                    session_payload["tts_cache"] = tts_cache
+                cleanup_interview_simulator_tts_cache(tts_cache, time.time())
+                tts_cache[cache_key] = {
+                    "audio": audio_bytes,
+                    "model": safe_text(model),
+                    "voice": resolved_voice,
+                    "created_at_ts": time.time(),
+                }
+                cleanup_interview_simulator_tts_cache(tts_cache, time.time())
+
+    media_type_map = {
+        "mp3": "audio/mpeg",
+        "mpeg": "audio/mpeg",
+        "wav": "audio/wav",
+        "opus": "audio/ogg",
+        "aac": "audio/aac",
+        "flac": "audio/flac",
+    }
+    media_type = media_type_map.get(INTERVIEW_SIMULATOR_TTS_RESPONSE_FORMAT, "application/octet-stream")
+    log_analytics_event(
+        "interview",
+        "interview_simulator_tts_generated",
+        user_id=owner_user_id or None,
+        meta={
+            "model": safe_text(model),
+            "voice": resolved_voice,
+            "chars": len(script_text),
+            "cache_hit": cache_hit,
+            "guest_mode": owner_user_id <= 0,
+        },
+    )
+    return StreamingResponse(
+        io.BytesIO(audio_bytes),
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "X-Interview-TTS-Model": safe_text(model),
+            "X-Interview-TTS-Voice": resolved_voice,
+            "X-Interview-TTS-Cache": "hit" if cache_hit else "miss",
+        },
+    )
+
+
 @app.post("/analysis/application-pack")
 def analysis_application_pack(data: ApplicationPackRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
@@ -8069,6 +8989,256 @@ def analysis_application_pack(data: ApplicationPackRequest, request: Request) ->
         },
     )
     return payload
+
+
+@app.post("/analysis/application-copilot")
+def analysis_application_copilot(data: ApplicationCopilotRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    resume_text = safe_text(data.resume_text)
+    job_description = safe_text(data.job_description)
+    if len(resume_text) < 24:
+        raise HTTPException(status_code=400, detail="Resume text is too short for Application Copilot.")
+    if len(job_description) < 24:
+        raise HTTPException(status_code=400, detail="Job description is too short for Application Copilot.")
+
+    debit = debit_credits(
+        int(user["id"]),
+        "jd_match",
+        CREDIT_COSTS["jd_match"],
+        meta={
+            "route": "/analysis/application-copilot",
+            "role": safe_text(data.role),
+            "industry": safe_text(data.industry),
+            "company": safe_text(data.company),
+        },
+    )
+    try:
+        payload = build_application_copilot_payload(data)
+        payload["wallet"] = debit["wallet"]
+        payload["credit_transaction_id"] = debit["transaction_id"]
+        log_analytics_event(
+            "analysis",
+            "analysis_application_copilot_generated",
+            user_id=int(user["id"]),
+            meta={
+                "role": safe_text(data.role),
+                "industry": safe_text(data.industry),
+                "company": safe_text(data.company),
+                "match_percentage": int(payload.get("match_percentage") or 0),
+                "missing_skills": len(payload.get("missing_skills") or []),
+                "credit_transaction_id": debit["transaction_id"],
+            },
+        )
+        return payload
+    except HTTPException:
+        credit_credits(
+            int(user["id"]),
+            "refund_jd_match",
+            CREDIT_COSTS["jd_match"],
+            meta={"reason": "application_copilot_failed"},
+        )
+        raise
+    except Exception as exc:
+        credit_credits(
+            int(user["id"]),
+            "refund_jd_match",
+            CREDIT_COSTS["jd_match"],
+            meta={"reason": "application_copilot_failed_unhandled"},
+        )
+        raise HTTPException(status_code=500, detail="Unable to run Application Copilot right now.") from exc
+
+
+@app.get("/application-copilot/job-tracks")
+def application_copilot_job_tracks(request: Request, auth_token: str | None = None, limit: int = 24) -> dict[str, Any]:
+    user = require_authenticated_user(request, auth_token)
+    safe_limit = int(clamp_float(float(limit), 1.0, 120.0))
+    connection = auth_db_connection()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, user_id, role, industry, company, status, match_percentage,
+                   matched_skills_json, missing_skills_json, feedback_json, next_steps_json,
+                   payload_json, created_at, updated_at
+            FROM application_job_tracks
+            WHERE user_id = ?
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (int(user["id"]), safe_limit),
+        ).fetchall()
+    finally:
+        connection.close()
+    tracks = [serialize_application_job_track_row(row) for row in rows]
+    return {
+        "job_tracks": tracks,
+        "count": len(tracks),
+        "status_options": sorted(APPLICATION_COPILOT_TRACK_STATUSES),
+    }
+
+
+@app.post("/application-copilot/job-tracks")
+def application_copilot_job_track_create(data: ApplicationCopilotTrackCreateRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+    copilot_payload = data.copilot_payload if isinstance(data.copilot_payload, dict) else {}
+    role = safe_text(data.role) or safe_text(copilot_payload.get("role")) or "Target role"
+    if len(role) < 2:
+        raise HTTPException(status_code=400, detail="Role is required to save a job track.")
+    industry = safe_text(data.industry) or safe_text(copilot_payload.get("industry")) or "General"
+    company = (safe_text(data.company) or safe_text(copilot_payload.get("company")))[:120]
+    status = normalize_application_copilot_status(data.status or copilot_payload.get("status"))
+    match_percentage = int(clamp_float(float(copilot_payload.get("match_percentage") or 0), 0.0, 100.0))
+    matched_skills = normalize_string_list(copilot_payload.get("matched_skills"), limit=20, max_item_len=80)
+    missing_skills = normalize_string_list(copilot_payload.get("missing_skills"), limit=20, max_item_len=80)
+    feedback = normalize_string_list(copilot_payload.get("feedback"), limit=8, max_item_len=220)
+    next_steps_7_day = normalize_string_list(copilot_payload.get("next_steps_7_day"), limit=10, max_item_len=220)
+    persisted_payload = {
+        "role": role,
+        "industry": industry,
+        "company": company,
+        "match_percentage": match_percentage,
+        "matched_skills": matched_skills,
+        "missing_skills": missing_skills,
+        "feedback": feedback,
+        "resume_improvements": normalize_string_list(copilot_payload.get("resume_improvements"), limit=10, max_item_len=220),
+        "next_steps_7_day": next_steps_7_day,
+        "interview_questions": normalize_string_list(copilot_payload.get("interview_questions"), limit=7, max_item_len=240),
+        "jd_focus_keywords": normalize_string_list(copilot_payload.get("jd_focus_keywords"), limit=8, max_item_len=80),
+        "application_checklist": normalize_string_list(copilot_payload.get("application_checklist"), limit=8, max_item_len=180),
+        "application_pack": copilot_payload.get("application_pack") if isinstance(copilot_payload.get("application_pack"), dict) else {},
+    }
+    now_iso = now_utc_iso()
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            cursor.execute(
+                """
+                INSERT INTO application_job_tracks (
+                    user_id, role, industry, company, status, match_percentage,
+                    matched_skills_json, missing_skills_json, feedback_json, next_steps_json,
+                    payload_json, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(user["id"]),
+                    role[:120],
+                    industry[:80],
+                    company,
+                    status,
+                    match_percentage,
+                    json.dumps(matched_skills, separators=(",", ":"), ensure_ascii=False),
+                    json.dumps(missing_skills, separators=(",", ":"), ensure_ascii=False),
+                    json.dumps(feedback, separators=(",", ":"), ensure_ascii=False),
+                    json.dumps(next_steps_7_day, separators=(",", ":"), ensure_ascii=False),
+                    json.dumps(persisted_payload, separators=(",", ":"), ensure_ascii=False),
+                    now_iso,
+                    now_iso,
+                ),
+            )
+            track_id = inserted_row_id(connection, cursor)
+            row = cursor.execute(
+                """
+                SELECT id, user_id, role, industry, company, status, match_percentage,
+                       matched_skills_json, missing_skills_json, feedback_json, next_steps_json,
+                       payload_json, created_at, updated_at
+                FROM application_job_tracks
+                WHERE id = ? AND user_id = ?
+                LIMIT 1
+                """,
+                (track_id, int(user["id"])),
+            ).fetchone()
+            connection.commit()
+        except HTTPException:
+            connection.rollback()
+            raise
+        except Exception as exc:
+            connection.rollback()
+            raise HTTPException(status_code=500, detail="Unable to save job track right now.") from exc
+        finally:
+            connection.close()
+
+    if not row:
+        raise HTTPException(status_code=500, detail="Unable to load saved job track.")
+
+    track_payload = serialize_application_job_track_row(row)
+    log_analytics_event(
+        "copilot",
+        "application_job_track_saved",
+        user_id=int(user["id"]),
+        meta={
+            "track_id": int(track_payload.get("id") or 0),
+            "role": safe_text(track_payload.get("role")),
+            "status": safe_text(track_payload.get("status")),
+            "match_percentage": int(track_payload.get("match_percentage") or 0),
+        },
+    )
+    return {"job_track": track_payload}
+
+
+@app.post("/application-copilot/job-tracks/{track_id}/status")
+def application_copilot_job_track_status(
+    track_id: int,
+    data: ApplicationCopilotTrackStatusRequest,
+    request: Request,
+) -> dict[str, Any]:
+    if track_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid track id.")
+    user = require_authenticated_user(request, data.auth_token)
+    status = normalize_application_copilot_status(data.status)
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            cursor.execute(
+                """
+                UPDATE application_job_tracks
+                SET status = ?, updated_at = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (status, now_utc_iso(), track_id, int(user["id"])),
+            )
+            if cursor.rowcount <= 0:
+                connection.rollback()
+                raise HTTPException(status_code=404, detail="Job track not found.")
+            row = cursor.execute(
+                """
+                SELECT id, user_id, role, industry, company, status, match_percentage,
+                       matched_skills_json, missing_skills_json, feedback_json, next_steps_json,
+                       payload_json, created_at, updated_at
+                FROM application_job_tracks
+                WHERE id = ? AND user_id = ?
+                LIMIT 1
+                """,
+                (track_id, int(user["id"])),
+            ).fetchone()
+            connection.commit()
+        except HTTPException:
+            connection.rollback()
+            raise
+        except Exception as exc:
+            connection.rollback()
+            raise HTTPException(status_code=500, detail="Unable to update job track status right now.") from exc
+        finally:
+            connection.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Job track not found.")
+    track_payload = serialize_application_job_track_row(row)
+    log_analytics_event(
+        "copilot",
+        "application_job_track_status_updated",
+        user_id=int(user["id"]),
+        meta={
+            "track_id": int(track_payload.get("id") or 0),
+            "status": safe_text(track_payload.get("status")),
+        },
+    )
+    return {"job_track": track_payload}
 
 
 @app.get("/analysis/reports")
@@ -8723,6 +9893,81 @@ def parse_meta_json(meta_json: Any) -> dict[str, Any]:
         return json.loads(meta_json or "{}")
     except Exception:
         return {}
+
+
+def normalize_application_copilot_status(value: Any) -> str:
+    token = safe_text(str(value)).lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "saved": "saved",
+        "draft": "saved",
+        "tracking": "saved",
+        "applied": "applied",
+        "application_sent": "applied",
+        "interview": "interview",
+        "interviewing": "interview",
+        "in_interview": "interview",
+        "offer": "offer",
+        "offered": "offer",
+        "rejected": "rejected",
+    }
+    resolved = aliases.get(token, token)
+    if resolved in APPLICATION_COPILOT_TRACK_STATUSES:
+        return resolved
+    return "saved"
+
+
+def parse_json_string_list(value: Any, limit: int = 16, max_item_len: int = 120) -> list[str]:
+    if isinstance(value, list):
+        return normalize_string_list(value, limit=limit, max_item_len=max_item_len)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return []
+        if isinstance(parsed, list):
+            return normalize_string_list(parsed, limit=limit, max_item_len=max_item_len)
+    return []
+
+
+def serialize_application_job_track_row(row: Any) -> dict[str, Any]:
+    payload = parse_meta_json(row.get("payload_json") if isinstance(row, dict) else row["payload_json"])
+    return {
+        "id": int(row.get("id") if isinstance(row, dict) else row["id"]),
+        "role": safe_text((row.get("role") if isinstance(row, dict) else row["role"])) or "Target role",
+        "industry": safe_text((row.get("industry") if isinstance(row, dict) else row["industry"])) or "General",
+        "company": safe_text((row.get("company") if isinstance(row, dict) else row["company"])),
+        "status": normalize_application_copilot_status(row.get("status") if isinstance(row, dict) else row["status"]),
+        "match_percentage": int(
+            clamp_float(
+                float((row.get("match_percentage") if isinstance(row, dict) else row["match_percentage"]) or 0),
+                0.0,
+                100.0,
+            )
+        ),
+        "matched_skills": parse_json_string_list(
+            row.get("matched_skills_json") if isinstance(row, dict) else row["matched_skills_json"],
+            limit=20,
+            max_item_len=80,
+        ),
+        "missing_skills": parse_json_string_list(
+            row.get("missing_skills_json") if isinstance(row, dict) else row["missing_skills_json"],
+            limit=20,
+            max_item_len=80,
+        ),
+        "feedback": parse_json_string_list(
+            row.get("feedback_json") if isinstance(row, dict) else row["feedback_json"],
+            limit=8,
+            max_item_len=220,
+        ),
+        "next_steps_7_day": parse_json_string_list(
+            row.get("next_steps_json") if isinstance(row, dict) else row["next_steps_json"],
+            limit=10,
+            max_item_len=220,
+        ),
+        "created_at": safe_text((row.get("created_at") if isinstance(row, dict) else row["created_at"])),
+        "updated_at": safe_text((row.get("updated_at") if isinstance(row, dict) else row["updated_at"])),
+        "copilot_payload": payload if isinstance(payload, dict) else {},
+    }
 
 
 def serialize_analysis_report_row(row: Any) -> dict[str, Any]:
@@ -9938,6 +11183,725 @@ def build_application_pack_payload(data: ApplicationPackRequest) -> dict[str, An
             "model": llm_model if ai_used else None,
             "reason": "hybrid_overlay" if ai_used else (llm_error or "rules_only"),
         },
+    }
+
+
+def build_application_copilot_resume_improvements(
+    jd_match_payload: dict[str, Any],
+    interview_prep_payload: dict[str, Any],
+    application_pack_payload: dict[str, Any],
+) -> list[str]:
+    improvements = dedupe_text_list(
+        [
+            *normalize_string_list(jd_match_payload.get("improvements"), limit=8, max_item_len=220),
+            *normalize_string_list(jd_match_payload.get("suggested_bullets"), limit=8, max_item_len=220),
+            *normalize_string_list(jd_match_payload.get("feedback"), limit=6, max_item_len=220),
+            *normalize_string_list(interview_prep_payload.get("prep_sprint"), limit=5, max_item_len=160),
+            *normalize_string_list(application_pack_payload.get("application_checklist"), limit=6, max_item_len=200),
+        ],
+        limit=10,
+        max_item_len=220,
+    )
+    if improvements:
+        return improvements
+    return [
+        "Add measurable outcomes to your top 5 experience bullets.",
+        "Mirror must-have JD skills naturally inside summary, skills, and project lines.",
+        "Prepare one STAR story per critical missing skill before your next interview.",
+    ]
+
+
+def build_application_copilot_next_steps_7_day(
+    jd_match_payload: dict[str, Any],
+    interview_prep_payload: dict[str, Any],
+    application_pack_payload: dict[str, Any],
+) -> list[str]:
+    raw_steps = dedupe_text_list(
+        [
+            *normalize_string_list(jd_match_payload.get("next_steps"), limit=6, max_item_len=180),
+            *normalize_string_list(interview_prep_payload.get("prep_sprint"), limit=6, max_item_len=180),
+            *normalize_string_list(application_pack_payload.get("application_checklist"), limit=6, max_item_len=180),
+        ],
+        limit=10,
+        max_item_len=180,
+    )
+    if not raw_steps:
+        raw_steps = [
+            "Tailor your headline and summary to role intent.",
+            "Rewrite key bullets with scope, ownership, and outcomes.",
+            "Practice 4 role-fit interview answers with STAR structure.",
+            "Send focused applications with personalized outreach.",
+        ]
+    day_steps: list[str] = []
+    for index, item in enumerate(raw_steps[:7]):
+        day_steps.append(f"Day {index + 1}: {item}")
+    return day_steps
+
+
+def build_application_copilot_payload(data: ApplicationCopilotRequest) -> dict[str, Any]:
+    role = safe_text(data.role) or "Target role"
+    industry = safe_text(data.industry) or "General"
+    company = safe_text(data.company)[:120]
+    resume_text = safe_text(data.resume_text)
+    job_description = safe_text(data.job_description)
+
+    jd_match_payload = build_jd_match_payload(industry, role, resume_text, job_description)
+    critical_missing = normalize_string_list(
+        jd_match_payload.get("missing_skills") or jd_match_payload.get("missing_keywords") or [],
+        limit=8,
+        max_item_len=72,
+    )
+    interview_prep_payload = build_interview_prep_payload(
+        InterviewPrepRequest(
+            industry=industry,
+            role=role,
+            job_description=job_description,
+            critical_missing_skills=critical_missing,
+            auth_token=None,
+        )
+    )
+    application_pack_payload = build_application_pack_payload(
+        ApplicationPackRequest(
+            industry=industry,
+            role=role,
+            resume_text=resume_text,
+            job_description=job_description,
+            auth_token=None,
+        )
+    )
+
+    match_percentage = int(
+        clamp_float(
+            float(jd_match_payload.get("match_percentage") or jd_match_payload.get("match_score") or 0),
+            0.0,
+            100.0,
+        )
+    )
+    matched_skills = normalize_string_list(
+        jd_match_payload.get("matched_skills") or jd_match_payload.get("matched_keywords") or [],
+        limit=18,
+        max_item_len=80,
+    )
+    missing_skills = normalize_string_list(
+        jd_match_payload.get("missing_skills") or jd_match_payload.get("missing_keywords") or [],
+        limit=18,
+        max_item_len=80,
+    )
+    feedback = dedupe_text_list(
+        [
+            *normalize_string_list(jd_match_payload.get("feedback"), limit=6, max_item_len=220),
+            safe_text(jd_match_payload.get("alignment_summary")),
+            safe_text(interview_prep_payload.get("coach_note")),
+        ],
+        limit=7,
+        max_item_len=220,
+    )
+    resume_improvements = build_application_copilot_resume_improvements(
+        jd_match_payload,
+        interview_prep_payload,
+        application_pack_payload,
+    )
+    next_steps_7_day = build_application_copilot_next_steps_7_day(
+        jd_match_payload,
+        interview_prep_payload,
+        application_pack_payload,
+    )
+
+    ai_models = dedupe_text_list(
+        [
+            safe_text(((jd_match_payload.get("analysis_ai") or {}).get("model"))),
+            safe_text((((jd_match_payload.get("jd_relevance") or {}).get("ai") or {}).get("model"))),
+            safe_text(((interview_prep_payload.get("ai") or {}).get("model"))),
+            safe_text(((application_pack_payload.get("ai") or {}).get("model"))),
+        ],
+        limit=4,
+        max_item_len=64,
+    )
+    ai_used = bool(ai_models) or bool(((jd_match_payload.get("jd_relevance") or {}).get("ai") or {}).get("used"))
+    return {
+        "role": role,
+        "industry": industry,
+        "company": company,
+        "match_percentage": match_percentage,
+        "matched_skills": matched_skills,
+        "missing_skills": missing_skills,
+        "feedback": feedback,
+        "resume_improvements": resume_improvements,
+        "next_steps_7_day": next_steps_7_day,
+        "interview_questions": normalize_string_list(
+            interview_prep_payload.get("mock_questions"),
+            limit=7,
+            max_item_len=240,
+        ),
+        "jd_focus_keywords": normalize_string_list(
+            application_pack_payload.get("jd_focus_keywords"),
+            limit=8,
+            max_item_len=80,
+        ),
+        "application_checklist": normalize_string_list(
+            application_pack_payload.get("application_checklist"),
+            limit=8,
+            max_item_len=180,
+        ),
+        "application_pack": {
+            "subject_line": safe_text(application_pack_payload.get("subject_line"))[:180],
+            "linkedin_message": safe_text(application_pack_payload.get("linkedin_message"))[:420],
+            "cover_letter_opening": safe_text(application_pack_payload.get("cover_letter_opening"))[:600],
+        },
+        "jd_match": {
+            "critical_coverage": int(clamp_float(float(jd_match_payload.get("critical_coverage") or 0), 0.0, 100.0)),
+            "must_have_coverage": int(
+                clamp_float(
+                    float((jd_match_payload.get("skill_breakdown") or {}).get("must_have_coverage") or 0),
+                    0.0,
+                    100.0,
+                )
+            ),
+            "good_to_have_coverage": int(
+                clamp_float(
+                    float((jd_match_payload.get("skill_breakdown") or {}).get("good_to_have_coverage") or 0),
+                    0.0,
+                    100.0,
+                )
+            ),
+            "jd_relevance": int(
+                clamp_float(
+                    float((jd_match_payload.get("jd_relevance") or {}).get("score") or 0),
+                    0.0,
+                    100.0,
+                )
+            ),
+            "alignment_summary": safe_text(jd_match_payload.get("alignment_summary"))[:320],
+        },
+        "ai": {
+            "used": ai_used,
+            "models": ai_models,
+            "engine": "hybrid_llm_rules",
+        },
+        "raw": {
+            "jd_match": jd_match_payload,
+            "interview_prep": interview_prep_payload,
+            "application_pack": application_pack_payload,
+        },
+    }
+
+
+def normalize_interview_simulator_difficulty(value: str | None) -> str:
+    token = safe_text(value).strip().lower()
+    if token in {"foundation", "beginner", "easy"}:
+        return "foundation"
+    if token in {"advanced", "hard", "expert"}:
+        return "advanced"
+    return "standard"
+
+
+def normalize_interview_simulator_rounds(value: int | None) -> int:
+    if value is None:
+        return 5
+    return int(clamp_float(float(value), float(INTERVIEW_SIMULATOR_MIN_ROUNDS), float(INTERVIEW_SIMULATOR_MAX_ROUNDS)))
+
+
+def cleanup_interview_simulator_sessions(now_ts: float) -> None:
+    stale_keys = []
+    for session_id, payload in INTERVIEW_SIMULATOR_SESSIONS.items():
+        expires_at_ts = float(payload.get("expires_at_ts") or 0)
+        if expires_at_ts and expires_at_ts < now_ts:
+            stale_keys.append(session_id)
+    for session_id in stale_keys:
+        INTERVIEW_SIMULATOR_SESSIONS.pop(session_id, None)
+
+
+def normalize_interview_simulator_tts_voice(value: str | None) -> str:
+    token = safe_text(value).strip().lower()
+    allowed = {
+        "alloy",
+        "ash",
+        "ballad",
+        "coral",
+        "echo",
+        "fable",
+        "nova",
+        "onyx",
+        "sage",
+        "shimmer",
+        "verse",
+    }
+    if token in allowed:
+        return token
+    fallback = safe_text(INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE).strip().lower()
+    if fallback in allowed:
+        return fallback
+    return "alloy"
+
+
+def build_interview_simulator_tts_script(text: str) -> str:
+    cleaned = safe_text(text).replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return ""
+    cleaned = cleaned[:INTERVIEW_SIMULATOR_TTS_MAX_CHARS]
+    # Convert rigid punctuation into spoken cadence with natural pause hints.
+    cleaned = re.sub(r"\s*[:;]\s*", ", ", cleaned)
+    cleaned = re.sub(r"\s*([,.!?])\s*", r"\1 ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    paced = cleaned.replace("? ", "?\n").replace("! ", "!\n").replace(". ", ".\n")
+    paced = re.sub(r"\n{2,}", "\n", paced).strip()
+    if not re.search(r"[.!?]$", paced):
+        paced = f"{paced}."
+    return paced[: INTERVIEW_SIMULATOR_TTS_MAX_CHARS + 80]
+
+
+def extract_audio_bytes_from_openai_response(response: Any) -> bytes:
+    if response is None:
+        return b""
+    if isinstance(response, (bytes, bytearray)):
+        return bytes(response)
+
+    content = getattr(response, "content", None)
+    if isinstance(content, (bytes, bytearray)):
+        return bytes(content)
+
+    read_fn = getattr(response, "read", None)
+    if callable(read_fn):
+        try:
+            raw = read_fn()
+            if isinstance(raw, (bytes, bytearray)):
+                return bytes(raw)
+        except Exception:
+            pass
+
+    iter_bytes_fn = getattr(response, "iter_bytes", None)
+    if callable(iter_bytes_fn):
+        try:
+            return b"".join(chunk for chunk in iter_bytes_fn() if isinstance(chunk, (bytes, bytearray)))
+        except Exception:
+            pass
+
+    nested_response = getattr(response, "response", None)
+    if nested_response is not None:
+        nested_content = getattr(nested_response, "content", None)
+        if isinstance(nested_content, (bytes, bytearray)):
+            return bytes(nested_content)
+        nested_read = getattr(nested_response, "read", None)
+        if callable(nested_read):
+            try:
+                raw = nested_read()
+                if isinstance(raw, (bytes, bytearray)):
+                    return bytes(raw)
+            except Exception:
+                pass
+
+    return b""
+
+
+def generate_interview_simulator_tts_audio(
+    script_text: str, requested_voice: str | None = None
+) -> tuple[bytes | None, str | None, str | None, str]:
+    if client is None:
+        return None, None, "OPENAI_API_KEY not configured", normalize_interview_simulator_tts_voice(requested_voice)
+    if not INTERVIEW_SIMULATOR_TTS_ENABLED:
+        return None, None, "Interview simulator AI voice is disabled", normalize_interview_simulator_tts_voice(requested_voice)
+
+    voice_candidates: list[str] = []
+    for voice in [
+        normalize_interview_simulator_tts_voice(requested_voice),
+        normalize_interview_simulator_tts_voice(INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE),
+        "alloy",
+    ]:
+        if voice and voice not in voice_candidates:
+            voice_candidates.append(voice)
+
+    models: list[str] = []
+    for model in [INTERVIEW_SIMULATOR_TTS_MODEL, *INTERVIEW_SIMULATOR_TTS_FALLBACK_MODELS]:
+        token = safe_text(model).strip()
+        if token and token not in models:
+            models.append(token)
+
+    last_error: str | None = None
+    for model in models:
+        for voice in voice_candidates:
+            for attempt in range(2):
+                try:
+                    response = client.audio.speech.create(
+                        model=model,
+                        voice=voice,
+                        input=script_text,
+                        response_format=INTERVIEW_SIMULATOR_TTS_RESPONSE_FORMAT,
+                    )
+                    audio_bytes = extract_audio_bytes_from_openai_response(response)
+                    if audio_bytes and len(audio_bytes) >= 900:
+                        return audio_bytes, model, None, voice
+                    last_error = f"empty_tts_audio_from_{model}_{voice}"
+                    logger.error("Interview simulator TTS returned empty audio for model '%s' voice '%s'.", model, voice)
+                    break
+                except Exception as exc:
+                    last_error = f"{type(exc).__name__} on model {model}, voice {voice}"
+                    logger.exception(
+                        "Interview simulator TTS failed for model '%s', voice '%s' (attempt %s).",
+                        model,
+                        voice,
+                        attempt + 1,
+                    )
+                    if attempt < 1 and is_transient_openai_error(exc):
+                        time.sleep(0.35 * (attempt + 1))
+                        continue
+                    break
+
+    return None, None, last_error, voice_candidates[0] if voice_candidates else "alloy"
+
+
+def build_interview_simulator_tts_cache_key(script_text: str, voice: str) -> str:
+    raw = f"{safe_text(voice).strip().lower()}::{safe_text(script_text).strip()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def cleanup_interview_simulator_tts_cache(cache: dict[str, Any], now_ts: float) -> None:
+    stale_keys: list[str] = []
+    for key, payload in cache.items():
+        if not isinstance(payload, dict):
+            stale_keys.append(key)
+            continue
+        created_at_ts = safe_float(payload.get("created_at_ts"), 0.0)
+        if created_at_ts <= 0 or now_ts - created_at_ts > INTERVIEW_SIMULATOR_TTS_CACHE_TTL_SECONDS:
+            stale_keys.append(key)
+    for key in stale_keys:
+        cache.pop(key, None)
+    if len(cache) <= INTERVIEW_SIMULATOR_TTS_CACHE_MAX_ITEMS:
+        return
+    sortable: list[tuple[str, float]] = []
+    for key, payload in cache.items():
+        if not isinstance(payload, dict):
+            continue
+        sortable.append((key, safe_float(payload.get("created_at_ts"), 0.0)))
+    sortable.sort(key=lambda item: item[1], reverse=True)
+    for key, _ in sortable[INTERVIEW_SIMULATOR_TTS_CACHE_MAX_ITEMS :]:
+        cache.pop(key, None)
+
+
+def collect_interview_simulator_focus_skills(role: str, industry: str, resume_text: str, job_description: str) -> list[str]:
+    resume_skills = extract_skills_from_text(resume_text)[:8]
+    jd_skills = extract_skills_from_text(job_description)[:10]
+    _, _, critical_skills, _ = resolve_role_profile(role, industry, resume_skills)
+    combined = dedupe_text_list([*jd_skills, *critical_skills, *resume_skills], limit=10, max_item_len=80)
+    if combined:
+        return combined
+    role_track = infer_role_track(role, industry)
+    blueprint = ROLE_BLUEPRINTS.get(role_track, ROLE_BLUEPRINTS["general"])
+    return dedupe_text_list(blueprint.get("core") or [], limit=8, max_item_len=80) or [
+        "problem solving",
+        "ownership",
+        "stakeholder communication",
+    ]
+
+
+def build_interview_simulator_opening_question(role: str, industry: str, difficulty: str, focus_skills: list[str]) -> str:
+    primary_skill = focus_skills[0] if focus_skills else "problem solving"
+    base_prompt = (
+        f"Introduce yourself for a {role} role in {industry}, then explain one high-impact example showcasing {primary_skill}."
+    )
+    if difficulty == "foundation":
+        return f"Tell me about your background and one project where you used {primary_skill}."
+    if difficulty == "advanced":
+        return (
+            f"You are joining as a senior {role}. Walk through a high-stakes decision where {primary_skill} changed business outcomes."
+        )
+    return base_prompt
+
+
+def build_interview_turn_heuristics(
+    question: str,
+    answer_text: str,
+    focus_skills: list[str],
+    response_time_seconds: int | None,
+    difficulty: str,
+) -> dict[str, Any]:
+    normalized_answer = safe_text(answer_text).strip()
+    normalized_question = safe_text(question).strip()
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9\-\+/#\.]*", normalized_answer)
+    word_count = len(words)
+    sentences = [segment.strip() for segment in re.split(r"[.!?]+", normalized_answer) if segment.strip()]
+    sentence_count = len(sentences)
+    avg_sentence_words = (word_count / max(1, sentence_count)) if sentence_count else float(word_count)
+
+    metric_hits = len(
+        re.findall(
+            r"\b\d+(?:\.\d+)?\s*(?:%|percent|x|k|m|cr|lakh|crore|hours?|days?|weeks?|months?|years?)?\b",
+            normalized_answer.lower(),
+        )
+    )
+    uncertain_hits = len(re.findall(r"\b(?:maybe|probably|perhaps|not sure|guess|i think)\b", normalized_answer.lower()))
+    impact_hits = len(
+        re.findall(
+            r"\b(?:improved|reduced|increased|optimized|delivered|launched|scaled|closed|saved|accelerated|led)\b",
+            normalized_answer.lower(),
+        )
+    )
+    structure_hits = len(re.findall(r"\b(?:situation|task|action|result|because|therefore|first|then|finally)\b", normalized_answer.lower()))
+
+    focus_hits = 0
+    matched_focus: list[str] = []
+    for skill in focus_skills[:8]:
+        if phrase_in_text(normalized_answer, skill):
+            focus_hits += 1
+            matched_focus.append(skill)
+    missing_focus = [skill for skill in focus_skills[:8] if skill not in matched_focus]
+
+    speaking_time = int(clamp_float(float(response_time_seconds or 0), 0.0, 1800.0))
+    timing_bonus = 0
+    if speaking_time:
+        if 35 <= speaking_time <= 140:
+            timing_bonus = 6
+        elif speaking_time < 20:
+            timing_bonus = -4
+        elif speaking_time > 210:
+            timing_bonus = -2
+
+    communication_score = clamp(
+        32
+        + min(28, word_count * 0.42)
+        + min(14, structure_hits * 3.0)
+        + min(10, metric_hits * 2.0)
+        - min(16, uncertain_hits * 3.5)
+        + timing_bonus
+    )
+    clarity_score = clamp(
+        34
+        + min(18, max(0.0, (24.0 - abs(avg_sentence_words - 16.0)) * 0.9))
+        + min(18, sentence_count * 1.8)
+        + min(10, structure_hits * 2.0)
+        - min(14, uncertain_hits * 3.2)
+    )
+    domain_depth_score = clamp(
+        28
+        + min(30, focus_hits * (25.0 / max(1, min(5, len(focus_skills)))))
+        + min(18, metric_hits * 2.6)
+        + min(14, impact_hits * 2.0)
+    )
+    confidence_score = clamp(
+        35
+        + min(14, impact_hits * 1.8)
+        + min(10, metric_hits * 1.5)
+        + min(8, structure_hits * 1.5)
+        - min(20, uncertain_hits * 4.0)
+        + timing_bonus
+    )
+
+    if difficulty == "advanced":
+        domain_depth_score = clamp(domain_depth_score - 5 + min(8, focus_hits * 2.0))
+        clarity_score = clamp(clarity_score - 2 + min(4, structure_hits))
+    elif difficulty == "foundation":
+        communication_score = clamp(communication_score + 4)
+        confidence_score = clamp(confidence_score + 3)
+
+    overall_score = clamp(
+        0.27 * communication_score + 0.23 * clarity_score + 0.32 * domain_depth_score + 0.18 * confidence_score
+    )
+
+    strengths: list[str] = []
+    improvements: list[str] = []
+    if metric_hits >= 1:
+        strengths.append("You used measurable signals, which improves credibility.")
+    if focus_hits >= max(1, int(round(max(1, len(focus_skills[:6])) * 0.5))):
+        strengths.append("Your answer covered key role skills expected in this interview.")
+    if structure_hits >= 2:
+        strengths.append("Answer structure was clear and easy to follow.")
+    if impact_hits >= 1:
+        strengths.append("You explained business impact instead of generic activity.")
+
+    if word_count < 55:
+        improvements.append("Expand depth: include context, your action, and final outcome in one answer.")
+    if metric_hits < 1:
+        improvements.append("Add at least one hard metric or timeline to strengthen trust.")
+    if focus_hits < max(1, min(3, len(focus_skills[:6]))):
+        improvements.append("Anchor the answer to role-critical skills from the JD.")
+    if uncertain_hits >= 1:
+        improvements.append("Use direct language and reduce uncertain phrases to project confidence.")
+    if not strengths:
+        strengths.append("You stayed relevant to the question and maintained direction.")
+    if not improvements:
+        improvements.append("Add a sharper close: what changed, by how much, and what you learned.")
+
+    return {
+        "question": normalized_question,
+        "word_count": word_count,
+        "response_time_seconds": speaking_time,
+        "scores": {
+            "communication": communication_score,
+            "clarity": clarity_score,
+            "domain_depth": domain_depth_score,
+            "confidence": confidence_score,
+            "overall": overall_score,
+        },
+        "matched_focus_skills": matched_focus[:6],
+        "missing_focus_skills": missing_focus[:6],
+        "strengths": dedupe_text_list(strengths, limit=4, max_item_len=180),
+        "improvements": dedupe_text_list(improvements, limit=4, max_item_len=180),
+        "feedback_summary": (
+            "Strong response with clear role alignment."
+            if overall_score >= 78
+            else "Solid base with room to add stronger proof."
+            if overall_score >= 56
+            else "Answer needs stronger structure and role-specific depth."
+        ),
+    }
+
+
+def request_interview_simulator_turn_overlay(
+    role: str,
+    industry: str,
+    difficulty: str,
+    round_number: int,
+    total_rounds: int,
+    focus_skills: list[str],
+    question: str,
+    answer_text: str,
+    heuristic_payload: dict[str, Any],
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    if client is None:
+        return None, None, "OPENAI_API_KEY not configured"
+
+    prompt = f"""
+You are an expert interview panel for {safe_text(role)} hiring in {safe_text(industry)}.
+Evaluate the candidate answer and generate one adaptive follow-up question.
+
+Difficulty: {safe_text(difficulty)}
+Round: {round_number}/{total_rounds}
+Focus skills: {json.dumps(focus_skills[:8], ensure_ascii=False)}
+
+Current question:
+{safe_text(question)}
+
+Candidate answer:
+{safe_text(answer_text)[:2500]}
+
+Heuristic baseline:
+{json.dumps(heuristic_payload, ensure_ascii=False)}
+
+Return strict JSON only with this schema:
+{{
+  "feedback_summary": "single concise summary",
+  "strengths": ["point 1", "point 2", "point 3"],
+  "improvements": ["point 1", "point 2", "point 3"],
+  "follow_up_question": "one targeted next question",
+  "next_focus_skill": "skill phrase",
+  "communication_score": 0,
+  "clarity_score": 0,
+  "domain_depth_score": 0,
+  "confidence_score": 0
+}}
+"""
+    parsed, model, error = request_structured_json_with_llm(prompt, temperature=0.15)
+    if not isinstance(parsed, dict):
+        return None, model, error
+
+    payload = {
+        "feedback_summary": safe_text(parsed.get("feedback_summary"))[:220],
+        "strengths": normalize_string_list(parsed.get("strengths"), limit=4, max_item_len=180),
+        "improvements": normalize_string_list(parsed.get("improvements"), limit=4, max_item_len=180),
+        "follow_up_question": safe_text(parsed.get("follow_up_question"))[:240],
+        "next_focus_skill": safe_text(parsed.get("next_focus_skill"))[:72],
+        "communication_score": clamp_float(safe_float(parsed.get("communication_score"), 0.0), 0.0, 100.0),
+        "clarity_score": clamp_float(safe_float(parsed.get("clarity_score"), 0.0), 0.0, 100.0),
+        "domain_depth_score": clamp_float(safe_float(parsed.get("domain_depth_score"), 0.0), 0.0, 100.0),
+        "confidence_score": clamp_float(safe_float(parsed.get("confidence_score"), 0.0), 0.0, 100.0),
+    }
+    return payload, model, None
+
+
+def build_interview_simulator_follow_up_question(
+    role: str,
+    industry: str,
+    round_number: int,
+    total_rounds: int,
+    focus_skills: list[str],
+    missing_focus_skills: list[str],
+    improvements: list[str],
+    fallback_question: str | None = None,
+) -> str:
+    if safe_text(fallback_question):
+        return safe_text(fallback_question)
+
+    target_skill = missing_focus_skills[0] if missing_focus_skills else (focus_skills[min(round_number, max(0, len(focus_skills) - 1))] if focus_skills else "execution")
+    if round_number >= total_rounds:
+        return "What is your final summary of impact and why are you the right fit for this role?"
+
+    if round_number == total_rounds - 1:
+        return (
+            f"Final round: Give a concise 90-second pitch for {role} in {industry}, highlighting measurable outcomes and {target_skill}."
+        )
+    if improvements:
+        return f"Let’s go deeper: {improvements[0]} Can you answer with one concrete example tied to {target_skill}?"
+    return f"Share a specific example where you applied {target_skill} and quantified the business outcome."
+
+
+def build_interview_simulator_report_payload(session_payload: dict[str, Any]) -> dict[str, Any]:
+    turns = session_payload.get("turns") if isinstance(session_payload.get("turns"), list) else []
+    if not turns:
+        return {
+            "overall_score": 0,
+            "readiness_label": "not_started",
+            "score_breakdown": {"communication": 0, "clarity": 0, "domain_depth": 0, "confidence": 0},
+            "strength_signals": [],
+            "improvement_signals": [],
+            "next_steps": ["Start the simulation and answer at least one question to get a report."],
+            "turns_completed": 0,
+            "total_rounds": int(session_payload.get("total_rounds") or 0),
+        }
+
+    communication_values = [safe_float(((turn.get("scores") or {}).get("communication")), 0.0) for turn in turns]
+    clarity_values = [safe_float(((turn.get("scores") or {}).get("clarity")), 0.0) for turn in turns]
+    domain_values = [safe_float(((turn.get("scores") or {}).get("domain_depth")), 0.0) for turn in turns]
+    confidence_values = [safe_float(((turn.get("scores") or {}).get("confidence")), 0.0) for turn in turns]
+
+    communication_avg = clamp(sum(communication_values) / max(1, len(communication_values)))
+    clarity_avg = clamp(sum(clarity_values) / max(1, len(clarity_values)))
+    domain_avg = clamp(sum(domain_values) / max(1, len(domain_values)))
+    confidence_avg = clamp(sum(confidence_values) / max(1, len(confidence_values)))
+    overall_score = clamp(0.27 * communication_avg + 0.23 * clarity_avg + 0.32 * domain_avg + 0.18 * confidence_avg)
+
+    strength_counter: dict[str, int] = {}
+    improvement_counter: dict[str, int] = {}
+    for turn in turns:
+        for item in normalize_string_list(turn.get("strengths"), limit=8, max_item_len=180):
+            upsert_counter_phrase(strength_counter, item, delta=1)
+        for item in normalize_string_list(turn.get("improvements"), limit=8, max_item_len=180):
+            upsert_counter_phrase(improvement_counter, item, delta=1)
+
+    strength_signals = [item for item in sorted(strength_counter, key=lambda key: (-strength_counter[key], key))[:5]]
+    improvement_signals = [item for item in sorted(improvement_counter, key=lambda key: (-improvement_counter[key], key))[:6]]
+
+    readiness_label = "high"
+    if overall_score < 75:
+        readiness_label = "medium"
+    if overall_score < 55:
+        readiness_label = "low"
+
+    next_steps = [
+        "Build 5 STAR stories with one quantified result each.",
+        "Practice 90-second answers for your top 3 weak-signal questions.",
+        "Run another simulator round and target a +8 score lift.",
+    ]
+    if improvement_signals:
+        next_steps[0] = improvement_signals[0]
+    if len(improvement_signals) > 1:
+        next_steps[1] = improvement_signals[1]
+    if len(improvement_signals) > 2:
+        next_steps[2] = improvement_signals[2]
+
+    return {
+        "overall_score": overall_score,
+        "readiness_label": readiness_label,
+        "score_breakdown": {
+            "communication": communication_avg,
+            "clarity": clarity_avg,
+            "domain_depth": domain_avg,
+            "confidence": confidence_avg,
+        },
+        "strength_signals": strength_signals,
+        "improvement_signals": improvement_signals,
+        "next_steps": dedupe_text_list(next_steps, limit=5, max_item_len=220),
+        "turns_completed": len(turns),
+        "total_rounds": int(session_payload.get("total_rounds") or len(turns)),
     }
 
 

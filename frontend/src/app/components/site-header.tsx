@@ -35,9 +35,12 @@ const baseNavLinks: NavLink[] = [
     href: "/tools",
     label: "Tools",
     children: [
+      { href: "/instant-fit", label: "Instant Fit Check" },
+      { href: "/application-copilot", label: "Application Copilot" },
       { href: "/analysis", label: "Analysis" },
       { href: "/ai-resume-studio", label: "AI Resume Studio" },
       { href: "/jd-matcher", label: "JD Matcher" },
+      { href: "/interview-simulator", label: "Interview Simulator" },
       { href: "/interview-copilot", label: "Interview Copilot" },
     ],
   },
@@ -75,10 +78,10 @@ export default function SiteHeader() {
     () => (authToken ? baseNavLinks.filter((link) => link.href !== "/resources") : baseNavLinks),
     [authToken]
   );
-  const headerAnalyzeHref = addUtmParams("/upload", {
+  const headerAnalyzeHref = addUtmParams("/instant-fit", {
     source: "header_nav",
     medium: "internal",
-    campaign: "nav_analyze",
+    campaign: "nav_instant_fit",
   });
   const isToolsActive = (link: NavLink) =>
     link.children?.some((child) => isLinkActive(pathname, hash, child)) || false;
@@ -300,15 +303,15 @@ export default function SiteHeader() {
             <Link
               href={headerAnalyzeHref}
               onClick={() => {
-                trackEvent("cta_check_my_score_click", {
+                trackEvent("cta_instant_fit_click", {
                   cta_location: "header",
-                  cta_label: "Check My Score (Free)",
+                  cta_label: "Instant Fit Check (Free)",
                 });
               }}
               className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
             >
-              <span className="sm:hidden">Analyze</span>
-              <span className="hidden sm:inline">Check My Score (Free)</span>
+              <span className="sm:hidden">Instant Fit</span>
+              <span className="hidden sm:inline">Instant Fit Check (Free)</span>
             </Link>
           )}
         </div>

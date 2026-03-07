@@ -212,6 +212,11 @@ export default function DashboardPage() {
     medium: "internal",
     campaign: "dashboard",
   });
+  const dashboardApplicationCopilotHref = addUtmParams("/application-copilot", {
+    source: "dashboard",
+    medium: "internal",
+    campaign: "dashboard",
+  });
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -590,15 +595,7 @@ export default function DashboardPage() {
           <>
             <div className="mt-6 grid gap-4 xl:grid-cols-12">
               <section className="xl:col-span-8 rounded-[2rem] border border-cyan-100/26 bg-[linear-gradient(130deg,rgba(8,33,58,0.95)_0%,rgba(9,25,44,0.94)_56%,rgba(40,29,16,0.82)_100%)] p-5 shadow-[0_28px_65px_rgba(2,8,22,0.45)] sm:p-7">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-cyan-100/35 bg-cyan-100/10 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-cyan-100/84">
-                    Conversion Mode
-                  </span>
-                  <span className="rounded-full border border-amber-100/30 bg-amber-100/12 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-amber-100/84">
-                    Active Buyer Journey
-                  </span>
-                </div>
-                <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Let’s convert profile quality into real interview demand.</h2>
+                <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Improve your profile to get more interview calls.</h2>
                 <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cyan-100/74">Profile: {email || "User"}</p>
                 <p className="mt-2 text-sm text-cyan-50/74">
                   {nextMilestone
@@ -678,7 +675,7 @@ export default function DashboardPage() {
               </aside>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <TrackedLink
                 href={dashboardRunAnalysisHref}
                 eventName="cta_check_my_score_click"
@@ -696,6 +693,15 @@ export default function DashboardPage() {
               >
                 <p className="text-sm font-semibold text-cyan-50">Resume Studio</p>
                 <p className="mt-1 text-xs text-cyan-100/72">Apply fixes with guided resume writing workflows.</p>
+              </TrackedLink>
+              <TrackedLink
+                href={dashboardApplicationCopilotHref}
+                eventName="cta_application_copilot_open"
+                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Application Copilot" }}
+                className="rounded-2xl border border-cyan-100/28 bg-[#0a223d]/80 px-4 py-4 text-left transition hover:bg-[#0e2b4c]"
+              >
+                <p className="text-sm font-semibold text-cyan-50">Application Copilot</p>
+                <p className="mt-1 text-xs text-cyan-100/72">Run JD match, resume fixes, and interview prep in one flow.</p>
               </TrackedLink>
               <button
                 type="button"
