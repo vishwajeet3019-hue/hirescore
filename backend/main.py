@@ -270,8 +270,39 @@ INTERVIEW_SIMULATOR_SESSIONS: dict[str, dict[str, Any]] = {}
 INTERVIEW_SIMULATOR_TTL_SECONDS = max(
     30 * 60, min(48 * 60 * 60, int((os.getenv("INTERVIEW_SIMULATOR_TTL_SECONDS") or "21600").strip()))
 )
-INTERVIEW_SIMULATOR_MIN_ROUNDS = 3
-INTERVIEW_SIMULATOR_MAX_ROUNDS = 8
+INTERVIEW_SIMULATOR_MIN_ROUNDS = 1
+INTERVIEW_SIMULATOR_MAX_ROUNDS = 4
+INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS: list[dict[str, Any]] = [
+    {
+        "key": "screening",
+        "label": "Screening",
+        "objective": "confirm role fit, resume signal, communication quality, and motivation",
+        "min_questions": 2,
+        "max_questions": 2,
+    },
+    {
+        "key": "technical_assessment",
+        "label": "Technical Assessment",
+        "objective": "test role-specific execution, judgment, tools, and measurable outcomes",
+        "min_questions": 2,
+        "max_questions": 3,
+    },
+    {
+        "key": "in_depth_assessment",
+        "label": "In-Depth Assessment",
+        "objective": "go deeper on ambiguity, leadership, trade-offs, and high-stakes problem solving",
+        "min_questions": 1,
+        "max_questions": 2,
+    },
+    {
+        "key": "hr",
+        "label": "HR",
+        "objective": "close on motivation, values, collaboration style, and career intent",
+        "min_questions": 1,
+        "max_questions": 2,
+    },
+]
+INTERVIEW_SIMULATOR_STAGE_BLUEPRINT_MAP = {item["key"]: item for item in INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS}
 try:
     INTERVIEW_SIMULATOR_LLM_BLEND = float((os.getenv("INTERVIEW_SIMULATOR_LLM_BLEND") or "0.34").strip())
 except Exception:
@@ -8555,7 +8586,8 @@ def analysis_interview_simulator_start(data: InterviewSimulatorStartRequest, req
         raise HTTPException(status_code=400, detail="Enter a valid role before starting the simulator.")
 
     difficulty = normalize_interview_simulator_difficulty(data.difficulty)
-    total_rounds = normalize_interview_simulator_rounds(data.rounds)
+    stage_plan = build_interview_simulator_stage_plan(difficulty)
+    total_rounds = len(stage_plan)
     resume_text = safe_text(data.resume_text)[:14000]
     job_description = safe_text(data.job_description)[:14000]
     if len(resume_text.strip()) < 24:
@@ -8572,7 +8604,7 @@ def analysis_interview_simulator_start(data: InterviewSimulatorStartRequest, req
     opener_error: str | None = None
     if client is not None:
         opener_prompt = f"""
-You are an interview panel. Generate one concise opening question for a live interview simulation.
+You are an interview panel. Generate one concise opening question for round 1 screening in a live interview simulation.
 Role: {safe_text(role)}
 Industry: {safe_text(industry)}
 Difficulty: {safe_text(difficulty)}
@@ -8591,6 +8623,7 @@ Output JSON schema:
     now_iso = now_utc_iso()
     now_ts = time.time()
     owner_user_id = int(user["id"]) if user else 0
+    opening_question_entry = build_interview_simulator_question_entry(stage_plan, "screening", opening_question, 1)
     session_payload = {
         "id": session_id,
         "session_secret": session_secret,
@@ -8604,10 +8637,16 @@ Output JSON schema:
         "difficulty": difficulty,
         "focus_skills": focus_skills,
         "total_rounds": total_rounds,
+        "stage_plan": stage_plan,
+        "question_flow": [opening_question_entry],
         "questions": [opening_question],
         "turns": [],
         "status": "active",
         "saved_report_id": 0,
+        "current_stage_key": "screening",
+        "current_stage_label": "Screening",
+        "current_stage_number": 1,
+        "question_number_in_stage": 1,
         "created_at": now_iso,
         "updated_at": now_iso,
         "created_at_ts": now_ts,
@@ -8652,6 +8691,9 @@ Output JSON schema:
         "difficulty": difficulty,
         "focus_skills": focus_skills[:8],
         "round_number": 1,
+        "current_stage_key": "screening",
+        "current_stage_label": "Screening",
+        "question_number_in_stage": 1,
         "total_rounds": total_rounds,
         "progress_percent": int(round((1 / max(1, total_rounds)) * 100)),
         "current_question": opening_question,
@@ -8686,13 +8728,20 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 raise HTTPException(status_code=403, detail="This simulator session belongs to a different user.")
         elif not secret_matches:
             raise HTTPException(status_code=401, detail="Session secret mismatch. Restart the simulator.")
+        stage_plan = get_interview_simulator_stage_plan(existing)
+        total_rounds = len(stage_plan)
         if safe_text(existing.get("status")) == "completed":
             report_payload = build_interview_simulator_report_payload(existing)
+            existing_turns = existing.get("turns") if isinstance(existing.get("turns"), list) else []
+            last_turn = existing_turns[-1] if existing_turns else {}
             return {
                 "session_id": session_id,
                 "completed": True,
-                "round_number": len(existing.get("turns") or []),
-                "total_rounds": int(existing.get("total_rounds") or 0),
+                "round_number": int(last_turn.get("round_number") or len(build_interview_simulator_stage_summaries(existing_turns, stage_plan)) or 1),
+                "current_stage_key": normalize_interview_simulator_turn_stage_key(last_turn if isinstance(last_turn, dict) else {}),
+                "current_stage_label": safe_text((last_turn or {}).get("stage_label")) or safe_text(get_interview_simulator_stage_entry(stage_plan, normalize_interview_simulator_turn_stage_key(last_turn if isinstance(last_turn, dict) else {})).get("label")),
+                "question_number_in_stage": int((last_turn or {}).get("question_number_in_stage") or 0),
+                "total_rounds": total_rounds,
                 "progress_percent": 100,
                 "next_question": None,
                 "turn_feedback": None,
@@ -8703,21 +8752,29 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "saved_report_id": int(existing.get("saved_report_id") or 0) or None,
             }
         turns = existing.get("turns") if isinstance(existing.get("turns"), list) else []
-        questions = existing.get("questions") if isinstance(existing.get("questions"), list) else []
         expected_turn_count = len(turns)
-        question = safe_text(questions[-1]) if questions else build_interview_simulator_opening_question(
-            safe_text(existing.get("role")) or "Target role",
-            safe_text(existing.get("industry")) or "General",
-            normalize_interview_simulator_difficulty(safe_text(existing.get("difficulty"))),
-            dedupe_text_list(existing.get("focus_skills") or [], limit=8, max_item_len=80),
-        )
         role = safe_text(existing.get("role")) or "Target role"
         industry = safe_text(existing.get("industry")) or "General"
         candidate_name = safe_text(existing.get("candidate_name")) or "there"
         difficulty = normalize_interview_simulator_difficulty(safe_text(existing.get("difficulty")))
         focus_skills = dedupe_text_list(existing.get("focus_skills") or [], limit=10, max_item_len=80)
-        total_rounds = int(clamp_float(float(existing.get("total_rounds") or 5), INTERVIEW_SIMULATOR_MIN_ROUNDS, INTERVIEW_SIMULATOR_MAX_ROUNDS))
-        round_number = expected_turn_count + 1
+        question_flow = extract_interview_simulator_question_flow(existing, stage_plan)
+        current_question_entry = question_flow[-1] if question_flow else build_interview_simulator_question_entry(
+            stage_plan,
+            "screening",
+            build_interview_simulator_opening_question(role, industry, difficulty, focus_skills),
+            1,
+        )
+        question = safe_text(current_question_entry.get("question")) or build_interview_simulator_opening_question(
+            role,
+            industry,
+            difficulty,
+            focus_skills,
+        )
+        current_stage_key = safe_text(current_question_entry.get("stage_key")) or "screening"
+        current_stage_label = safe_text(current_question_entry.get("stage_label")) or safe_text(get_interview_simulator_stage_entry(stage_plan, current_stage_key).get("label"))
+        round_number = int(current_question_entry.get("stage_number") or get_interview_simulator_stage_entry(stage_plan, current_stage_key).get("stage_number") or 1)
+        question_number_in_stage = int(current_question_entry.get("question_number_in_stage") or 1)
 
     heuristic_payload = build_interview_turn_heuristics(
         question=question,
@@ -8730,8 +8787,11 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         role=role,
         industry=industry,
         difficulty=difficulty,
+        stage_key=current_stage_key,
+        stage_label=current_stage_label,
         round_number=round_number,
         total_rounds=total_rounds,
+        question_number_in_stage=question_number_in_stage,
         focus_skills=focus_skills,
         question=question,
         answer_text=answer_text,
@@ -8745,6 +8805,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     next_focus_skill = ""
     follow_up_question = ""
     interviewer_bridge = ""
+    llm_stage_action = ""
     ai_used = False
 
     if isinstance(llm_overlay, dict):
@@ -8771,6 +8832,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         next_focus_skill = safe_text(llm_overlay.get("next_focus_skill"))[:72]
         interviewer_bridge = safe_text(llm_overlay.get("interviewer_bridge"))[:180]
         follow_up_question = safe_text(llm_overlay.get("follow_up_question"))[:240]
+        llm_stage_action = safe_text(llm_overlay.get("stage_action")).strip().lower()
 
     scores["overall"] = clamp(
         0.27 * safe_float(scores.get("communication"), 0.0)
@@ -8788,6 +8850,9 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
 
     turn_payload = {
         "round_number": round_number,
+        "stage_key": current_stage_key,
+        "stage_label": current_stage_label,
+        "question_number_in_stage": question_number_in_stage,
         "question": question[:240],
         "answer": answer_text[:5000],
         "answer_word_count": int(heuristic_payload.get("word_count") or 0),
@@ -8818,7 +8883,11 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     session_snapshot_for_archive: dict[str, Any] | None = None
     saved_report_id = 0
     next_question: str | None = None
-    completed = round_number >= total_rounds
+    completed = False
+    response_round_number = round_number
+    response_stage_key = current_stage_key
+    response_stage_label = current_stage_label
+    response_question_number_in_stage = question_number_in_stage
 
     with INTERVIEW_SIMULATOR_LOCK:
         refreshed = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
@@ -8830,9 +8899,22 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
 
         refreshed_turns.append(turn_payload)
         refreshed["turns"] = refreshed_turns
-        refreshed_questions = refreshed.get("questions") if isinstance(refreshed.get("questions"), list) else []
+        refreshed_question_flow = extract_interview_simulator_question_flow(refreshed, stage_plan)
+        if not refreshed_question_flow:
+            refreshed_question_flow = [build_interview_simulator_question_entry(stage_plan, current_stage_key, question, question_number_in_stage)]
         refreshed["updated_at"] = now_utc_iso()
         refreshed["expires_at_ts"] = time.time() + INTERVIEW_SIMULATOR_TTL_SECONDS
+        current_stage_turns = [turn for turn in refreshed_turns if normalize_interview_simulator_turn_stage_key(turn) == current_stage_key]
+        stage_completed, next_stage_key = decide_interview_simulator_stage_progression(
+            stage_plan=stage_plan,
+            current_stage_key=current_stage_key,
+            current_stage_turns=current_stage_turns,
+            all_turns=refreshed_turns,
+            difficulty=difficulty,
+            llm_stage_action=llm_stage_action,
+        )
+        completed = stage_completed and not next_stage_key
+
         if completed:
             refreshed["status"] = "completed"
             refreshed["closing_remark"] = safe_text(refreshed.get("closing_remark")) or build_interview_simulator_closing_remark(
@@ -8849,9 +8931,11 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "opening_remark": safe_text(refreshed.get("opening_remark")),
                 "closing_remark": safe_text(refreshed.get("closing_remark")),
                 "difficulty": safe_text(refreshed.get("difficulty")),
+                "stage_plan": json.loads(json.dumps(stage_plan, ensure_ascii=False, default=str)),
                 "focus_skills": json.loads(json.dumps(refreshed.get("focus_skills") or [], ensure_ascii=False, default=str)),
                 "total_rounds": int(refreshed.get("total_rounds") or total_rounds),
-                "questions": json.loads(json.dumps(refreshed_questions, ensure_ascii=False, default=str)),
+                "question_flow": json.loads(json.dumps(refreshed_question_flow, ensure_ascii=False, default=str)),
+                "questions": [safe_text(item.get("question")) for item in refreshed_question_flow if isinstance(item, dict)],
                 "turns": json.loads(json.dumps(refreshed_turns, ensure_ascii=False, default=str)),
                 "status": safe_text(refreshed.get("status")) or "completed",
                 "created_at": safe_text(refreshed.get("created_at")),
@@ -8860,18 +8944,42 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             }
             saved_report_id = int(refreshed.get("saved_report_id") or 0)
         else:
+            next_stage_key = safe_text(next_stage_key) or current_stage_key
+            next_stage_entry = get_interview_simulator_stage_entry(stage_plan, next_stage_key)
+            next_question_number_in_stage = len([turn for turn in refreshed_turns if normalize_interview_simulator_turn_stage_key(turn) == next_stage_key]) + 1
+            if next_stage_key != current_stage_key:
+                next_question_number_in_stage = 1
+                interviewer_bridge = build_interview_simulator_stage_transition_bridge(next_stage_entry, interviewer_bridge)
             next_question = build_interview_simulator_follow_up_question(
                 role=role,
                 industry=industry,
-                round_number=round_number,
-                total_rounds=total_rounds,
+                difficulty=difficulty,
+                stage_plan=stage_plan,
+                stage_key=next_stage_key,
+                question_number_in_stage=next_question_number_in_stage,
                 focus_skills=focus_skills,
                 missing_focus_skills=turn_payload.get("missing_focus_skills") or [],
                 improvements=improvements,
                 fallback_question=follow_up_question,
+                next_focus_skill=next_focus_skill,
             )[:260]
-            refreshed_questions.append(next_question)
-            refreshed["questions"] = refreshed_questions
+            next_question_entry = build_interview_simulator_question_entry(
+                stage_plan,
+                next_stage_key,
+                next_question,
+                next_question_number_in_stage,
+            )
+            refreshed_question_flow.append(next_question_entry)
+            refreshed["question_flow"] = refreshed_question_flow
+            refreshed["questions"] = [safe_text(item.get("question")) for item in refreshed_question_flow if isinstance(item, dict)]
+            refreshed["current_stage_key"] = safe_text(next_question_entry.get("stage_key"))
+            refreshed["current_stage_label"] = safe_text(next_question_entry.get("stage_label"))
+            refreshed["current_stage_number"] = int(next_question_entry.get("stage_number") or response_round_number)
+            refreshed["question_number_in_stage"] = int(next_question_entry.get("question_number_in_stage") or 1)
+            response_round_number = int(next_question_entry.get("stage_number") or response_round_number)
+            response_stage_key = safe_text(next_question_entry.get("stage_key")) or response_stage_key
+            response_stage_label = safe_text(next_question_entry.get("stage_label")) or response_stage_label
+            response_question_number_in_stage = int(next_question_entry.get("question_number_in_stage") or response_question_number_in_stage)
 
     if next_question:
         queue_interview_simulator_tts_prefetch(
@@ -8904,7 +9012,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             meta={
                 "role": role,
                 "industry": industry,
-                "rounds_completed": round_number,
+                "rounds_completed": len(build_interview_simulator_stage_summaries(refreshed_turns, stage_plan)),
                 "overall_score": int(report_payload.get("overall_score") or 0),
                 "readiness": safe_text(report_payload.get("readiness_label")),
                 "ai_used": ai_used,
@@ -8920,7 +9028,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             meta={
                 "role": role,
                 "industry": industry,
-                "round_number": round_number,
+                "round_number": response_round_number,
                 "overall": int((turn_payload.get("scores") or {}).get("overall") or 0),
                 "ai_used": ai_used,
                 "guest_mode": owner_user_id <= 0,
@@ -8930,9 +9038,12 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     return {
         "session_id": session_id,
         "completed": completed,
-        "round_number": round_number,
+        "round_number": response_round_number,
+        "current_stage_key": response_stage_key,
+        "current_stage_label": response_stage_label,
+        "question_number_in_stage": response_question_number_in_stage,
         "total_rounds": total_rounds,
-        "progress_percent": int(round((round_number / max(1, total_rounds)) * 100)),
+        "progress_percent": 100 if completed else int(round((response_round_number / max(1, total_rounds)) * 100)),
         "next_question": next_question,
         "turn_feedback": turn_payload,
         "report": report_payload,
@@ -8968,7 +9079,9 @@ def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, r
 
         report_payload = build_interview_simulator_report_payload(session_payload)
         turns = session_payload.get("turns") if isinstance(session_payload.get("turns"), list) else []
-        questions = session_payload.get("questions") if isinstance(session_payload.get("questions"), list) else []
+        stage_plan = get_interview_simulator_stage_plan(session_payload)
+        question_flow = extract_interview_simulator_question_flow(session_payload, stage_plan)
+        current_question_entry = question_flow[-1] if question_flow else {}
 
     return {
         "session_id": session_id,
@@ -8979,10 +9092,15 @@ def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, r
         "opening_remark": safe_text(session_payload.get("opening_remark")),
         "closing_remark": safe_text(session_payload.get("closing_remark")),
         "difficulty": normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty"))),
-        "total_rounds": int(session_payload.get("total_rounds") or 0),
+        "round_number": int(current_question_entry.get("stage_number") or session_payload.get("current_stage_number") or 1),
+        "current_stage_key": safe_text(current_question_entry.get("stage_key")) or safe_text(session_payload.get("current_stage_key")) or "screening",
+        "current_stage_label": safe_text(current_question_entry.get("stage_label")) or safe_text(session_payload.get("current_stage_label")) or "Screening",
+        "question_number_in_stage": int(current_question_entry.get("question_number_in_stage") or session_payload.get("question_number_in_stage") or 1),
+        "total_rounds": len(stage_plan) or int(session_payload.get("total_rounds") or 0),
         "status": safe_text(session_payload.get("status")) or "active",
         "focus_skills": dedupe_text_list(session_payload.get("focus_skills") or [], limit=8, max_item_len=80),
-        "questions": [safe_text(item)[:260] for item in questions[:20] if safe_text(item)],
+        "current_question": safe_text(current_question_entry.get("question"))[:260],
+        "questions": [safe_text(item.get("question"))[:260] for item in question_flow[:20] if isinstance(item, dict) and safe_text(item.get("question"))],
         "turns": turns,
         "report": report_payload,
         "saved_report_id": int(session_payload.get("saved_report_id") or 0) or None,
@@ -11610,7 +11728,7 @@ def normalize_interview_simulator_difficulty(value: str | None) -> str:
 
 def normalize_interview_simulator_rounds(value: int | None) -> int:
     if value is None:
-        return 5
+        return len(INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS)
     return int(clamp_float(float(value), float(INTERVIEW_SIMULATOR_MIN_ROUNDS), float(INTERVIEW_SIMULATOR_MAX_ROUNDS)))
 
 
@@ -11885,18 +12003,247 @@ def collect_interview_simulator_focus_skills(role: str, industry: str, resume_te
     ]
 
 
-def build_interview_simulator_opening_question(role: str, industry: str, difficulty: str, focus_skills: list[str]) -> str:
-    primary_skill = focus_skills[0] if focus_skills else "problem solving"
-    base_prompt = (
-        f"Introduce yourself for a {role} role in {industry}, then explain one high-impact example showcasing {primary_skill}."
-    )
-    if difficulty == "foundation":
-        return f"Tell me about your background and one project where you used {primary_skill}."
-    if difficulty == "advanced":
-        return (
-            f"You are joining as a senior {role}. Walk through a high-stakes decision where {primary_skill} changed business outcomes."
+def build_interview_simulator_stage_plan(difficulty: str) -> list[dict[str, Any]]:
+    normalized_difficulty = normalize_interview_simulator_difficulty(difficulty)
+    plan: list[dict[str, Any]] = []
+    for index, blueprint in enumerate(INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS, start=1):
+        min_questions = int(blueprint.get("min_questions") or 1)
+        max_questions = int(blueprint.get("max_questions") or min_questions)
+        if normalized_difficulty == "foundation":
+            if safe_text(blueprint.get("key")) == "technical_assessment":
+                max_questions = max(min_questions, 2)
+            elif safe_text(blueprint.get("key")) in {"in_depth_assessment", "hr"}:
+                max_questions = max(min_questions, 1)
+        elif normalized_difficulty == "advanced":
+            if safe_text(blueprint.get("key")) in {"technical_assessment", "in_depth_assessment", "hr"}:
+                max_questions = min(3, max_questions + 1)
+        plan.append(
+            {
+                "stage_number": index,
+                "key": safe_text(blueprint.get("key")) or f"stage_{index}",
+                "label": safe_text(blueprint.get("label")) or f"Round {index}",
+                "objective": safe_text(blueprint.get("objective")),
+                "min_questions": min_questions,
+                "max_questions": max(min_questions, max_questions),
+            }
         )
-    return base_prompt
+    return plan
+
+
+def get_interview_simulator_stage_plan(session_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_plan = session_payload.get("stage_plan")
+    if isinstance(raw_plan, list):
+        normalized: list[dict[str, Any]] = []
+        for index, item in enumerate(raw_plan, start=1):
+            if not isinstance(item, dict):
+                continue
+            blueprint = INTERVIEW_SIMULATOR_STAGE_BLUEPRINT_MAP.get(safe_text(item.get("key")).strip().lower()) or {}
+            min_questions = int(item.get("min_questions") or blueprint.get("min_questions") or 1)
+            max_questions = int(item.get("max_questions") or blueprint.get("max_questions") or min_questions)
+            normalized.append(
+                {
+                    "stage_number": int(item.get("stage_number") or index),
+                    "key": safe_text(item.get("key")) or safe_text(blueprint.get("key")) or f"stage_{index}",
+                    "label": safe_text(item.get("label")) or safe_text(blueprint.get("label")) or f"Round {index}",
+                    "objective": safe_text(item.get("objective")) or safe_text(blueprint.get("objective")),
+                    "min_questions": max(1, min_questions),
+                    "max_questions": max(max(1, min_questions), max_questions),
+                }
+            )
+        if normalized:
+            return normalized
+    return build_interview_simulator_stage_plan(normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty"))))
+
+
+def get_interview_simulator_stage_entry(stage_plan: list[dict[str, Any]], stage_key: str) -> dict[str, Any]:
+    normalized = safe_text(stage_key).strip().lower()
+    for item in stage_plan:
+        if safe_text(item.get("key")).strip().lower() == normalized:
+            return item
+    return stage_plan[0] if stage_plan else {
+        "stage_number": 1,
+        "key": "screening",
+        "label": "Screening",
+        "objective": "",
+        "min_questions": 1,
+        "max_questions": 2,
+    }
+
+
+def build_interview_simulator_question_entry(
+    stage_plan: list[dict[str, Any]],
+    stage_key: str,
+    question_text: str,
+    question_number_in_stage: int,
+) -> dict[str, Any]:
+    stage_entry = get_interview_simulator_stage_entry(stage_plan, stage_key)
+    return {
+        "stage_key": safe_text(stage_entry.get("key")) or stage_key,
+        "stage_label": safe_text(stage_entry.get("label")) or "Round",
+        "stage_number": int(stage_entry.get("stage_number") or 1),
+        "question_number_in_stage": max(1, int(question_number_in_stage or 1)),
+        "question": safe_text(question_text)[:260],
+    }
+
+
+def extract_interview_simulator_question_flow(session_payload: dict[str, Any], stage_plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    raw_flow = session_payload.get("question_flow")
+    if isinstance(raw_flow, list):
+        normalized_flow: list[dict[str, Any]] = []
+        for item in raw_flow:
+            if not isinstance(item, dict):
+                continue
+            question_text = safe_text(item.get("question"))[:260]
+            if not question_text:
+                continue
+            stage_key = safe_text(item.get("stage_key")) or "screening"
+            question_number_in_stage = int(item.get("question_number_in_stage") or 1)
+            normalized_flow.append(
+                build_interview_simulator_question_entry(
+                    stage_plan,
+                    stage_key,
+                    question_text,
+                    question_number_in_stage,
+                )
+            )
+        if normalized_flow:
+            return normalized_flow
+
+    legacy_questions = session_payload.get("questions") if isinstance(session_payload.get("questions"), list) else []
+    fallback_flow: list[dict[str, Any]] = []
+    for index, item in enumerate(legacy_questions):
+        question_text = safe_text(item)[:260]
+        if not question_text:
+            continue
+        stage_entry = stage_plan[min(index, max(0, len(stage_plan) - 1))] if stage_plan else {
+            "stage_number": index + 1,
+            "key": "screening",
+            "label": "Screening",
+        }
+        fallback_flow.append(
+            build_interview_simulator_question_entry(
+                stage_plan,
+                safe_text(stage_entry.get("key")) or "screening",
+                question_text,
+                1 if index == 0 else max(1, index - len(fallback_flow) + 1),
+            )
+        )
+    return fallback_flow
+
+
+def normalize_interview_simulator_turn_stage_key(turn_payload: dict[str, Any]) -> str:
+    stage_key = safe_text(turn_payload.get("stage_key")).strip().lower()
+    if stage_key in INTERVIEW_SIMULATOR_STAGE_BLUEPRINT_MAP:
+        return stage_key
+    round_number = int(turn_payload.get("round_number") or 0)
+    if 1 <= round_number <= len(INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS):
+        return safe_text(INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS[round_number - 1]["key"])
+    return "screening"
+
+
+def build_interview_simulator_stage_summaries(turns: list[dict[str, Any]], stage_plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for stage in stage_plan:
+        stage_key = safe_text(stage.get("key"))
+        stage_turns = [turn for turn in turns if normalize_interview_simulator_turn_stage_key(turn) == stage_key]
+        if not stage_turns:
+            continue
+        overall_values = [safe_float(((turn.get("scores") or {}).get("overall")), 0.0) for turn in stage_turns]
+        summaries.append(
+            {
+                "stage_key": stage_key,
+                "stage_label": safe_text(stage.get("label")) or "Round",
+                "stage_number": int(stage.get("stage_number") or len(summaries) + 1),
+                "question_count": len(stage_turns),
+                "average_score": clamp(sum(overall_values) / max(1, len(overall_values))),
+            }
+        )
+    return summaries
+
+
+def choose_interview_simulator_target_skill(
+    focus_skills: list[str],
+    missing_focus_skills: list[str] | None = None,
+    next_focus_skill: str | None = None,
+    offset: int = 0,
+) -> str:
+    explicit = safe_text(next_focus_skill).strip()
+    if explicit:
+        return explicit
+    missing = dedupe_text_list(missing_focus_skills or [], limit=6, max_item_len=80)
+    if missing:
+        return missing[0]
+    curated = dedupe_text_list(focus_skills or [], limit=10, max_item_len=80)
+    if curated:
+        return curated[min(max(0, offset), len(curated) - 1)]
+    return "execution"
+
+
+def build_interview_simulator_stage_question(
+    role: str,
+    industry: str,
+    difficulty: str,
+    stage_key: str,
+    question_number_in_stage: int,
+    focus_skills: list[str],
+    missing_focus_skills: list[str],
+    improvements: list[str],
+    fallback_question: str | None = None,
+    next_focus_skill: str | None = None,
+) -> str:
+    candidate_fallback = safe_text(fallback_question).strip()
+    if len(candidate_fallback) >= 12:
+        return candidate_fallback[:260]
+
+    role_label = safe_text(role).strip() or "this role"
+    industry_label = safe_text(industry).strip() or "the business"
+    improvement_note = safe_text(improvements[0]).strip()
+    target_skill = choose_interview_simulator_target_skill(
+        focus_skills,
+        missing_focus_skills=missing_focus_skills,
+        next_focus_skill=next_focus_skill,
+        offset=max(0, question_number_in_stage - 1),
+    )
+    stage = safe_text(stage_key).strip().lower()
+    normalized_difficulty = normalize_interview_simulator_difficulty(difficulty)
+
+    if stage == "screening":
+        if question_number_in_stage <= 1:
+            return f"Let’s start with the screening round. What makes you a strong fit for this {role_label} role, and which recent experience proves it best?"
+        return f"Still in screening, tell me about a specific example where you used {target_skill} and why that experience matters for a {role_label} role."
+
+    if stage == "technical_assessment":
+        if question_number_in_stage <= 1:
+            return f"Moving into the technical assessment round, walk me through a concrete situation where you used {target_skill} to drive results in {industry_label}."
+        if question_number_in_stage == 2:
+            return f"In that technical round, how did you measure success, make trade-offs, and adjust your approach when the first plan was not enough?"
+        if improvement_note:
+            return f"One thing I still need to hear is this: {improvement_note} Give me a sharper example tied to {target_skill}."
+        return f"Give me a second technical example where your judgment on {target_skill} changed a business outcome."
+
+    if stage == "in_depth_assessment":
+        if question_number_in_stage <= 1:
+            return f"Now let’s go deeper. Tell me about a high-pressure situation in this {role_label} path where the stakes were high, the data was incomplete, and you still had to decide."
+        if normalized_difficulty == "advanced":
+            return f"Stay in the in-depth round and unpack a decision that forced you to balance speed, stakeholder alignment, and risk. What did you choose and what was the consequence?"
+        return f"In this in-depth round, describe a time when your first answer was not enough and you had to recover, influence others, and still deliver the outcome."
+
+    if question_number_in_stage <= 1:
+        return f"We’ll close with the HR round. What kind of team environment helps you do your best work, and why does this {role_label} role fit where you want to grow next?"
+    return f"Last HR question. Tell me about a difficult people situation, how you handled it, and what you would repeat or change next time."
+
+
+def build_interview_simulator_opening_question(role: str, industry: str, difficulty: str, focus_skills: list[str]) -> str:
+    return build_interview_simulator_stage_question(
+        role=role,
+        industry=industry,
+        difficulty=difficulty,
+        stage_key="screening",
+        question_number_in_stage=1,
+        focus_skills=focus_skills,
+        missing_focus_skills=[],
+        improvements=[],
+    )
 
 
 def pick_interview_simulator_interviewer_name(role: str, industry: str) -> str:
@@ -11919,7 +12266,8 @@ def build_interview_simulator_opening_remark(candidate_name: str, interviewer_na
     target_role = safe_text(role).strip() or "this role"
     return (
         f"Hi {candidate}, welcome in. I'm {interviewer}, and I'll be your interviewer today for the {target_role} role. "
-        "We'll keep this conversational. I'll ask one question at a time, and you can answer naturally."
+        "We’ll start with screening, go deeper only when your answers support it, and finish with an HR close if it makes sense. "
+        "I'll ask one question at a time, and you can answer naturally."
     )
 
 
@@ -11967,6 +12315,95 @@ def build_interview_simulator_interviewer_bridge(
     if improvements:
         return f"Thanks, {candidate}. I want to go one level deeper on that."
     return f"Thanks, {candidate}. Let's keep moving."
+
+
+def build_interview_simulator_stage_transition_bridge(next_stage: dict[str, Any], prior_bridge: str | None = None) -> str:
+    stage_key = safe_text(next_stage.get("key")).strip().lower()
+    stage_number = int(next_stage.get("stage_number") or 1)
+    stage_label = safe_text(next_stage.get("label")) or f"Round {stage_number}"
+    base = f"Let’s move into round {stage_number}, {stage_label.lower()}."
+    if stage_key == "technical_assessment":
+        base = "Good. Let’s move into round 2, the technical assessment."
+    elif stage_key == "in_depth_assessment":
+        base = "Good. Let’s move into round 3, the in-depth assessment."
+    elif stage_key == "hr":
+        base = "Good. We’ll wrap with round 4, the HR conversation."
+    bridge = safe_text(prior_bridge).strip()
+    if bridge and not phrase_in_text(bridge, stage_label):
+        return f"{base} {bridge}"[:180]
+    return base[:180]
+
+
+def summarize_interview_simulator_scores(turns: list[dict[str, Any]]) -> float:
+    if not turns:
+        return 0.0
+    values = [safe_float(((turn.get("scores") or {}).get("overall")), 0.0) for turn in turns]
+    return clamp(sum(values) / max(1, len(values)))
+
+
+def decide_interview_simulator_stage_progression(
+    stage_plan: list[dict[str, Any]],
+    current_stage_key: str,
+    current_stage_turns: list[dict[str, Any]],
+    all_turns: list[dict[str, Any]],
+    difficulty: str,
+    llm_stage_action: str | None = None,
+) -> tuple[bool, str | None]:
+    stage_entry = get_interview_simulator_stage_entry(stage_plan, current_stage_key)
+    stage_question_count = len(current_stage_turns)
+    min_questions = int(stage_entry.get("min_questions") or 1)
+    max_questions = int(stage_entry.get("max_questions") or min_questions)
+    stage_average = summarize_interview_simulator_scores(current_stage_turns)
+    latest_score = safe_float((((current_stage_turns[-1].get("scores") or {}).get("overall")) if current_stage_turns else 0), 0.0)
+    overall_average = summarize_interview_simulator_scores(all_turns)
+    action = safe_text(llm_stage_action).strip().lower()
+    normalized_difficulty = normalize_interview_simulator_difficulty(difficulty)
+
+    if stage_question_count < min_questions:
+        return False, current_stage_key
+
+    stage_complete = stage_question_count >= max_questions
+    if not stage_complete:
+        if current_stage_key == "screening":
+            stage_complete = stage_question_count >= 2
+        elif current_stage_key == "technical_assessment":
+            if action in {"advance", "skip_to_hr"} and stage_average >= 52:
+                stage_complete = True
+            elif stage_question_count >= 2 and (stage_average >= 64 or latest_score >= 72):
+                stage_complete = True
+        elif current_stage_key == "in_depth_assessment":
+            if action == "advance" and stage_average >= 48:
+                stage_complete = True
+            elif stage_question_count >= 1 and (stage_average >= 66 or latest_score >= 70):
+                stage_complete = True
+        elif current_stage_key == "hr":
+            stage_complete = stage_question_count >= 1 and action != "stay"
+
+    if not stage_complete:
+        return False, current_stage_key
+
+    if current_stage_key == "screening":
+        return True, "technical_assessment"
+
+    if current_stage_key == "technical_assessment":
+        if action == "finish" and stage_average < 48 and overall_average < 50:
+            return True, None
+        if action == "skip_to_hr" and stage_average >= 56:
+            return True, "hr"
+        if stage_average >= 74 or (normalized_difficulty == "foundation" and stage_average >= 64):
+            return True, "hr"
+        if stage_average >= 46 or overall_average >= 50:
+            return True, "in_depth_assessment"
+        return True, None
+
+    if current_stage_key == "in_depth_assessment":
+        if action == "finish" and stage_average < 45:
+            return True, None
+        if stage_average >= 48 or overall_average >= 55 or normalized_difficulty == "foundation":
+            return True, "hr"
+        return True, None
+
+    return True, None
 
 
 def build_interview_turn_heuristics(
@@ -12111,8 +12548,11 @@ def request_interview_simulator_turn_overlay(
     role: str,
     industry: str,
     difficulty: str,
+    stage_key: str,
+    stage_label: str,
     round_number: int,
     total_rounds: int,
+    question_number_in_stage: int,
     focus_skills: list[str],
     question: str,
     answer_text: str,
@@ -12123,10 +12563,13 @@ def request_interview_simulator_turn_overlay(
 
     prompt = f"""
 You are an expert interview panel for {safe_text(role)} hiring in {safe_text(industry)}.
-Evaluate the candidate answer and generate one adaptive follow-up question.
+Evaluate the candidate answer and decide whether the current interview round should continue, advance, or end.
 
 Difficulty: {safe_text(difficulty)}
 Round: {round_number}/{total_rounds}
+Current round label: {safe_text(stage_label)}
+Current round key: {safe_text(stage_key)}
+Question number in this round: {question_number_in_stage}
 Focus skills: {json.dumps(focus_skills[:8], ensure_ascii=False)}
 
 Current question:
@@ -12146,6 +12589,7 @@ Return strict JSON only with this schema:
   "interviewer_bridge": "one short interviewer line before the next question",
   "follow_up_question": "one targeted next question",
   "next_focus_skill": "skill phrase",
+  "stage_action": "stay|advance|skip_to_hr|finish",
   "communication_score": 0,
   "clarity_score": 0,
   "domain_depth_score": 0,
@@ -12154,6 +12598,12 @@ Return strict JSON only with this schema:
 
 Rules:
 - Sound like a human interviewer: warm, concise, and direct.
+- The interview ladder is: screening -> technical_assessment -> in_depth_assessment -> hr.
+- Use "stay" if the current round needs another question.
+- Use "advance" if the candidate should move to the next deeper round.
+- Use "skip_to_hr" only after technical_assessment when the candidate is strong enough to skip in_depth_assessment.
+- Use "finish" if the interview should end after this round.
+- Make the follow_up_question match the stage_action you chose.
 - If the candidate answer is playful or funny, you may acknowledge it with light professional humor.
 - Never mock the candidate or derail the interview.
 """
@@ -12168,6 +12618,7 @@ Rules:
         "interviewer_bridge": safe_text(parsed.get("interviewer_bridge"))[:180],
         "follow_up_question": safe_text(parsed.get("follow_up_question"))[:240],
         "next_focus_skill": safe_text(parsed.get("next_focus_skill"))[:72],
+        "stage_action": safe_text(parsed.get("stage_action")).strip().lower()[:24],
         "communication_score": clamp_float(safe_float(parsed.get("communication_score"), 0.0), 0.0, 100.0),
         "clarity_score": clamp_float(safe_float(parsed.get("clarity_score"), 0.0), 0.0, 100.0),
         "domain_depth_score": clamp_float(safe_float(parsed.get("domain_depth_score"), 0.0), 0.0, 100.0),
@@ -12179,31 +12630,34 @@ Rules:
 def build_interview_simulator_follow_up_question(
     role: str,
     industry: str,
-    round_number: int,
-    total_rounds: int,
+    difficulty: str,
+    stage_plan: list[dict[str, Any]],
+    stage_key: str,
+    question_number_in_stage: int,
     focus_skills: list[str],
     missing_focus_skills: list[str],
     improvements: list[str],
     fallback_question: str | None = None,
+    next_focus_skill: str | None = None,
 ) -> str:
-    if safe_text(fallback_question):
-        return safe_text(fallback_question)
-
-    target_skill = missing_focus_skills[0] if missing_focus_skills else (focus_skills[min(round_number, max(0, len(focus_skills) - 1))] if focus_skills else "execution")
-    if round_number >= total_rounds:
-        return "What is your final summary of impact and why are you the right fit for this role?"
-
-    if round_number == total_rounds - 1:
-        return (
-            f"Final round: Give a concise 90-second pitch for {role} in {industry}, highlighting measurable outcomes and {target_skill}."
-        )
-    if improvements:
-        return f"Let’s go deeper: {improvements[0]} Can you answer with one concrete example tied to {target_skill}?"
-    return f"Share a specific example where you applied {target_skill} and quantified the business outcome."
+    return build_interview_simulator_stage_question(
+        role=role,
+        industry=industry,
+        difficulty=difficulty,
+        stage_key=stage_key,
+        question_number_in_stage=question_number_in_stage,
+        focus_skills=focus_skills,
+        missing_focus_skills=missing_focus_skills,
+        improvements=improvements,
+        fallback_question=fallback_question,
+        next_focus_skill=next_focus_skill,
+    )
 
 
 def build_interview_simulator_report_payload(session_payload: dict[str, Any]) -> dict[str, Any]:
     turns = session_payload.get("turns") if isinstance(session_payload.get("turns"), list) else []
+    stage_plan = get_interview_simulator_stage_plan(session_payload)
+    stage_summaries = build_interview_simulator_stage_summaries(turns, stage_plan)
     role = safe_text(session_payload.get("role")) or "Target role"
     industry = safe_text(session_payload.get("industry")) or "General"
     difficulty = normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty")))
@@ -12218,7 +12672,9 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
             "improvement_signals": [],
             "next_steps": ["Start the simulation and answer at least one question to get a report."],
             "turns_completed": 0,
-            "total_rounds": int(session_payload.get("total_rounds") or 0),
+            "rounds_completed": 0,
+            "stage_summaries": [],
+            "total_rounds": len(stage_plan),
             "shortlist_prediction": "Interview readiness: Not Started",
             "source": "interview_simulator",
             "role": role,
@@ -12289,7 +12745,9 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
         "improvement_signals": improvement_signals,
         "next_steps": dedupe_text_list(next_steps, limit=5, max_item_len=220),
         "turns_completed": len(turns),
-        "total_rounds": int(session_payload.get("total_rounds") or len(turns)),
+        "rounds_completed": len(stage_summaries),
+        "stage_summaries": stage_summaries,
+        "total_rounds": len(stage_plan) or int(session_payload.get("total_rounds") or len(turns)),
     }
 
 
@@ -12299,7 +12757,9 @@ def build_interview_simulator_archive_payload(
 ) -> dict[str, Any]:
     report_summary = dict(report_payload or build_interview_simulator_report_payload(session_payload))
     turns = session_payload.get("turns") if isinstance(session_payload.get("turns"), list) else []
-    questions = session_payload.get("questions") if isinstance(session_payload.get("questions"), list) else []
+    stage_plan = get_interview_simulator_stage_plan(session_payload)
+    question_flow = extract_interview_simulator_question_flow(session_payload, stage_plan)
+    questions = [safe_text(item.get("question"))[:260] for item in question_flow if isinstance(item, dict) and safe_text(item.get("question"))]
     role = safe_text(session_payload.get("role")) or "Target role"
     industry = safe_text(session_payload.get("industry")) or "General"
     difficulty = normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty")))
@@ -12319,8 +12779,10 @@ def build_interview_simulator_archive_payload(
         "interviewer_name": interviewer_name,
         "opening_remark": opening_remark,
         "closing_remark": closing_remark,
+        "stage_plan": stage_plan,
+        "question_flow": question_flow,
         "focus_skills": dedupe_text_list(session_payload.get("focus_skills") or [], limit=10, max_item_len=80),
-        "questions": [safe_text(item)[:260] for item in questions[:20] if safe_text(item)],
+        "questions": questions[:20],
         "turns": turns,
         "overall_score": int(clamp_float(float(report_summary.get("overall_score") or 0), 0.0, 100.0)),
         "shortlist_prediction": safe_text(report_summary.get("shortlist_prediction")) or "Interview readiness: Medium",
@@ -12330,7 +12792,9 @@ def build_interview_simulator_archive_payload(
         "improvement_signals": normalize_string_list(report_summary.get("improvement_signals"), limit=8, max_item_len=180),
         "next_steps": normalize_string_list(report_summary.get("next_steps"), limit=8, max_item_len=220),
         "turns_completed": int(report_summary.get("turns_completed") or len(turns)),
-        "total_rounds": int(report_summary.get("total_rounds") or session_payload.get("total_rounds") or len(turns)),
+        "rounds_completed": int(report_summary.get("rounds_completed") or len(build_interview_simulator_stage_summaries(turns, stage_plan))),
+        "stage_summaries": report_summary.get("stage_summaries") if isinstance(report_summary.get("stage_summaries"), list) else build_interview_simulator_stage_summaries(turns, stage_plan),
+        "total_rounds": int(report_summary.get("total_rounds") or len(stage_plan) or session_payload.get("total_rounds") or len(turns)),
         "created_at": safe_text(session_payload.get("created_at")) or completed_at,
         "completed_at": completed_at,
         "session_status": safe_text(session_payload.get("status")) or "completed",
@@ -13954,6 +14418,7 @@ def render_interview_simulator_report_pdf_bytes(report_payload: dict[str, Any], 
     readiness = safe_text(report_summary.get("readiness_label") or report_payload.get("readiness_label") or "medium").replace("_", " ").title()
     score_breakdown = report_summary.get("score_breakdown") if isinstance(report_summary.get("score_breakdown"), dict) else {}
     turns = report_payload.get("turns") if isinstance(report_payload.get("turns"), list) else []
+    stage_summaries = report_summary.get("stage_summaries") if isinstance(report_summary.get("stage_summaries"), list) else []
 
     story: list[Any] = []
     story.append(Paragraph("HireScore Interview Simulator Report", title_style))
@@ -13969,8 +14434,9 @@ def render_interview_simulator_report_pdf_bytes(report_payload: dict[str, Any], 
         ("Readiness", readiness or "Medium"),
         ("Industry", industry or "General"),
         ("Interviewer", interviewer_name or "Avery Bennett"),
-        ("Rounds Completed", str(int(report_summary.get("turns_completed") or len(turns)))),
-        ("Total Rounds", str(int(report_summary.get("total_rounds") or len(turns)))),
+        ("Questions Answered", str(int(report_summary.get("turns_completed") or len(turns)))),
+        ("Rounds Completed", str(int(report_summary.get("rounds_completed") or len(stage_summaries)))),
+        ("Possible Rounds", str(int(report_summary.get("total_rounds") or len(INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS)))),
     ]
     metrics_table = Table(
         [[Paragraph(html.escape(label), metric_label_style), Paragraph(html.escape(value), metric_value_style)] for label, value in metrics_rows],
@@ -14017,6 +14483,15 @@ def render_interview_simulator_report_pdf_bytes(report_payload: dict[str, Any], 
     add_section("Strength Signals", analysis_list_items(report_summary.get("strength_signals"), limit=6, max_item_len=190))
     add_section("Improvement Signals", analysis_list_items(report_summary.get("improvement_signals"), limit=6, max_item_len=190))
     add_section("Next Steps", analysis_list_items(report_summary.get("next_steps"), limit=6, max_item_len=200))
+    if stage_summaries:
+        stage_lines = []
+        for item in stage_summaries[:4]:
+            label = safe_text(item.get("stage_label")) or "Round"
+            round_number = int(item.get("stage_number") or 0)
+            questions_in_round = int(item.get("question_count") or 0)
+            average_score = int(clamp_float(float(item.get("average_score") or 0), 0.0, 100.0))
+            stage_lines.append(f"Round {round_number} - {label}: {questions_in_round} question(s), average {average_score}%")
+        add_section("Round Summary", stage_lines)
 
     opening_remark = safe_text(report_payload.get("opening_remark"))
     closing_remark = safe_text(report_payload.get("closing_remark"))
@@ -14030,11 +14505,14 @@ def render_interview_simulator_report_pdf_bytes(report_payload: dict[str, Any], 
         story.append(HRFlowable(width="100%", color=colors.HexColor("#D5E6F3"), thickness=0.65, spaceBefore=0.6, spaceAfter=4))
         for turn in turns[:10]:
             round_number = int(turn.get("round_number") or 0)
+            stage_label = safe_text(turn.get("stage_label")) or f"Round {round_number}"
+            question_number_in_stage = int(turn.get("question_number_in_stage") or 0)
             overall = int(clamp_float(float(((turn.get("scores") or {}).get("overall") or 0)), 0.0, 100.0))
             answer_time = int(turn.get("response_time_seconds") or 0)
             question = safe_text(turn.get("question"))[:220]
             summary = safe_text(turn.get("feedback_summary"))[:220]
-            header = f"Round {round_number} | Score {overall}% | Answer Time {answer_time}s"
+            question_suffix = f" | Question {question_number_in_stage}" if question_number_in_stage > 0 else ""
+            header = f"Round {round_number} - {stage_label}{question_suffix} | Score {overall}% | Answer Time {answer_time}s"
             story.append(Paragraph(html.escape(header), metric_label_style))
             if question:
                 story.append(Paragraph(html.escape(f"Question: {question}"), body_style))

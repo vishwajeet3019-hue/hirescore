@@ -34,6 +34,9 @@ type SimulatorScoreBreakdown = {
 
 type SimulatorTurnFeedback = {
   round_number: number;
+  stage_key?: string;
+  stage_label?: string;
+  question_number_in_stage?: number;
   question: string;
   answer: string;
   answer_word_count: number;
@@ -54,6 +57,14 @@ type SimulatorTurnFeedback = {
   created_at?: string;
 };
 
+type SimulatorStageSummary = {
+  stage_key: string;
+  stage_label: string;
+  stage_number: number;
+  question_count: number;
+  average_score: number;
+};
+
 type SimulatorReport = {
   overall_score: number;
   readiness_label: string;
@@ -67,6 +78,8 @@ type SimulatorReport = {
   improvement_signals: string[];
   next_steps: string[];
   turns_completed: number;
+  rounds_completed?: number;
+  stage_summaries?: SimulatorStageSummary[];
   total_rounds: number;
 };
 
@@ -82,6 +95,9 @@ type SimulatorStartPayload = {
   difficulty: string;
   focus_skills: string[];
   round_number: number;
+  current_stage_key?: string;
+  current_stage_label?: string;
+  question_number_in_stage?: number;
   total_rounds: number;
   progress_percent: number;
   current_question: string;
@@ -98,6 +114,9 @@ type SimulatorTurnPayload = {
   session_id: string;
   completed: boolean;
   round_number: number;
+  current_stage_key?: string;
+  current_stage_label?: string;
+  question_number_in_stage?: number;
   total_rounds: number;
   progress_percent: number;
   next_question?: string | null;
@@ -118,9 +137,14 @@ type SimulatorReportPayload = {
   opening_remark?: string;
   closing_remark?: string;
   difficulty: string;
+  round_number?: number;
+  current_stage_key?: string;
+  current_stage_label?: string;
+  question_number_in_stage?: number;
   total_rounds: number;
   status: string;
   focus_skills: string[];
+  current_question?: string;
   questions?: string[];
   turns: SimulatorTurnFeedback[];
   report: SimulatorReport;
@@ -239,14 +263,26 @@ const composeSpeechAnswer = (base: string, finalized: string, interim = "") => {
   return normalizeSpeechText(chunks.join(" "));
 };
 
-const buildInterviewerSpeechText = (question: string, roundNumber: number, openingRemark = "", interviewerBridge = "") => {
+const buildInterviewerSpeechText = (
+  question: string,
+  roundNumber: number,
+  questionNumberInStage: number,
+  openingRemark = "",
+  interviewerBridge = ""
+) => {
   const normalizedQuestion = normalizeSpeechText(question);
-  const normalizedOpening = roundNumber <= 1 ? normalizeSpeechText(openingRemark) : "";
-  const normalizedBridge = roundNumber > 1 ? normalizeSpeechText(interviewerBridge) : "";
+  const normalizedOpening = roundNumber <= 1 && questionNumberInStage <= 1 ? normalizeSpeechText(openingRemark) : "";
+  const normalizedBridge = roundNumber > 1 || questionNumberInStage > 1 ? normalizeSpeechText(interviewerBridge) : "";
   const bridge = normalizedOpening
     ? "Let's start with the first question."
-    : normalizedBridge || (roundNumber > 1 && normalizedQuestion ? "Thanks. Here is the next question." : "");
+    : normalizedBridge || (roundNumber > 1 || questionNumberInStage > 1 ? "Thanks. Here is the next question." : "");
   return normalizeSpeechText([normalizedOpening, bridge, normalizedQuestion].filter(Boolean).join(" "));
+};
+
+const formatRoundLabel = (roundNumber: number, stageLabel: string) => {
+  const safeRoundNumber = Math.max(1, roundNumber || 1);
+  const safeStageLabel = stageLabel.trim() || "Screening";
+  return `Round ${safeRoundNumber}: ${safeStageLabel}`;
 };
 
 const formatRoomTime = (value: Date) =>
@@ -276,7 +312,6 @@ export default function InterviewSimulatorClient() {
   const [role, setRole] = useState("");
   const [industry, setIndustry] = useState("");
   const [difficulty, setDifficulty] = useState<"foundation" | "standard" | "advanced">("standard");
-  const [rounds, setRounds] = useState(5);
   const [resumeText, setResumeText] = useState("");
   const [resumeUploadedFileName, setResumeUploadedFileName] = useState("");
   const [resumeFileUploading, setResumeFileUploading] = useState(false);
@@ -290,6 +325,8 @@ export default function InterviewSimulatorClient() {
   const [focusSkills, setFocusSkills] = useState<string[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState("");
   const [roundNumber, setRoundNumber] = useState(0);
+  const [currentStageLabel, setCurrentStageLabel] = useState("Screening");
+  const [questionNumberInStage, setQuestionNumberInStage] = useState(1);
   const [totalRounds, setTotalRounds] = useState(0);
   const [progressPercent, setProgressPercent] = useState(0);
   const [answerText, setAnswerText] = useState("");
@@ -351,8 +388,8 @@ export default function InterviewSimulatorClient() {
   const setupReady = hasResumeContext && hasJobDescriptionContext;
   const shouldShowCompactSetup = (setupReady || Boolean(sessionId) || Boolean(report)) && !setupExpanded;
   const spokenQuestionText = useMemo(
-    () => buildInterviewerSpeechText(currentQuestion, roundNumber, openingRemark, interviewerBridge),
-    [currentQuestion, interviewerBridge, openingRemark, roundNumber]
+    () => buildInterviewerSpeechText(currentQuestion, roundNumber, questionNumberInStage, openingRemark, interviewerBridge),
+    [currentQuestion, interviewerBridge, openingRemark, questionNumberInStage, roundNumber]
   );
   const meetingRoomCode = useMemo(() => {
     if (!sessionId) return "meet-hirescore-live";
@@ -615,7 +652,9 @@ export default function InterviewSimulatorClient() {
         setHasAutoCollapsedSetup(true);
         if (payload.status === "completed") {
           setCurrentQuestion("");
-          setRoundNumber(payload.report?.turns_completed || payload.turns?.length || 0);
+          setRoundNumber(payload.report?.rounds_completed || payload.round_number || payload.total_rounds || 0);
+          setCurrentStageLabel(payload.current_stage_label || payload.turns?.[payload.turns.length - 1]?.stage_label || "Completed");
+          setQuestionNumberInStage(payload.question_number_in_stage || payload.turns?.[payload.turns.length - 1]?.question_number_in_stage || 0);
           setProgressPercent(100);
           setAnswerText("");
           setPrejoinModalOpen(false);
@@ -623,15 +662,15 @@ export default function InterviewSimulatorClient() {
           setInterviewerJoined(false);
           return;
         }
-        const turnsCompleted = (payload.turns || []).length;
-        const questions = payload.questions || [];
-        const fallbackQuestion = questions.length > turnsCompleted ? questions[turnsCompleted] : questions[questions.length - 1] || "";
-        const previousTurn = turnsCompleted > 0 ? payload.turns[turnsCompleted - 1] : null;
+        const previousTurn = payload.turns && payload.turns.length > 0 ? payload.turns[payload.turns.length - 1] : null;
         const restoredStage = storedSession?.room_stage === "ready_to_join" ? "ready_to_join" : "live";
-        setCurrentQuestion(fallbackQuestion);
+        const latestKnownQuestion = payload.questions && payload.questions.length > 0 ? payload.questions[payload.questions.length - 1] : "";
+        setCurrentQuestion(payload.current_question || latestKnownQuestion || "");
         setInterviewerBridge(previousTurn?.interviewer_bridge || "");
-        setRoundNumber(Math.max(1, turnsCompleted + 1));
-        setProgressPercent(clampPercent((Math.max(1, turnsCompleted + 1) / Math.max(1, payload.total_rounds || 1)) * 100));
+        setRoundNumber(Math.max(1, payload.round_number || 1));
+        setCurrentStageLabel(payload.current_stage_label || previousTurn?.stage_label || "Screening");
+        setQuestionNumberInStage(Math.max(1, payload.question_number_in_stage || 1));
+        setProgressPercent(clampPercent(payload.status === "completed" ? 100 : ((payload.round_number || 1) / Math.max(1, payload.total_rounds || 1)) * 100));
         setPrejoinModalOpen(restoredStage === "ready_to_join");
         setRoomStage(restoredStage);
         setInterviewerJoined(restoredStage === "live");
@@ -986,6 +1025,8 @@ export default function InterviewSimulatorClient() {
     setSessionSecret("");
     setCurrentQuestion("");
     setRoundNumber(0);
+    setCurrentStageLabel("Screening");
+    setQuestionNumberInStage(1);
     setTotalRounds(0);
     setProgressPercent(0);
     setTurnHistory([]);
@@ -1056,7 +1097,6 @@ export default function InterviewSimulatorClient() {
             role: role.trim(),
             industry: industry.trim() || "General",
             difficulty,
-            rounds,
             resume_text: resumeText.trim(),
             job_description: jobDescription.trim(),
             auth_token: authToken || undefined,
@@ -1082,7 +1122,9 @@ export default function InterviewSimulatorClient() {
       setSavedDashboardReportId(null);
       setCurrentQuestion(payload.current_question || "");
       setRoundNumber(payload.round_number || 1);
-      setTotalRounds(payload.total_rounds || rounds);
+      setCurrentStageLabel(payload.current_stage_label || "Screening");
+      setQuestionNumberInStage(payload.question_number_in_stage || 1);
+      setTotalRounds(payload.total_rounds || 4);
       setProgressPercent(payload.progress_percent || 0);
       setFocusSkills(payload.focus_skills || []);
       setTurnHistory([]);
@@ -1100,7 +1142,7 @@ export default function InterviewSimulatorClient() {
       trackEvent("interview_simulator_start", {
         role: role.trim(),
         difficulty,
-        rounds: payload.total_rounds || rounds,
+        rounds: payload.total_rounds || 4,
       });
     } catch (error) {
       const elapsed = Date.now() - startedAt;
@@ -1172,6 +1214,8 @@ export default function InterviewSimulatorClient() {
         setTurnHistory((previous) => [...previous, payload.turn_feedback as SimulatorTurnFeedback]);
       }
       setRoundNumber(payload.round_number || roundNumber);
+      setCurrentStageLabel(payload.current_stage_label || payload.turn_feedback?.stage_label || currentStageLabel);
+      setQuestionNumberInStage(payload.question_number_in_stage || questionNumberInStage);
       setTotalRounds(payload.total_rounds || totalRounds);
       setProgressPercent(payload.progress_percent || progressPercent);
       setAnswerText("");
@@ -1215,7 +1259,7 @@ export default function InterviewSimulatorClient() {
           overrideText: farewell,
         });
         trackEvent("interview_simulator_complete", {
-          rounds_completed: payload.round_number || 0,
+          rounds_completed: payload.report?.rounds_completed || payload.round_number || 0,
           score: clampPercent(payload.report?.overall_score || 0),
         });
       } else {
@@ -1260,12 +1304,15 @@ export default function InterviewSimulatorClient() {
       });
       setTurnHistory(payload.turns || []);
       setFocusSkills(payload.focus_skills || []);
+      setCurrentQuestion(payload.current_question || "");
+      setRoundNumber(payload.round_number || roundNumber);
+      setCurrentStageLabel(payload.current_stage_label || currentStageLabel);
+      setQuestionNumberInStage(payload.question_number_in_stage || questionNumberInStage);
       setTotalRounds(payload.total_rounds || 0);
       setCandidateName(payload.candidate_name || candidateName);
       setInterviewerName(payload.interviewer_name || interviewerName);
       setOpeningRemark(payload.opening_remark || openingRemark);
-      const pendingQuestionIndex = (payload.turns || []).length;
-      const previousTurn = pendingQuestionIndex > 0 ? payload.turns[pendingQuestionIndex - 1] : null;
+      const previousTurn = payload.turns && payload.turns.length > 0 ? payload.turns[payload.turns.length - 1] : null;
       setInterviewerBridge(previousTurn?.interviewer_bridge || "");
       setClosingRemark(payload.closing_remark || closingRemark);
       setSavedDashboardReportId(payload.saved_report_id ?? null);
@@ -1275,6 +1322,9 @@ export default function InterviewSimulatorClient() {
         setReport(payload.report || null);
         setCurrentQuestion("");
         setInterviewerBridge("");
+        setRoundNumber(payload.report?.rounds_completed || payload.round_number || roundNumber);
+        setCurrentStageLabel(payload.current_stage_label || previousTurn?.stage_label || "Completed");
+        setQuestionNumberInStage(payload.question_number_in_stage || previousTurn?.question_number_in_stage || 0);
         setAnswerText("");
         setInterimTranscript("");
         speechBaseAnswerRef.current = "";
@@ -1694,9 +1744,14 @@ export default function InterviewSimulatorClient() {
       "Next Steps:",
       ...(report.next_steps || []).map((item, index) => `${index + 1}. ${item}`),
       "",
+      "Round Summary:",
+      ...((report.stage_summaries || []).flatMap((item) => [
+        `- ${formatRoundLabel(item.stage_number, item.stage_label)} | Questions: ${item.question_count} | Average Score: ${clampPercent(item.average_score)}%`,
+      ])),
+      "",
       "Turn-by-Turn Feedback:",
       ...turnHistory.flatMap((turn) => [
-        `Round ${turn.round_number}: ${turn.question}`,
+        `${formatRoundLabel(turn.round_number, turn.stage_label || "Round")} | Question ${turn.question_number_in_stage || 1}: ${turn.question}`,
         `Answer Time: ${turn.response_time_seconds}s | Words: ${turn.answer_word_count}`,
         `Scores: Communication ${turn.scores.communication}% | Clarity ${turn.scores.clarity}% | Domain ${turn.scores.domain_depth}% | Confidence ${turn.scores.confidence}%`,
         `Summary: ${turn.feedback_summary}`,
@@ -1769,10 +1824,11 @@ export default function InterviewSimulatorClient() {
     role ? `Role: ${role}` : "",
     `Industry: ${industry || "General"}`,
     `Difficulty: ${difficulty}`,
-    `${rounds} rounds`,
+    "Adaptive 4-round flow",
   ].filter(Boolean);
+  const isFirstInterviewPrompt = roundNumber <= 1 && questionNumberInStage <= 1 && turnHistory.length === 0;
   const liveInterviewerIntro =
-    roundNumber <= 1
+    isFirstInterviewPrompt
       ? openingRemark || `Hi ${candidateName || "there"}, welcome in. I'm ${interviewerName}, and I'll guide this interview one question at a time.`
       : interviewerBridge || `Thanks ${candidateName || "there"}. Let's continue.`;
 
@@ -1929,7 +1985,7 @@ export default function InterviewSimulatorClient() {
                               <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">AI Interviewer</p>
                               <h2 className="mt-2 text-3xl font-semibold text-cyan-50">{interviewerName}</h2>
                               <p className="mt-2 max-w-xl text-sm text-cyan-50/74">
-                                {roomStage === "live" && roundNumber <= 1 ? liveInterviewerIntro : interviewerRoomStatus}
+                                {roomStage === "live" && isFirstInterviewPrompt ? liveInterviewerIntro : interviewerRoomStatus}
                               </p>
                             </div>
                             <div className="flex h-20 w-20 items-center justify-center rounded-full border border-emerald-200/22 bg-emerald-200/10 text-2xl font-semibold text-emerald-50">
@@ -1942,7 +1998,7 @@ export default function InterviewSimulatorClient() {
                           </div>
 
                           <div className="mt-10 max-w-3xl space-y-4">
-                            {roomStage === "live" && roundNumber <= 1 ? (
+                            {roomStage === "live" && isFirstInterviewPrompt ? (
                               <div className="rounded-[1.4rem] border border-emerald-200/18 bg-emerald-200/10 p-5">
                                 <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-100/74">Introduction</p>
                                 <p className="mt-3 text-base leading-relaxed text-emerald-50/90">{liveInterviewerIntro}</p>
@@ -1950,8 +2006,9 @@ export default function InterviewSimulatorClient() {
                             ) : null}
                             {roomStage === "live" && currentQuestion ? (
                               <div className="rounded-[1.4rem] border border-cyan-100/18 bg-cyan-100/8 p-5">
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">Current Question</p>
-                                {interviewerBridge && roundNumber > 1 ? (
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">{formatRoundLabel(roundNumber, currentStageLabel)}</p>
+                                <p className="mt-2 text-xs text-cyan-100/74">Question {Math.max(1, questionNumberInStage)} in this round</p>
+                                {interviewerBridge && !isFirstInterviewPrompt ? (
                                   <p className="mt-3 text-sm text-cyan-100/78">{interviewerBridge}</p>
                                 ) : null}
                                 <p className="mt-3 text-xl leading-relaxed text-cyan-50 sm:text-2xl">{currentQuestion}</p>
@@ -2096,8 +2153,9 @@ export default function InterviewSimulatorClient() {
                         <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
                           <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Round Progress</p>
                           <p className="mt-1 text-sm text-cyan-50">
-                            Round {Math.max(0, roundNumber)} of {Math.max(0, totalRounds)}
+                            {formatRoundLabel(roundNumber, currentStageLabel)} of {Math.max(0, totalRounds)}
                           </p>
+                          <p className="mt-1 text-xs text-cyan-100/72">Question {Math.max(1, questionNumberInStage)} in this round</p>
                           <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-cyan-100/10">
                             <div
                               className="h-full rounded-full bg-gradient-to-r from-cyan-300/80 via-sky-300/80 to-emerald-200/80 transition-all duration-500"
@@ -2117,7 +2175,7 @@ export default function InterviewSimulatorClient() {
                     <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Live Scoreboard</p>
                       {!latestTurnFeedback ? (
-                        <p className="mt-4 text-sm text-cyan-50/72">Submit your first answer to see round-by-round scoring.</p>
+                        <p className="mt-4 text-sm text-cyan-50/72">Submit your first answer to see stage-by-stage scoring.</p>
                       ) : (
                         <div className="mt-4 space-y-3">
                           {[
@@ -2150,15 +2208,16 @@ export default function InterviewSimulatorClient() {
                     <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Turn History</p>
                       {turnHistory.length === 0 ? (
-                        <p className="mt-4 text-sm text-cyan-50/72">No rounds completed yet.</p>
+                        <p className="mt-4 text-sm text-cyan-50/72">No interview answers scored yet.</p>
                       ) : (
                         <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                          {turnHistory.map((turn) => (
-                            <article key={`turn-${turn.round_number}`} className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
+                          {turnHistory.map((turn, index) => (
+                            <article key={`turn-${turn.round_number}-${turn.question_number_in_stage || 1}-${index}`} className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
                               <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-semibold text-cyan-100">Round {turn.round_number}</p>
+                                <p className="text-xs font-semibold text-cyan-100">{formatRoundLabel(turn.round_number, turn.stage_label || "Round")}</p>
                                 <span className="text-[11px] text-cyan-100/70">{turn.response_time_seconds}s</span>
                               </div>
+                              <p className="mt-2 text-[11px] text-cyan-100/68">Question {turn.question_number_in_stage || 1}</p>
                               <p className="mt-2 text-[11px] text-cyan-50/84">{turn.feedback_summary}</p>
                               <p className="mt-2 text-[11px] text-cyan-100/70">Overall {clampPercent(turn.scores.overall || 0)}%</p>
                             </article>
@@ -2193,7 +2252,7 @@ export default function InterviewSimulatorClient() {
               </div>
               <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3">
                 <p className="text-[11px] uppercase tracking-[0.11em] text-cyan-100/68">Step 3</p>
-                <p className="mt-1 text-xs text-cyan-50/84">Answer live rounds, get the closing summary, and store the report in your dashboard archive.</p>
+                <p className="mt-1 text-xs text-cyan-50/84">The simulator moves through screening, technical, in-depth, and HR rounds only when your performance justifies them.</p>
               </div>
             </div>
           </div>
@@ -2313,13 +2372,9 @@ export default function InterviewSimulatorClient() {
               >
                 {jdFileUploading ? "Extracting JD..." : "Upload JD"}
               </button>
-              <select value={rounds} onChange={(event) => setRounds(Number(event.target.value))} className={fieldClass}>
-                {[3, 4, 5, 6, 7, 8].map((item) => (
-                  <option key={`round-${item}`} value={item}>
-                    {item} rounds
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center rounded-xl border border-cyan-100/18 bg-cyan-100/8 px-3 py-2.5 text-xs text-cyan-50/84">
+                Adaptive rounds: Screening, Technical, In-Depth, HR
+              </div>
             </div>
             {(resumeUploadedFileName || jdUploadedFileName) ? (
               <p className="mt-3 text-xs text-cyan-100/74">
@@ -2415,6 +2470,10 @@ export default function InterviewSimulatorClient() {
                       <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Interviewer intro</p>
                       <p className="mt-2">{liveInterviewerIntro}</p>
                     </div>
+                    <div className="rounded-xl border border-cyan-100/14 bg-[#071425]/78 p-3">
+                      <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Adaptive rounds</p>
+                      <p className="mt-2">The simulator always starts with screening, then unlocks technical, in-depth, and HR rounds only when performance supports them.</p>
+                    </div>
                   </div>
                 </div>
                 <div className="rounded-[1.4rem] border border-cyan-100/14 bg-[#071425]/74 p-5">
@@ -2465,8 +2524,9 @@ export default function InterviewSimulatorClient() {
                 <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
                   <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Round Progress</p>
                   <p className="mt-1 text-sm text-cyan-50">
-                    Round {Math.max(0, roundNumber)} of {Math.max(0, totalRounds)}
+                    {formatRoundLabel(roundNumber, currentStageLabel)} of {Math.max(0, totalRounds)}
                   </p>
+                  <p className="mt-1 text-xs text-cyan-100/72">Question {Math.max(1, questionNumberInStage)} in this round</p>
                   <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-cyan-100/10">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-cyan-300/80 via-sky-300/80 to-emerald-200/80 transition-all duration-500"
@@ -2486,7 +2546,7 @@ export default function InterviewSimulatorClient() {
             <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
               <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Live Scoreboard</p>
               {!latestTurnFeedback ? (
-                <p className="mt-4 text-sm text-cyan-50/72">Submit your first answer to see round-by-round scoring.</p>
+                <p className="mt-4 text-sm text-cyan-50/72">Submit your first answer to see stage-by-stage scoring.</p>
               ) : (
                 <div className="mt-4 space-y-3">
                   {[
@@ -2519,15 +2579,16 @@ export default function InterviewSimulatorClient() {
             <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
               <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Turn History</p>
               {turnHistory.length === 0 ? (
-                <p className="mt-4 text-sm text-cyan-50/72">No rounds completed yet.</p>
+                <p className="mt-4 text-sm text-cyan-50/72">No interview answers scored yet.</p>
               ) : (
                 <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                  {turnHistory.map((turn) => (
-                    <article key={`turn-${turn.round_number}`} className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
+                  {turnHistory.map((turn, index) => (
+                    <article key={`turn-${turn.round_number}-${turn.question_number_in_stage || 1}-${index}`} className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold text-cyan-100">Round {turn.round_number}</p>
+                        <p className="text-xs font-semibold text-cyan-100">{formatRoundLabel(turn.round_number, turn.stage_label || "Round")}</p>
                         <span className="text-[11px] text-cyan-100/70">{turn.response_time_seconds}s</span>
                       </div>
+                      <p className="mt-2 text-[11px] text-cyan-100/68">Question {turn.question_number_in_stage || 1}</p>
                       <p className="mt-2 text-[11px] text-cyan-50/84">{turn.feedback_summary}</p>
                       <p className="mt-2 text-[11px] text-cyan-100/70">Overall {clampPercent(turn.scores.overall || 0)}%</p>
                     </article>
@@ -2596,6 +2657,21 @@ export default function InterviewSimulatorClient() {
               </ul>
             </article>
           </div>
+
+          {report.stage_summaries && report.stage_summaries.length > 0 ? (
+            <article className="mt-4 rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-4">
+              <p className="text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Round Summary</p>
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                {report.stage_summaries.slice(0, 4).map((item) => (
+                  <div key={`stage-summary-${item.stage_key}`} className="rounded-xl border border-cyan-100/14 bg-[#071425]/72 p-3">
+                    <p className="text-sm font-semibold text-cyan-50">{formatRoundLabel(item.stage_number, item.stage_label)}</p>
+                    <p className="mt-1 text-xs text-cyan-100/72">Questions: {item.question_count}</p>
+                    <p className="mt-1 text-xs text-cyan-100/72">Average score: {clampPercent(item.average_score)}%</p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
 
           <article className="mt-4 rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-4">
             <p className="text-[11px] uppercase tracking-[0.11em] text-cyan-100/70">Next Steps</p>
