@@ -19,6 +19,7 @@ import uuid
 import urllib.request
 import urllib.error
 import urllib.parse
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -272,6 +273,13 @@ INTERVIEW_SIMULATOR_TTL_SECONDS = max(
 )
 INTERVIEW_SIMULATOR_MIN_ROUNDS = 1
 INTERVIEW_SIMULATOR_MAX_ROUNDS = 4
+INTERVIEW_SIMULATOR_GUEST_FREE_LIMIT = max(
+    0,
+    min(10, int((os.getenv("INTERVIEW_SIMULATOR_GUEST_FREE_LIMIT") or "1").strip())),
+)
+INTERVIEW_SIMULATOR_GUEST_FINGERPRINT_SALT = (
+    (os.getenv("INTERVIEW_SIMULATOR_GUEST_FINGERPRINT_SALT") or AUTH_TOKEN_SECRET or "hirescore-guest-interview-salt").strip()
+)
 INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS: list[dict[str, Any]] = [
     {
         "key": "screening",
@@ -317,7 +325,7 @@ if configured_simulator_tts_models:
     INTERVIEW_SIMULATOR_TTS_FALLBACK_MODELS = configured_simulator_tts_models
 else:
     INTERVIEW_SIMULATOR_TTS_FALLBACK_MODELS = [model for model in ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"] if model != INTERVIEW_SIMULATOR_TTS_MODEL]
-INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE = (os.getenv("INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE") or "alloy").strip().lower() or "alloy"
+INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE = (os.getenv("INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE") or "verse").strip().lower() or "verse"
 INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE = (os.getenv("INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE") or "verse").strip().lower() or "verse"
 INTERVIEW_SIMULATOR_TTS_RESPONSE_FORMAT = (os.getenv("INTERVIEW_SIMULATOR_TTS_RESPONSE_FORMAT") or "mp3").strip().lower() or "mp3"
 INTERVIEW_SIMULATOR_TTS_MAX_CHARS = max(
@@ -2076,6 +2084,19 @@ def init_auth_db() -> None:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS guest_interview_usage (
+                        id BIGSERIAL PRIMARY KEY,
+                        fingerprint TEXT NOT NULL UNIQUE,
+                        usage_count INTEGER NOT NULL DEFAULT 0,
+                        first_used_at TEXT NOT NULL,
+                        last_used_at TEXT NOT NULL,
+                        last_ip TEXT,
+                        user_agent TEXT
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS user_goal_roadmaps (
                         id BIGSERIAL PRIMARY KEY,
                         user_id BIGINT NOT NULL REFERENCES users (id),
@@ -2290,6 +2311,19 @@ def init_auth_db() -> None:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS guest_interview_usage (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        fingerprint TEXT NOT NULL UNIQUE,
+                        usage_count INTEGER NOT NULL DEFAULT 0,
+                        first_used_at TEXT NOT NULL,
+                        last_used_at TEXT NOT NULL,
+                        last_ip TEXT,
+                        user_agent TEXT
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS user_goal_roadmaps (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         user_id INTEGER NOT NULL,
@@ -2384,6 +2418,7 @@ def init_auth_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_admin_unread ON user_chat_messages (read_by_admin, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_unread ON user_chat_messages (user_id, read_by_user, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_reports_user_time ON analysis_reports (user_id, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_interview_usage_last_used ON guest_interview_usage (last_used_at)")
             cursor.execute("DROP INDEX IF EXISTS idx_goal_roadmap_user_unique")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_roadmap_user_time ON user_goal_roadmaps (user_id, updated_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_roadmap_updated ON user_goal_roadmaps (updated_at)")
@@ -3337,6 +3372,107 @@ def resolve_optional_authenticated_user(request: Request, explicit_auth_token: s
         return None
 
 
+def interview_simulator_guest_fingerprint(request: Request) -> str:
+    source_ip = request_source_ip(request)
+    user_agent = safe_text(request.headers.get("user-agent"))[:220]
+    accept_language = safe_text(request.headers.get("accept-language"))[:120]
+    raw = f"{INTERVIEW_SIMULATOR_GUEST_FINGERPRINT_SALT}|{source_ip}|{user_agent}|{accept_language}"
+    return hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def fetch_guest_interview_usage_count(connection: AuthDBConnection, fingerprint: str) -> int:
+    row = connection.execute(
+        """
+        SELECT usage_count
+        FROM guest_interview_usage
+        WHERE fingerprint = ?
+        LIMIT 1
+        """,
+        (safe_text(fingerprint),),
+    ).fetchone()
+    if not row:
+        return 0
+    return max(0, int(row["usage_count"] or 0))
+
+
+def enforce_guest_interview_quota(request: Request, limit: int = INTERVIEW_SIMULATOR_GUEST_FREE_LIMIT) -> tuple[str, int, int]:
+    effective_limit = max(0, int(limit))
+    if effective_limit <= 0:
+        raise HTTPException(
+            status_code=402,
+            detail="Guest interview mode is currently disabled. Sign in to continue.",
+        )
+    fingerprint = interview_simulator_guest_fingerprint(request)
+    connection = auth_db_connection()
+    try:
+        usage_count = fetch_guest_interview_usage_count(connection, fingerprint)
+    finally:
+        connection.close()
+    remaining = max(0, effective_limit - usage_count)
+    if usage_count >= effective_limit:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Your free guest interview is already used. Sign in to continue and save all reports to dashboard.",
+        )
+    return fingerprint, usage_count, remaining
+
+
+def consume_guest_interview_quota(fingerprint: str, request: Request) -> int:
+    normalized_fingerprint = safe_text(fingerprint)
+    if not normalized_fingerprint:
+        return 0
+    now = now_utc_iso()
+    source_ip = request_source_ip(request)
+    user_agent = safe_text(request.headers.get("user-agent"))[:240]
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            existing = cursor.execute(
+                """
+                SELECT id, usage_count
+                FROM guest_interview_usage
+                WHERE fingerprint = ?
+                LIMIT 1
+                """,
+                (normalized_fingerprint,),
+            ).fetchone()
+            if existing:
+                next_count = max(0, int(existing["usage_count"] or 0)) + 1
+                cursor.execute(
+                    """
+                    UPDATE guest_interview_usage
+                    SET usage_count = ?, last_used_at = ?, last_ip = ?, user_agent = ?
+                    WHERE id = ?
+                    """,
+                    (next_count, now, source_ip, user_agent, int(existing["id"])),
+                )
+            else:
+                next_count = 1
+                cursor.execute(
+                    """
+                    INSERT INTO guest_interview_usage (
+                        fingerprint,
+                        usage_count,
+                        first_used_at,
+                        last_used_at,
+                        last_ip,
+                        user_agent
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (normalized_fingerprint, next_count, now, now, source_ip, user_agent),
+                )
+            connection.commit()
+            return int(next_count)
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+
 def credit_error(user_row: sqlite3.Row, message: str, status_code: int = 402) -> HTTPException:
     return HTTPException(
         status_code=status_code,
@@ -4106,13 +4242,67 @@ def build_prediction_band(overall_score: int, confidence: int) -> dict[str, int]
     }
 
 
+def looks_like_skill_fragment(value: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", safe_text(value).strip(" ,.;:-")).strip()
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    if "[" in lowered or "]" in lowered:
+        return False
+    if len(cleaned) < 2 or len(cleaned) > 48:
+        return False
+    if re.search(r"[.!?]", cleaned):
+        return False
+
+    words = [word for word in re.findall(r"[a-zA-Z0-9+#./-]+", cleaned) if word]
+    if not words or len(words) > 5:
+        return False
+
+    if lowered in {"competencies", "market conditions", "industry conditions", "company name"}:
+        return False
+
+    blocked_fragments = (
+        "your company",
+        "looking to hire",
+        "forward thinking",
+        "developed a reputation",
+        "consistently delivering",
+        "based in ",
+        "high performing sales team",
+        "staying informed",
+    )
+    if any(fragment in lowered for fragment in blocked_fragments):
+        return False
+
+    narrative_tokens = {
+        "company",
+        "looking",
+        "hire",
+        "based",
+        "promises",
+        "team",
+        "candidate",
+        "responsibilities",
+        "requirements",
+    }
+    if len(words) >= 4 and any(normalize_token(word) in narrative_tokens for word in words):
+        return False
+
+    alpha_chars = sum(1 for char in cleaned if char.isalpha())
+    if alpha_chars < max(2, int(len(cleaned) * 0.45)):
+        return False
+    return True
+
+
 def extract_skills_from_text(skills_text: str) -> list[str]:
     raw_parts = [part.strip() for part in re.split(r"[,\n;/|]+", skills_text) if part.strip()]
     normalized: set[str] = set()
 
     for part in raw_parts:
+        if not looks_like_skill_fragment(part):
+            continue
         token = normalize_token(part)
-        if token:
+        if token and looks_like_skill_fragment(token):
             normalized.add(token)
 
     full_text = f" {skills_text.lower()} "
@@ -4131,7 +4321,8 @@ def extract_skills_from_text(skills_text: str) -> list[str]:
         if f" {phrase} " in search_text:
             normalized.add(phrase)
 
-    return sorted(normalized)
+    filtered = sorted(token for token in normalized if looks_like_skill_fragment(token))
+    return filtered
 
 
 def score_keyword_overlap(
@@ -8577,6 +8768,7 @@ def analysis_interview_prep(data: InterviewPrepRequest, request: Request) -> dic
 @app.post("/analysis/interview-simulator/start")
 def analysis_interview_simulator_start(data: InterviewSimulatorStartRequest, request: Request) -> dict[str, Any]:
     user = resolve_optional_authenticated_user(request, data.auth_token)
+    owner_user_id = int(user["id"]) if user else 0
     candidate_name = safe_text(data.candidate_name).strip()
     role = safe_text(data.role).strip()
     industry = safe_text(data.industry).strip() or "General"
@@ -8586,19 +8778,60 @@ def analysis_interview_simulator_start(data: InterviewSimulatorStartRequest, req
         raise HTTPException(status_code=400, detail="Enter a valid role before starting the simulator.")
 
     difficulty = normalize_interview_simulator_difficulty(data.difficulty)
-    stage_plan = build_interview_simulator_stage_plan(difficulty)
-    total_rounds = len(stage_plan)
     resume_text = safe_text(data.resume_text)[:14000]
     job_description = safe_text(data.job_description)[:14000]
     if len(resume_text.strip()) < 24:
         raise HTTPException(status_code=400, detail="Upload or paste your resume before starting.")
     if len(job_description.strip()) < 24:
         raise HTTPException(status_code=400, detail="Upload or paste the JD before starting.")
-    focus_skills = collect_interview_simulator_focus_skills(role, industry, resume_text, job_description)
-    interviewer_name = pick_interview_simulator_interviewer_name(role, industry)
-    opening_remark = build_interview_simulator_opening_remark(candidate_name, interviewer_name, role)
-    closing_remark = build_interview_simulator_closing_remark(candidate_name, interviewer_name)
-    opening_question = build_interview_simulator_opening_question(role, industry, difficulty, focus_skills)
+    candidate_level = infer_interview_simulator_candidate_level(role, resume_text)
+    stage_plan = build_interview_simulator_stage_plan(difficulty, candidate_level=candidate_level)
+    total_rounds = len(stage_plan)
+    guest_fingerprint = ""
+    guest_free_interviews_remaining: int | None = None
+    if owner_user_id <= 0:
+        guest_fingerprint, _guest_usage_count, guest_remaining = enforce_guest_interview_quota(request)
+        guest_free_interviews_remaining = max(0, guest_remaining - 1)
+    focus_skills = sanitize_interview_simulator_focus_skills(
+        collect_interview_simulator_focus_skills(role, industry, resume_text, job_description),
+        limit=10,
+    )
+    resume_focus_skills = sanitize_interview_simulator_focus_skills(
+        collect_interview_simulator_resume_focus_skills(resume_text),
+        limit=10,
+    )
+    interviewer_profile = build_interview_simulator_interviewer_profile(role, industry)
+    interviewer_name = safe_text(interviewer_profile.get("name")) or pick_interview_simulator_interviewer_name(role, industry)
+    interviewer_title = safe_text(interviewer_profile.get("title")) or "Lead Interviewer"
+    interviewer_voice = normalize_interview_simulator_tts_voice(interviewer_profile.get("voice"))
+    interviewer_style = safe_text(interviewer_profile.get("style")) or "warm, concise, and observant"
+    candidate_profile_note = build_interview_simulator_candidate_profile_note(
+        candidate_name,
+        role,
+        industry,
+        resume_focus_skills,
+        resume_text,
+    )
+    candidate_reports_no_direct_experience = any(
+        token in safe_text(candidate_profile_note).strip().lower()
+        for token in ["transition", "moving toward", "moving into", "transferable experience", "adjacent path"]
+    )
+    opening_remark = build_interview_simulator_opening_remark(
+        candidate_name,
+        interviewer_name,
+        interviewer_title,
+        role,
+        candidate_profile_note,
+    )
+    closing_remark = build_interview_simulator_closing_remark(candidate_name, interviewer_name, [])
+    opening_question = build_interview_simulator_opening_question(
+        role,
+        industry,
+        difficulty,
+        focus_skills,
+        candidate_profile_note=candidate_profile_note,
+        candidate_level=candidate_level,
+    )
 
     opener_model: str | None = None
     opener_error: str | None = None
@@ -8609,6 +8842,8 @@ Role: {safe_text(role)}
 Industry: {safe_text(industry)}
 Difficulty: {safe_text(difficulty)}
 Focus skills: {json.dumps(focus_skills[:8], ensure_ascii=False)}
+Candidate background note: {safe_text(candidate_profile_note)}
+Interviewer persona: {safe_text(interviewer_name)}, {safe_text(interviewer_title)}. Style: {safe_text(interviewer_style)}.
 Output JSON schema:
 {{"opening_question":"question text"}}
 """
@@ -8622,25 +8857,34 @@ Output JSON schema:
     session_secret = secrets.token_urlsafe(16).replace("-", "").replace("_", "")[:28]
     now_iso = now_utc_iso()
     now_ts = time.time()
-    owner_user_id = int(user["id"]) if user else 0
     opening_question_entry = build_interview_simulator_question_entry(stage_plan, "screening", opening_question, 1)
     session_payload = {
         "id": session_id,
         "session_secret": session_secret,
         "user_id": owner_user_id,
+        "guest_fingerprint": guest_fingerprint,
         "candidate_name": candidate_name,
         "role": role,
         "industry": industry,
         "interviewer_name": interviewer_name,
+        "interviewer_title": interviewer_title,
+        "interviewer_voice": interviewer_voice,
+        "interviewer_style": interviewer_style,
+        "candidate_profile_note": candidate_profile_note,
+        "candidate_reports_no_direct_experience": candidate_reports_no_direct_experience,
+        "candidate_connection_notes": [],
         "opening_remark": opening_remark,
         "closing_remark": closing_remark,
         "difficulty": difficulty,
+        "candidate_level": candidate_level,
         "focus_skills": focus_skills,
+        "resume_focus_skills": resume_focus_skills,
         "total_rounds": total_rounds,
         "stage_plan": stage_plan,
         "question_flow": [opening_question_entry],
         "questions": [opening_question],
         "turns": [],
+        "stage_decisions": {},
         "status": "active",
         "saved_report_id": 0,
         "current_stage_key": "screening",
@@ -8657,6 +8901,9 @@ Output JSON schema:
             "reason": opener_error or ("llm_opening" if opener_model else "rules_opening"),
         },
     }
+    if owner_user_id <= 0 and guest_fingerprint:
+        consume_guest_interview_quota(guest_fingerprint, request)
+
     with INTERVIEW_SIMULATOR_LOCK:
         cleanup_interview_simulator_sessions(now_ts)
         while session_id in INTERVIEW_SIMULATOR_SESSIONS:
@@ -8664,7 +8911,16 @@ Output JSON schema:
             session_payload["id"] = session_id
         INTERVIEW_SIMULATOR_SESSIONS[session_id] = session_payload
 
-    queue_interview_simulator_tts_prefetch(session_id, opening_question, requested_voice=INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE)
+    queue_interview_simulator_tts_prefetch(
+        session_id,
+        build_interview_simulator_spoken_text(
+            opening_question,
+            1,
+            1,
+            opening_remark=opening_remark,
+        ),
+        requested_voice=interviewer_voice or INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE,
+    )
 
     log_analytics_event(
         "interview",
@@ -8686,10 +8942,13 @@ Output JSON schema:
         "role": role,
         "industry": industry,
         "interviewer_name": interviewer_name,
+        "interviewer_title": interviewer_title,
+        "interviewer_voice": interviewer_voice,
         "opening_remark": opening_remark,
         "closing_remark": closing_remark,
         "difficulty": difficulty,
-        "focus_skills": focus_skills[:8],
+        "candidate_level": candidate_level,
+        "focus_skills": sanitize_interview_simulator_focus_skills(focus_skills, limit=8),
         "round_number": 1,
         "current_stage_key": "screening",
         "current_stage_label": "Screening",
@@ -8699,6 +8958,7 @@ Output JSON schema:
         "current_question": opening_question,
         "status": "active",
         "report": None,
+        "guest_free_interviews_remaining": guest_free_interviews_remaining,
         "ai": session_payload["ai"],
     }
 
@@ -8709,12 +8969,13 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     session_id = re.sub(r"[^A-Za-z0-9]", "", safe_text(data.session_id))[:32]
     session_secret = safe_text(data.session_secret)[:64]
     answer_text = safe_text(data.answer_text).strip()
+    answer_too_short = len(answer_text) < 18
     if len(session_id) < 8:
         raise HTTPException(status_code=400, detail="Invalid simulator session id.")
-    if len(answer_text) < 18:
-        raise HTTPException(status_code=400, detail="Answer is too short. Add more context before submitting.")
 
     now_ts = time.time()
+    existing_screening_decision = ""
+    existing_screening_decision_reason = ""
     with INTERVIEW_SIMULATOR_LOCK:
         cleanup_interview_simulator_sessions(now_ts)
         existing = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
@@ -8728,6 +8989,9 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 raise HTTPException(status_code=403, detail="This simulator session belongs to a different user.")
         elif not secret_matches:
             raise HTTPException(status_code=401, detail="Session secret mismatch. Restart the simulator.")
+        elif requester_user_id > 0:
+            existing["user_id"] = requester_user_id
+            owner_user_id = requester_user_id
         stage_plan = get_interview_simulator_stage_plan(existing)
         total_rounds = len(stage_plan)
         if safe_text(existing.get("status")) == "completed":
@@ -8749,7 +9013,11 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "status": "completed",
                 "interviewer_bridge": None,
                 "closing_remark": safe_text(existing.get("closing_remark")),
+                "interviewer_title": safe_text(existing.get("interviewer_title")),
+                "interviewer_voice": safe_text(existing.get("interviewer_voice")),
                 "saved_report_id": int(existing.get("saved_report_id") or 0) or None,
+                "screening_decision": safe_text(existing.get("screening_decision")).strip().lower() or None,
+                "screening_decision_reason": safe_text(existing.get("screening_decision_reason")) or None,
             }
         turns = existing.get("turns") if isinstance(existing.get("turns"), list) else []
         expected_turn_count = len(turns)
@@ -8758,11 +9026,40 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         candidate_name = safe_text(existing.get("candidate_name")) or "there"
         difficulty = normalize_interview_simulator_difficulty(safe_text(existing.get("difficulty")))
         focus_skills = dedupe_text_list(existing.get("focus_skills") or [], limit=10, max_item_len=80)
+        interviewer_name = safe_text(existing.get("interviewer_name")) or "Avery Bennett"
+        interviewer_title = safe_text(existing.get("interviewer_title")) or "Lead Interviewer"
+        interviewer_voice = normalize_interview_simulator_tts_voice(existing.get("interviewer_voice"))
+        interviewer_style = safe_text(existing.get("interviewer_style")) or "warm, concise, and observant"
+        candidate_level = safe_text(existing.get("candidate_level")).strip().lower() or infer_interview_simulator_candidate_level(role, "")
+        candidate_reports_no_direct_experience = bool(existing.get("candidate_reports_no_direct_experience"))
+        candidate_profile_note = safe_text(existing.get("candidate_profile_note")).strip()
+        if not candidate_profile_note:
+            resume_focus_skills = dedupe_text_list(existing.get("resume_focus_skills") or [], limit=10, max_item_len=80)
+            candidate_profile_note = build_interview_simulator_candidate_profile_note(
+                candidate_name,
+                role,
+                industry,
+                resume_focus_skills or focus_skills,
+                "",
+            )
+            if not candidate_reports_no_direct_experience:
+                candidate_reports_no_direct_experience = any(
+                    token in candidate_profile_note.lower()
+                    for token in ["transition", "moving toward", "moving into", "transferable experience", "adjacent path"]
+                )
+        candidate_connection_notes = normalize_string_list(existing.get("candidate_connection_notes"), limit=6, max_item_len=140)
         question_flow = extract_interview_simulator_question_flow(existing, stage_plan)
         current_question_entry = question_flow[-1] if question_flow else build_interview_simulator_question_entry(
             stage_plan,
             "screening",
-            build_interview_simulator_opening_question(role, industry, difficulty, focus_skills),
+            build_interview_simulator_opening_question(
+                role,
+                industry,
+                difficulty,
+                focus_skills,
+                candidate_profile_note=candidate_profile_note,
+                candidate_level=candidate_level,
+            ),
             1,
         )
         question = safe_text(current_question_entry.get("question")) or build_interview_simulator_opening_question(
@@ -8770,20 +9067,115 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             industry,
             difficulty,
             focus_skills,
+            candidate_profile_note=candidate_profile_note,
+            candidate_level=candidate_level,
         )
         current_stage_key = safe_text(current_question_entry.get("stage_key")) or "screening"
         current_stage_label = safe_text(current_question_entry.get("stage_label")) or safe_text(get_interview_simulator_stage_entry(stage_plan, current_stage_key).get("label"))
         round_number = int(current_question_entry.get("stage_number") or get_interview_simulator_stage_entry(stage_plan, current_stage_key).get("stage_number") or 1)
         question_number_in_stage = int(current_question_entry.get("question_number_in_stage") or 1)
+        existing_screening_decision = safe_text(existing.get("screening_decision")).strip().lower()
+        existing_screening_decision_reason = safe_text(existing.get("screening_decision_reason")).strip()
+
+    candidate_asked_cross_question = detect_interview_simulator_candidate_cross_question(answer_text, question)
+    if answer_too_short and not candidate_asked_cross_question:
+        raise HTTPException(status_code=400, detail="Answer is too short. Add more context before submitting.")
+
+    if detect_interview_simulator_no_direct_experience_signal(answer_text):
+        candidate_reports_no_direct_experience = True
+
+    if candidate_asked_cross_question:
+        clarification_bridge = build_interview_simulator_clarification_bridge(
+            candidate_name,
+            role,
+            current_stage_key,
+            answer_text,
+        )
+        clarification_signal = extract_interview_simulator_candidate_signal(answer_text) or "asked for clarification"
+        clarification_saved_report_id = 0
+
+        with INTERVIEW_SIMULATOR_LOCK:
+            refreshed = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
+            if not refreshed:
+                raise HTTPException(status_code=404, detail="Simulator session expired. Start a new one.")
+            refreshed_turns = refreshed.get("turns") if isinstance(refreshed.get("turns"), list) else []
+            if len(refreshed_turns) != expected_turn_count:
+                raise HTTPException(status_code=409, detail="Session was updated from another tab. Refresh and continue.")
+            if candidate_reports_no_direct_experience:
+                refreshed["candidate_reports_no_direct_experience"] = True
+            refreshed["candidate_connection_notes"] = dedupe_text_list(
+                [*normalize_string_list(refreshed.get("candidate_connection_notes"), limit=6, max_item_len=140), clarification_signal],
+                limit=6,
+                max_item_len=140,
+            )
+            refreshed["updated_at"] = now_utc_iso()
+            refreshed["expires_at_ts"] = time.time() + INTERVIEW_SIMULATOR_TTL_SECONDS
+            existing_screening_decision = safe_text(refreshed.get("screening_decision")).strip().lower()
+            existing_screening_decision_reason = safe_text(refreshed.get("screening_decision_reason")).strip()
+            clarification_saved_report_id = int(refreshed.get("saved_report_id") or 0)
+
+        queue_interview_simulator_tts_prefetch(
+            session_id,
+            build_interview_simulator_spoken_text(
+                question,
+                round_number,
+                question_number_in_stage,
+                interviewer_bridge=clarification_bridge,
+            ),
+            requested_voice=interviewer_voice or INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE,
+        )
+        log_analytics_event(
+            "interview",
+            "interview_simulator_turn_clarification",
+            user_id=owner_user_id or None,
+            meta={
+                "role": role,
+                "industry": industry,
+                "round_number": round_number,
+                "stage_key": current_stage_key,
+                "guest_mode": owner_user_id <= 0,
+            },
+        )
+        return {
+            "session_id": session_id,
+            "completed": False,
+            "round_number": round_number,
+            "current_stage_key": current_stage_key,
+            "current_stage_label": current_stage_label,
+            "question_number_in_stage": question_number_in_stage,
+            "total_rounds": total_rounds,
+            "progress_percent": int(round((round_number / max(1, total_rounds)) * 100)),
+            "next_question": question[:260],
+            "turn_feedback": None,
+            "report": None,
+            "status": "active",
+            "interviewer_bridge": clarification_bridge,
+            "closing_remark": None,
+            "interviewer_title": interviewer_title,
+            "interviewer_voice": interviewer_voice,
+            "saved_report_id": clarification_saved_report_id or None,
+            "screening_decision": existing_screening_decision or None,
+            "screening_decision_reason": existing_screening_decision_reason or None,
+            "round_decision": None,
+            "round_decision_reason": None,
+            "round_decision_stage_key": None,
+            "round_decision_stage_label": None,
+        }
 
     heuristic_payload = build_interview_turn_heuristics(
         question=question,
         answer_text=answer_text,
+        role=role,
+        industry=industry,
         focus_skills=focus_skills,
         response_time_seconds=data.response_time_seconds,
         difficulty=difficulty,
     )
     llm_overlay, llm_model, llm_error = request_interview_simulator_turn_overlay(
+        candidate_name=candidate_name,
+        interviewer_name=interviewer_name,
+        interviewer_title=interviewer_title,
+        interviewer_style=interviewer_style,
         role=role,
         industry=industry,
         difficulty=difficulty,
@@ -8793,9 +9185,14 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         total_rounds=total_rounds,
         question_number_in_stage=question_number_in_stage,
         focus_skills=focus_skills,
+        candidate_profile_note=candidate_profile_note,
+        candidate_connection_notes=candidate_connection_notes,
+        recent_turn_memory=build_interview_simulator_recent_turn_memory(turns),
         question=question,
         answer_text=answer_text,
         heuristic_payload=heuristic_payload,
+        candidate_level=candidate_level,
+        candidate_reports_no_direct_experience=candidate_reports_no_direct_experience,
     )
 
     scores = dict((heuristic_payload.get("scores") or {}))
@@ -8806,6 +9203,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     follow_up_question = ""
     interviewer_bridge = ""
     llm_stage_action = ""
+    candidate_signal = ""
     ai_used = False
 
     if isinstance(llm_overlay, dict):
@@ -8832,7 +9230,44 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         next_focus_skill = safe_text(llm_overlay.get("next_focus_skill"))[:72]
         interviewer_bridge = safe_text(llm_overlay.get("interviewer_bridge"))[:180]
         follow_up_question = safe_text(llm_overlay.get("follow_up_question"))[:240]
+        candidate_signal = safe_text(llm_overlay.get("candidate_signal"))[:140]
         llm_stage_action = safe_text(llm_overlay.get("stage_action")).strip().lower()
+
+    if not candidate_signal:
+        candidate_signal = extract_interview_simulator_candidate_signal(answer_text)
+
+    adaptive_follow_up_probe = build_interview_simulator_answer_adaptive_probe(
+        stage_key=current_stage_key,
+        role=role,
+        answer_text=answer_text,
+        current_question=question,
+        candidate_reports_no_direct_experience=candidate_reports_no_direct_experience,
+        next_focus_skill=next_focus_skill,
+    )
+    if adaptive_follow_up_probe:
+        if not follow_up_question or len(follow_up_question) < 18:
+            follow_up_question = adaptive_follow_up_probe
+        elif candidate_reports_no_direct_experience and follow_up_question_demands_direct_experience(follow_up_question):
+            follow_up_question = adaptive_follow_up_probe
+
+    if safe_float(heuristic_payload.get("relevance_score"), 0.0) < 58:
+        suppress_false_positive_patterns = [
+            r"\brelevant\b",
+            r"\bmaintained direction\b",
+            r"\bmeasurable\b",
+            r"\bcredib",
+            r"\bimpact\b",
+            r"\baligned\b",
+        ]
+        strengths = [
+            item
+            for item in strengths
+            if not any(re.search(pattern, safe_text(item).lower()) for pattern in suppress_false_positive_patterns)
+        ]
+        if not strengths:
+            strengths = dedupe_text_list(heuristic_payload.get("strengths") or [], limit=4, max_item_len=180)
+        if re.search(r"\b(?:strong|solid|relevant|credible|aligned)\b", feedback_summary.lower()):
+            feedback_summary = safe_text(heuristic_payload.get("feedback_summary"))[:220] or feedback_summary
 
     scores["overall"] = clamp(
         0.27 * safe_float(scores.get("communication"), 0.0)
@@ -8845,6 +9280,10 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         answer_text,
         safe_float(scores.get("overall"), 0.0),
         improvements,
+        stage_label=current_stage_label,
+        candidate_signal=candidate_signal,
+        candidate_profile_note=candidate_profile_note,
+        off_topic=bool(heuristic_payload.get("off_topic")),
         llm_bridge=interviewer_bridge,
     )
 
@@ -8866,9 +9305,13 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         },
         "matched_focus_skills": dedupe_text_list(heuristic_payload.get("matched_focus_skills") or [], limit=6, max_item_len=80),
         "missing_focus_skills": dedupe_text_list(heuristic_payload.get("missing_focus_skills") or [], limit=6, max_item_len=80),
+        "relevance_score": clamp(safe_float(heuristic_payload.get("relevance_score"), 0.0)),
+        "evidence_score": clamp(safe_float(heuristic_payload.get("evidence_score"), 0.0)),
+        "off_topic": bool(heuristic_payload.get("off_topic")),
         "feedback_summary": feedback_summary,
         "strengths": strengths,
         "improvements": improvements,
+        "candidate_signal": candidate_signal,
         "next_focus_skill": next_focus_skill,
         "interviewer_bridge": interviewer_bridge,
         "ai": {
@@ -8888,6 +9331,12 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     response_stage_key = current_stage_key
     response_stage_label = current_stage_label
     response_question_number_in_stage = question_number_in_stage
+    screening_decision = ""
+    screening_decision_reason = ""
+    round_decision = ""
+    round_decision_reason = ""
+    round_decision_stage_key = ""
+    round_decision_stage_label = ""
 
     with INTERVIEW_SIMULATOR_LOCK:
         refreshed = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
@@ -8899,12 +9348,34 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
 
         refreshed_turns.append(turn_payload)
         refreshed["turns"] = refreshed_turns
+        if candidate_reports_no_direct_experience:
+            refreshed["candidate_reports_no_direct_experience"] = True
+        merged_connection_notes = dedupe_text_list(
+            [*normalize_string_list(refreshed.get("candidate_connection_notes"), limit=6, max_item_len=140), candidate_signal],
+            limit=6,
+            max_item_len=140,
+        )
+        refreshed["candidate_connection_notes"] = merged_connection_notes
         refreshed_question_flow = extract_interview_simulator_question_flow(refreshed, stage_plan)
         if not refreshed_question_flow:
             refreshed_question_flow = [build_interview_simulator_question_entry(stage_plan, current_stage_key, question, question_number_in_stage)]
         refreshed["updated_at"] = now_utc_iso()
         refreshed["expires_at_ts"] = time.time() + INTERVIEW_SIMULATOR_TTL_SECONDS
         current_stage_turns = [turn for turn in refreshed_turns if normalize_interview_simulator_turn_stage_key(turn) == current_stage_key]
+        screening_decision = safe_text(refreshed.get("screening_decision")).strip().lower()
+        screening_decision_reason = safe_text(refreshed.get("screening_decision_reason")).strip()
+        if current_stage_key == "screening" and len(current_stage_turns) >= max(
+            2,
+            int(get_interview_simulator_stage_entry(stage_plan, "screening").get("min_questions") or 1),
+        ):
+            screening_outcome = decide_interview_simulator_screening_outcome(current_stage_turns)
+            screening_decision = safe_text(screening_outcome.get("decision")).strip().lower()
+            screening_decision_reason = safe_text(screening_outcome.get("reason")).strip()
+            if screening_decision in {"shortlisted", "rejected"}:
+                refreshed["screening_decision"] = screening_decision
+                refreshed["screening_decision_reason"] = screening_decision_reason
+                turn_payload["screening_decision"] = screening_decision
+                turn_payload["screening_decision_reason"] = screening_decision_reason
         stage_completed, next_stage_key = decide_interview_simulator_stage_progression(
             stage_plan=stage_plan,
             current_stage_key=current_stage_key,
@@ -8912,14 +9383,56 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             all_turns=refreshed_turns,
             difficulty=difficulty,
             llm_stage_action=llm_stage_action,
+            screening_decision=screening_decision,
+            candidate_level=candidate_level,
         )
-        completed = stage_completed and not next_stage_key
+        if stage_completed:
+            stage_outcome = decide_interview_simulator_stage_outcome(
+                stage_key=current_stage_key,
+                stage_turns=current_stage_turns,
+                candidate_level=candidate_level,
+                screening_decision=screening_decision,
+                screening_decision_reason=screening_decision_reason,
+            )
+            round_decision = safe_text(stage_outcome.get("decision")).strip().lower()
+            round_decision_reason = safe_text(stage_outcome.get("reason")).strip()
+            round_decision_stage_key = current_stage_key
+            round_decision_stage_label = current_stage_label
+            if round_decision in {"shortlisted", "rejected"}:
+                turn_payload["round_decision"] = round_decision
+                turn_payload["round_decision_reason"] = round_decision_reason
+                stage_decisions_raw = refreshed.get("stage_decisions") if isinstance(refreshed.get("stage_decisions"), dict) else {}
+                stage_decisions = {
+                    safe_text(key): value
+                    for key, value in stage_decisions_raw.items()
+                    if isinstance(key, str) and isinstance(value, dict)
+                }
+                stage_decisions[current_stage_key] = {
+                    "stage_key": current_stage_key,
+                    "stage_label": current_stage_label,
+                    "stage_number": int(get_interview_simulator_stage_entry(stage_plan, current_stage_key).get("stage_number") or round_number),
+                    "decision": round_decision,
+                    "reason": round_decision_reason,
+                    "updated_at": now_utc_iso(),
+                }
+                refreshed["stage_decisions"] = stage_decisions
+
+            if round_decision == "rejected":
+                next_stage_key = None
+                completed = True
+            elif round_decision == "shortlisted":
+                completed = not bool(next_stage_key)
+            else:
+                completed = stage_completed and not next_stage_key
+        else:
+            completed = False
 
         if completed:
             refreshed["status"] = "completed"
-            refreshed["closing_remark"] = safe_text(refreshed.get("closing_remark")) or build_interview_simulator_closing_remark(
+            refreshed["closing_remark"] = build_interview_simulator_closing_remark(
                 safe_text(refreshed.get("candidate_name")),
                 safe_text(refreshed.get("interviewer_name")),
+                normalize_string_list(refreshed.get("candidate_connection_notes"), limit=6, max_item_len=140),
             )
             report_payload = build_interview_simulator_report_payload(refreshed)
             session_snapshot_for_archive = {
@@ -8928,6 +9441,8 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "role": safe_text(refreshed.get("role")),
                 "industry": safe_text(refreshed.get("industry")),
                 "interviewer_name": safe_text(refreshed.get("interviewer_name")),
+                "interviewer_title": safe_text(refreshed.get("interviewer_title")),
+                "interviewer_voice": safe_text(refreshed.get("interviewer_voice")),
                 "opening_remark": safe_text(refreshed.get("opening_remark")),
                 "closing_remark": safe_text(refreshed.get("closing_remark")),
                 "difficulty": safe_text(refreshed.get("difficulty")),
@@ -8937,10 +9452,13 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "question_flow": json.loads(json.dumps(refreshed_question_flow, ensure_ascii=False, default=str)),
                 "questions": [safe_text(item.get("question")) for item in refreshed_question_flow if isinstance(item, dict)],
                 "turns": json.loads(json.dumps(refreshed_turns, ensure_ascii=False, default=str)),
+                "stage_decisions": json.loads(json.dumps(refreshed.get("stage_decisions") or {}, ensure_ascii=False, default=str)),
                 "status": safe_text(refreshed.get("status")) or "completed",
                 "created_at": safe_text(refreshed.get("created_at")),
                 "updated_at": safe_text(refreshed.get("updated_at")),
                 "saved_report_id": int(refreshed.get("saved_report_id") or 0),
+                "screening_decision": screening_decision,
+                "screening_decision_reason": screening_decision_reason,
             }
             saved_report_id = int(refreshed.get("saved_report_id") or 0)
         else:
@@ -8950,6 +9468,13 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             if next_stage_key != current_stage_key:
                 next_question_number_in_stage = 1
                 interviewer_bridge = build_interview_simulator_stage_transition_bridge(next_stage_entry, interviewer_bridge)
+            safe_fallback_question = follow_up_question
+            if (
+                candidate_reports_no_direct_experience
+                and next_stage_key in {"screening", "technical_assessment", "in_depth_assessment"}
+                and follow_up_question_demands_direct_experience(safe_fallback_question)
+            ):
+                safe_fallback_question = ""
             next_question = build_interview_simulator_follow_up_question(
                 role=role,
                 industry=industry,
@@ -8960,8 +9485,11 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 focus_skills=focus_skills,
                 missing_focus_skills=turn_payload.get("missing_focus_skills") or [],
                 improvements=improvements,
-                fallback_question=follow_up_question,
+                fallback_question=safe_fallback_question,
                 next_focus_skill=next_focus_skill,
+                candidate_profile_note=candidate_profile_note,
+                candidate_level=candidate_level,
+                candidate_reports_no_direct_experience=candidate_reports_no_direct_experience,
             )[:260]
             next_question_entry = build_interview_simulator_question_entry(
                 stage_plan,
@@ -8984,8 +9512,13 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     if next_question:
         queue_interview_simulator_tts_prefetch(
             session_id,
-            next_question,
-            requested_voice=INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE,
+            build_interview_simulator_spoken_text(
+                next_question,
+                response_round_number,
+                response_question_number_in_stage,
+                interviewer_bridge=interviewer_bridge,
+            ),
+            requested_voice=interviewer_voice or INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE,
         )
 
     if completed and report_payload and owner_user_id > 0 and saved_report_id <= 0 and session_snapshot_for_archive:
@@ -9050,7 +9583,15 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         "status": "completed" if completed else "active",
         "interviewer_bridge": None if completed else interviewer_bridge,
         "closing_remark": safe_text((session_snapshot_for_archive or {}).get("closing_remark")) if completed else None,
+        "interviewer_title": safe_text((session_snapshot_for_archive or existing).get("interviewer_title")) if completed else interviewer_title,
+        "interviewer_voice": safe_text((session_snapshot_for_archive or existing).get("interviewer_voice")) if completed else interviewer_voice,
         "saved_report_id": saved_report_id or None,
+        "screening_decision": screening_decision or None,
+        "screening_decision_reason": screening_decision_reason or None,
+        "round_decision": round_decision or None,
+        "round_decision_reason": round_decision_reason or None,
+        "round_decision_stage_key": round_decision_stage_key or None,
+        "round_decision_stage_label": round_decision_stage_label or None,
     }
 
 
@@ -9076,6 +9617,9 @@ def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, r
                 raise HTTPException(status_code=403, detail="This simulator session belongs to a different user.")
         elif not secret_matches:
             raise HTTPException(status_code=401, detail="Session secret mismatch. Restart the simulator.")
+        elif requester_user_id > 0:
+            session_payload["user_id"] = requester_user_id
+            owner_user_id = requester_user_id
 
         report_payload = build_interview_simulator_report_payload(session_payload)
         turns = session_payload.get("turns") if isinstance(session_payload.get("turns"), list) else []
@@ -9089,6 +9633,8 @@ def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, r
         "role": safe_text(session_payload.get("role")) or "Target role",
         "industry": safe_text(session_payload.get("industry")) or "General",
         "interviewer_name": safe_text(session_payload.get("interviewer_name")),
+        "interviewer_title": safe_text(session_payload.get("interviewer_title")),
+        "interviewer_voice": safe_text(session_payload.get("interviewer_voice")),
         "opening_remark": safe_text(session_payload.get("opening_remark")),
         "closing_remark": safe_text(session_payload.get("closing_remark")),
         "difficulty": normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty"))),
@@ -9098,12 +9644,14 @@ def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, r
         "question_number_in_stage": int(current_question_entry.get("question_number_in_stage") or session_payload.get("question_number_in_stage") or 1),
         "total_rounds": len(stage_plan) or int(session_payload.get("total_rounds") or 0),
         "status": safe_text(session_payload.get("status")) or "active",
-        "focus_skills": dedupe_text_list(session_payload.get("focus_skills") or [], limit=8, max_item_len=80),
+        "focus_skills": sanitize_interview_simulator_focus_skills(session_payload.get("focus_skills"), limit=8),
         "current_question": safe_text(current_question_entry.get("question"))[:260],
         "questions": [safe_text(item.get("question"))[:260] for item in question_flow[:20] if isinstance(item, dict) and safe_text(item.get("question"))],
         "turns": turns,
         "report": report_payload,
         "saved_report_id": int(session_payload.get("saved_report_id") or 0) or None,
+        "screening_decision": safe_text(session_payload.get("screening_decision")).strip().lower() or None,
+        "screening_decision_reason": safe_text(session_payload.get("screening_decision_reason")) or None,
     }
 
 
@@ -9134,6 +9682,9 @@ def analysis_interview_simulator_tts(data: InterviewSimulatorTtsRequest, request
                 raise HTTPException(status_code=403, detail="This simulator session belongs to a different user.")
         elif not secret_matches:
             raise HTTPException(status_code=401, detail="Session secret mismatch. Restart the simulator.")
+        elif requester_user_id > 0:
+            session_payload["user_id"] = requester_user_id
+            owner_user_id = requester_user_id
         questions = session_payload.get("questions") if isinstance(session_payload.get("questions"), list) else []
         fallback_question = safe_text(questions[-1]) if questions else ""
         session_payload["updated_at"] = now_utc_iso()
@@ -11188,7 +11739,7 @@ Rules:
 - Do not invent fake background details.
 """
 
-    parsed, model, error = request_structured_json_with_llm(prompt, temperature=0.22)
+    parsed, model, error = request_structured_json_with_llm(prompt, temperature=0.26)
     if not isinstance(parsed, dict):
         return None, model, error
 
@@ -11762,7 +12313,7 @@ def normalize_interview_simulator_tts_voice(value: str | None) -> str:
     fallback = safe_text(INTERVIEW_SIMULATOR_TTS_DEFAULT_VOICE).strip().lower()
     if fallback in allowed:
         return fallback
-    return "alloy"
+    return "verse"
 
 
 def build_interview_simulator_tts_script(text: str) -> str:
@@ -11987,15 +12538,116 @@ def queue_interview_simulator_tts_prefetch(session_id: str, question_text: str, 
                 inflight.discard(cache_key)
 
 
+def normalize_interview_simulator_focus_skill(value: str, allow_single_word: bool = False) -> str:
+    skill = re.sub(r"\s+", " ", safe_text(value).strip(" ,.;:-")).strip()
+    if not skill:
+        return ""
+    lowered = skill.lower()
+    if "[" in lowered or "]" in lowered:
+        return ""
+    if re.search(r"[.!?]", skill):
+        return ""
+    blocked_fragments = (
+        "your company",
+        "looking to hire",
+        "developed a reputation",
+        "forward thinking",
+        "consistently delivering",
+        "based in ",
+        "high performing sales team",
+        "staying informed",
+    )
+    if any(fragment in lowered for fragment in blocked_fragments):
+        return ""
+    if any(token in lowered for token in ["\n", ". ", " and ", " or "]):
+        if len(skill.split()) > 4:
+            return ""
+    skill = re.sub(r"^(?:and|or|with|for|to|the|a|an)\s+", "", skill, flags=re.IGNORECASE).strip()
+    lowered = skill.lower()
+    if len(skill) < 3 or len(skill) > 40:
+        return ""
+    words = [word for word in skill.split(" ") if word]
+    if len(words) > 4:
+        return ""
+    blocked_single_words = {
+        "business",
+        "campaign",
+        "communication",
+        "data",
+        "general",
+        "growth",
+        "leadership",
+        "manager",
+        "marketing",
+        "product",
+        "sales",
+        "strategy",
+    }
+    blocked_prefixes = (
+        "coordinate ",
+        "drive ",
+        "lead ",
+        "present ",
+        "run ",
+        "turn ",
+        "use ",
+        "using ",
+    )
+    if any(lowered.startswith(prefix) for prefix in blocked_prefixes):
+        return ""
+    if len(words) == 1 and not allow_single_word and lowered in blocked_single_words:
+        return ""
+    alpha_chars = sum(1 for char in skill if char.isalpha())
+    if alpha_chars < max(3, int(len(skill) * 0.65)):
+        return ""
+    return skill
+
+
+def sanitize_interview_simulator_focus_skills(values: Any, limit: int = 10) -> list[str]:
+    raw_values = normalize_string_list(values, limit=max(12, limit * 3), max_item_len=96)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_values:
+        normalized = normalize_interview_simulator_focus_skill(item, allow_single_word=False)
+        if not normalized:
+            normalized = normalize_interview_simulator_focus_skill(item, allow_single_word=True)
+        if not normalized:
+            continue
+        dedupe_key = normalized.lower()
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        cleaned.append(normalized)
+        if len(cleaned) >= max(1, int(limit)):
+            break
+    return cleaned
+
+
 def collect_interview_simulator_focus_skills(role: str, industry: str, resume_text: str, job_description: str) -> list[str]:
-    resume_skills = extract_skills_from_text(resume_text)[:8]
-    jd_skills = extract_skills_from_text(job_description)[:10]
-    _, _, critical_skills, _ = resolve_role_profile(role, industry, resume_skills)
-    combined = dedupe_text_list([*jd_skills, *critical_skills, *resume_skills], limit=10, max_item_len=80)
-    if combined:
-        return combined
+    resume_skills_raw = collect_interview_simulator_resume_focus_skills(resume_text)[:10]
+    jd_skills_raw = extract_skills_from_text(job_description)[:12]
     role_track = infer_role_track(role, industry)
     blueprint = ROLE_BLUEPRINTS.get(role_track, ROLE_BLUEPRINTS["general"])
+    blueprint_core = dedupe_text_list(blueprint.get("core") or [], limit=8, max_item_len=80)
+    _, _, critical_skills, _ = resolve_role_profile(role, industry, blueprint_core[:4])
+
+    combined_candidates: list[str] = []
+    for item in critical_skills:
+        normalized = normalize_interview_simulator_focus_skill(item, allow_single_word=True)
+        if normalized:
+            combined_candidates.append(normalized)
+    for item in blueprint_core:
+        normalized = normalize_interview_simulator_focus_skill(item, allow_single_word=True)
+        if normalized:
+            combined_candidates.append(normalized)
+    for item in [*resume_skills_raw, *jd_skills_raw]:
+        normalized = normalize_interview_simulator_focus_skill(item, allow_single_word=False)
+        if normalized:
+            combined_candidates.append(normalized)
+
+    combined = dedupe_text_list(combined_candidates, limit=10, max_item_len=80)
+    if combined:
+        return combined
     return dedupe_text_list(blueprint.get("core") or [], limit=8, max_item_len=80) or [
         "problem solving",
         "ownership",
@@ -12003,20 +12655,42 @@ def collect_interview_simulator_focus_skills(role: str, industry: str, resume_te
     ]
 
 
-def build_interview_simulator_stage_plan(difficulty: str) -> list[dict[str, Any]]:
+def collect_interview_simulator_resume_focus_skills(resume_text: str) -> list[str]:
+    resume_skills_raw = extract_skills_from_text(resume_text)[:14]
+    normalized_candidates: list[str] = []
+    for item in resume_skills_raw:
+        normalized = normalize_interview_simulator_focus_skill(item, allow_single_word=False)
+        if normalized:
+            normalized_candidates.append(normalized)
+    return dedupe_text_list(normalized_candidates, limit=10, max_item_len=80)
+
+
+def build_interview_simulator_stage_plan(difficulty: str, candidate_level: str | None = None) -> list[dict[str, Any]]:
     normalized_difficulty = normalize_interview_simulator_difficulty(difficulty)
+    normalized_candidate_level = safe_text(candidate_level).strip().lower()
     plan: list[dict[str, Any]] = []
     for index, blueprint in enumerate(INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS, start=1):
+        stage_key = safe_text(blueprint.get("key")).strip().lower()
         min_questions = int(blueprint.get("min_questions") or 1)
         max_questions = int(blueprint.get("max_questions") or min_questions)
         if normalized_difficulty == "foundation":
-            if safe_text(blueprint.get("key")) == "technical_assessment":
+            if stage_key == "technical_assessment":
                 max_questions = max(min_questions, 2)
-            elif safe_text(blueprint.get("key")) in {"in_depth_assessment", "hr"}:
+            elif stage_key in {"in_depth_assessment", "hr"}:
                 max_questions = max(min_questions, 1)
         elif normalized_difficulty == "advanced":
-            if safe_text(blueprint.get("key")) in {"technical_assessment", "in_depth_assessment", "hr"}:
+            if stage_key in {"technical_assessment", "in_depth_assessment", "hr"}:
                 max_questions = min(3, max_questions + 1)
+
+        if normalized_candidate_level == "fresher":
+            if stage_key == "technical_assessment":
+                max_questions = max(min_questions, min(2, max_questions))
+            elif stage_key in {"in_depth_assessment", "hr"}:
+                max_questions = 1
+        elif normalized_candidate_level == "experienced":
+            if stage_key in {"technical_assessment", "in_depth_assessment"}:
+                max_questions = max(max_questions, min_questions + 1)
+
         plan.append(
             {
                 "stage_number": index,
@@ -12052,7 +12726,10 @@ def get_interview_simulator_stage_plan(session_payload: dict[str, Any]) -> list[
             )
         if normalized:
             return normalized
-    return build_interview_simulator_stage_plan(normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty"))))
+    return build_interview_simulator_stage_plan(
+        normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty"))),
+        candidate_level=safe_text(session_payload.get("candidate_level")) or None,
+    )
 
 
 def get_interview_simulator_stage_entry(stage_plan: list[dict[str, Any]], stage_key: str) -> dict[str, Any]:
@@ -12161,6 +12838,44 @@ def build_interview_simulator_stage_summaries(turns: list[dict[str, Any]], stage
     return summaries
 
 
+INTERVIEW_SIMULATOR_QUESTION_NOISE_WORDS = {
+    "about",
+    "best",
+    "close",
+    "deeper",
+    "describe",
+    "example",
+    "experience",
+    "first",
+    "fit",
+    "give",
+    "going",
+    "last",
+    "makes",
+    "matters",
+    "question",
+    "recent",
+    "role",
+    "round",
+    "screening",
+    "share",
+    "specific",
+    "start",
+    "still",
+    "strong",
+    "stronger",
+    "technical",
+    "tell",
+    "through",
+    "used",
+    "using",
+    "walk",
+    "what",
+    "when",
+    "why",
+}
+
+
 def choose_interview_simulator_target_skill(
     focus_skills: list[str],
     missing_focus_skills: list[str] | None = None,
@@ -12179,6 +12894,164 @@ def choose_interview_simulator_target_skill(
     return "execution"
 
 
+def detect_interview_simulator_no_direct_experience_signal(answer_text: str) -> bool:
+    normalized = safe_text(answer_text).strip().lower()
+    if not normalized:
+        return False
+    patterns = [
+        r"\bi (?:do not|don't|did not|didn't|have not|haven't|never)\s+(?:have\s+)?(?:any\s+)?(?:direct\s+)?(?:background|experience)\b",
+        r"\bno\s+(?:direct\s+)?(?:background|experience)\b",
+        r"\bnew to (?:this|the)\s+(?:role|domain|industry|field)\b",
+        r"\b(?:from|in)\s+another\s+(?:domain|industry|field)\b",
+        r"\bno\s+(?:project|projects|campaign|campaigns)\s+experience\b",
+    ]
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def detect_interview_simulator_candidate_cross_question(answer_text: str, current_question: str = "") -> bool:
+    normalized = re.sub(r"\s+", " ", safe_text(answer_text).strip().lower())
+    if not normalized:
+        return False
+    word_count = len(re.findall(r"[A-Za-z0-9][A-Za-z0-9'\-]*", normalized))
+    if word_count <= 1 or word_count > 56:
+        return False
+
+    clarification_patterns = [
+        r"\b(?:can|could|would)\s+you\s+(?:please\s+)?(?:clarify|explain|repeat|rephrase|break\s+that\s+down|elaborate)\b",
+        r"\bwhat\s+(?:exactly\s+)?do\s+you\s+mean\b",
+        r"\bdo\s+you\s+mean\b",
+        r"\bi(?:'m| am)\s+not\s+(?:clear|sure|following)\b",
+        r"\b(?:which|what)\s+(?:part|area|example)\s+(?:do you want|should i)\b",
+        r"\bbefore\s+i\s+answer\b",
+        r"\bcan\s+i\s+(?:answer|use)\b",
+        r"\bshould\s+i\s+(?:focus|answer)\b",
+        r"\bcould\s+you\s+give\s+(?:an?\s+)?example\b",
+        r"\bquestion\s+again\b",
+    ]
+    if any(re.search(pattern, normalized) for pattern in clarification_patterns):
+        return True
+
+    has_question_mark = "?" in safe_text(answer_text)
+    starts_like_question = bool(
+        re.match(r"^(?:what|why|how|when|where|which|can|could|would|should|do|does|did|is|are|am)\b", normalized)
+    )
+    if not (has_question_mark or starts_like_question):
+        return False
+
+    if re.search(r"\b(?:clarify|explain|repeat|rephrase|mean|question|understand|example|scope|expect)\b", normalized):
+        return True
+
+    direct_answer_markers = re.findall(
+        r"\b(?:i\s+(?:led|built|managed|worked|delivered|improved|increased|reduced)|my\s+(?:experience|project)|we\s+(?:built|launched|improved|delivered))\b",
+        normalized,
+    )
+    if direct_answer_markers and word_count > 16:
+        return False
+
+    question_tokens = tokenize_keywords(current_question)
+    answer_tokens = tokenize_keywords(normalized)
+    overlap = len(question_tokens.intersection(answer_tokens))
+    return has_question_mark and word_count <= 20 and overlap <= 2
+
+
+def build_interview_simulator_clarification_bridge(
+    candidate_name: str,
+    role: str,
+    stage_key: str,
+    answer_text: str,
+) -> str:
+    normalized = safe_text(answer_text).strip().lower()
+    greeting = "Good question."
+    if re.search(r"\b(?:repeat|again|once more)\b", normalized):
+        greeting = "Of course."
+    elif re.search(r"\b(?:example|sample)\b", normalized):
+        greeting = "Great question."
+    elif re.search(r"\b(?:clarify|explain|rephrase|mean)\b", normalized):
+        greeting = "Absolutely."
+
+    role_label = safe_text(role).strip() or "this role"
+    normalized_stage = safe_text(stage_key).strip().lower()
+    stage_hint = "Share one concrete example, your action, and the measurable result."
+    if normalized_stage == "screening":
+        stage_hint = f"Keep it role-fit focused for {role_label}: one relevant example, your action, and the outcome."
+    elif normalized_stage == "technical_assessment":
+        stage_hint = "Use one technical or process example, explain your decisions, and include a measurable outcome."
+    elif normalized_stage == "in_depth_assessment":
+        stage_hint = "Focus on trade-offs, stakeholder judgment, and what result you finally drove."
+    elif normalized_stage == "hr":
+        stage_hint = "Focus on communication, ownership, and collaboration behavior."
+
+    transferable_hint = ""
+    if detect_interview_simulator_no_direct_experience_signal(answer_text):
+        transferable_hint = " If your background is adjacent, use transferable examples and map them to this role."
+
+    candidate_label = safe_text(candidate_name).strip() or "there"
+    return f"{greeting} {candidate_label}, {stage_hint}{transferable_hint} I will restate the question now."[:220]
+
+
+def follow_up_question_demands_direct_experience(question_text: str) -> bool:
+    normalized = safe_text(question_text).strip().lower()
+    if not normalized:
+        return False
+    patterns = [
+        r"\b(?:your|recent|past)\s+(?:experience|project|projects|campaign|campaigns)\b",
+        r"\btell me about (?:a|an|your)\s+(?:project|campaign)\b",
+        r"\bwhen you (?:worked|led|managed|executed)\b",
+        r"\bwhat did you do in (?:that|your)\s+(?:project|campaign|role)\b",
+    ]
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def build_interview_simulator_answer_adaptive_probe(
+    stage_key: str,
+    role: str,
+    answer_text: str,
+    current_question: str,
+    candidate_reports_no_direct_experience: bool = False,
+    next_focus_skill: str | None = None,
+) -> str:
+    normalized_stage = safe_text(stage_key).strip().lower() or "screening"
+    role_label = safe_text(role).strip() or "this role"
+    focus = safe_text(next_focus_skill).strip()
+    if candidate_reports_no_direct_experience and normalized_stage in {"screening", "technical_assessment", "in_depth_assessment"}:
+        focus_label = focus or "problem solving"
+        return (
+            f"You mentioned limited direct background. Share one transferable example where you used {focus_label} "
+            f"and map your action and result to this {role_label} role."
+        )[:260]
+
+    raw_tokens = re.findall(r"[A-Za-z][A-Za-z0-9+#.-]{2,}", safe_text(answer_text).lower())
+    current_question_tokens = tokenize_keywords(current_question)
+    blocked = {
+        *STOPWORDS,
+        *INTERVIEW_SIMULATOR_QUESTION_NOISE_WORDS,
+        "experience",
+        "project",
+        "projects",
+        "role",
+        "industry",
+        "answer",
+        "question",
+    }
+    token_counts = Counter(
+        token
+        for token in raw_tokens
+        if token not in blocked and token not in current_question_tokens and len(token) >= 4
+    )
+    anchor = token_counts.most_common(1)[0][0] if token_counts else ""
+    if not anchor:
+        return ""
+    if normalized_stage == "screening":
+        return f"You mentioned {anchor}. How does that specifically prove fit for this {role_label} role?"[:260]
+    if normalized_stage == "technical_assessment":
+        return f"You mentioned {anchor}. What decision did you make, why did you choose it, and what measurable result followed?"[:260]
+    if normalized_stage == "in_depth_assessment":
+        return f"You mentioned {anchor}. Walk me through the toughest trade-off there and what you would do differently now."[:260]
+    if normalized_stage == "hr":
+        return f"You mentioned {anchor}. How does that shape the way you work with a team and manager in this role?"[:260]
+    return ""
+
+
 def build_interview_simulator_stage_question(
     role: str,
     industry: str,
@@ -12190,6 +13063,9 @@ def build_interview_simulator_stage_question(
     improvements: list[str],
     fallback_question: str | None = None,
     next_focus_skill: str | None = None,
+    candidate_profile_note: str | None = None,
+    candidate_level: str | None = None,
+    candidate_reports_no_direct_experience: bool = False,
 ) -> str:
     candidate_fallback = safe_text(fallback_question).strip()
     if len(candidate_fallback) >= 12:
@@ -12206,22 +13082,68 @@ def build_interview_simulator_stage_question(
     )
     stage = safe_text(stage_key).strip().lower()
     normalized_difficulty = normalize_interview_simulator_difficulty(difficulty)
+    profile_note = safe_text(candidate_profile_note).strip().lower()
+    normalized_candidate_level = safe_text(candidate_level).strip().lower()
+    transitioning_profile = any(
+        token in profile_note
+        for token in [
+            "transition",
+            "moving toward",
+            "moving into",
+            "clear intent to move into",
+            "transferable experience",
+        ]
+    )
+    fresher_profile = normalized_candidate_level == "fresher" or any(
+        token in profile_note for token in ["entry", "fresher", "intern", "trainee"]
+    )
+    no_direct_experience_profile = candidate_reports_no_direct_experience or transitioning_profile
 
     if stage == "screening":
         if question_number_in_stage <= 1:
             return f"Let’s start with the screening round. What makes you a strong fit for this {role_label} role, and which recent experience proves it best?"
+        if no_direct_experience_profile:
+            return (
+                f"Still in screening, your background is from an adjacent path. Share one transferable win that maps clearly to {role_label}, "
+                f"and one gap you are actively closing."
+            )
         return f"Still in screening, tell me about a specific example where you used {target_skill} and why that experience matters for a {role_label} role."
 
     if stage == "technical_assessment":
         if question_number_in_stage <= 1:
+            if no_direct_experience_profile:
+                return (
+                    f"Moving into technical assessment: since your background is from another domain, walk me through a concrete problem you solved "
+                    f"and map your decisions to this {role_label} role."
+                )
+            if fresher_profile:
+                return (
+                    f"Moving into technical assessment, pick one project, internship, or practical assignment and explain how you used {target_skill} "
+                    f"to deliver a clear result."
+                )
             return f"Moving into the technical assessment round, walk me through a concrete situation where you used {target_skill} to drive results in {industry_label}."
         if question_number_in_stage == 2:
+            if no_direct_experience_profile:
+                return (
+                    f"If you did not have direct {industry_label} experience on day one, how would you learn the domain quickly, test your assumptions, "
+                    f"and still deliver useful output in the first month?"
+                )
+            if fresher_profile:
+                return (
+                    f"Second technical question: when you face an unfamiliar domain problem, how do you break it down, choose what to learn first, "
+                    f"and show progress without guessing?"
+                )
             return f"In that technical round, how did you measure success, make trade-offs, and adjust your approach when the first plan was not enough?"
         if improvement_note:
             return f"One thing I still need to hear is this: {improvement_note} Give me a sharper example tied to {target_skill}."
         return f"Give me a second technical example where your judgment on {target_skill} changed a business outcome."
 
     if stage == "in_depth_assessment":
+        if (fresher_profile or no_direct_experience_profile) and question_number_in_stage <= 1:
+            return (
+                f"Now for an in-depth scenario: describe a situation where you had limited experience but still took ownership, aligned others, "
+                f"and delivered the expected outcome."
+            )
         if question_number_in_stage <= 1:
             return f"Now let’s go deeper. Tell me about a high-pressure situation in this {role_label} path where the stakes were high, the data was incomplete, and you still had to decide."
         if normalized_difficulty == "advanced":
@@ -12233,7 +13155,14 @@ def build_interview_simulator_stage_question(
     return f"Last HR question. Tell me about a difficult people situation, how you handled it, and what you would repeat or change next time."
 
 
-def build_interview_simulator_opening_question(role: str, industry: str, difficulty: str, focus_skills: list[str]) -> str:
+def build_interview_simulator_opening_question(
+    role: str,
+    industry: str,
+    difficulty: str,
+    focus_skills: list[str],
+    candidate_profile_note: str | None = None,
+    candidate_level: str | None = None,
+) -> str:
     return build_interview_simulator_stage_question(
         role=role,
         industry=industry,
@@ -12243,7 +13172,191 @@ def build_interview_simulator_opening_question(role: str, industry: str, difficu
         focus_skills=focus_skills,
         missing_focus_skills=[],
         improvements=[],
+        candidate_profile_note=candidate_profile_note,
+        candidate_level=candidate_level,
     )
+
+
+def extract_interview_simulator_experience_years(resume_text: str) -> int | None:
+    text = safe_text(resume_text)
+    patterns = [
+        r"\b(\d{1,2})\+?\s+years?\b",
+        r"\b(\d{1,2})\s*\+\s*years?\b",
+        r"\bover\s+(\d{1,2})\s+years?\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text.lower())
+        if match:
+            years = safe_int(match.group(1), 0)
+            if 0 < years <= 40:
+                return years
+    return None
+
+
+def infer_interview_simulator_candidate_level(role: str, resume_text: str) -> str:
+    role_text = safe_text(role).strip().lower()
+    years = extract_interview_simulator_experience_years(resume_text)
+    explicit_fresher = any(
+        token in role_text for token in ["intern", "fresher", "trainee", "entry level", "entry-level", "graduate"]
+    )
+    explicit_experienced = any(
+        token in role_text for token in ["senior", "lead", "principal", "staff", "head", "manager", "director"]
+    )
+    if explicit_fresher or (years is not None and years <= 1):
+        return "fresher"
+    if explicit_experienced or (years is not None and years >= 2):
+        return "experienced"
+    return "balanced"
+
+
+def curate_interview_simulator_profile_skills(focus_skills: list[str]) -> list[str]:
+    curated: list[str] = []
+    blocked_fragments = {
+        "responsibilities",
+        "requirements",
+        "qualification",
+        "qualifications",
+        "experience",
+        "leadership",
+        "leadership team",
+    }
+    for raw_skill in focus_skills[:10]:
+        skill = re.sub(r"\s+", " ", safe_text(raw_skill).strip(" ,.;:-")).strip()
+        if len(skill) < 3 or len(skill) > 34:
+            continue
+        words = [word for word in skill.split(" ") if word]
+        if len(words) > 4:
+            continue
+        lowered = skill.lower()
+        if lowered in blocked_fragments:
+            continue
+        if any(char.isdigit() for char in skill):
+            continue
+        alpha_chars = sum(1 for char in skill if char.isalpha())
+        if alpha_chars < max(3, int(len(skill) * 0.6)):
+            continue
+        if re.search(r"[|/\\@_]{2,}", skill):
+            continue
+        curated.append(skill)
+    return dedupe_text_list(curated, limit=3, max_item_len=34)
+
+
+def format_interview_simulator_skill_label(skill: str) -> str:
+    text = safe_text(skill).strip()
+    if not text:
+        return ""
+    replacements = {
+        "api": "API",
+        "b2b": "B2B",
+        "b2c": "B2C",
+        "crm": "CRM",
+        "hr": "HR",
+        "seo": "SEO",
+        "sem": "SEM",
+        "sql": "SQL",
+        "ui": "UI",
+        "ux": "UX",
+    }
+    parts = []
+    for token in text.split(" "):
+        lowered = token.lower()
+        parts.append(replacements.get(lowered, token))
+    return " ".join(parts).strip()
+
+
+def format_interview_simulator_track_label(track: str) -> str:
+    normalized = safe_text(track).strip().lower()
+    labels = {
+        "marketing": "marketing",
+        "sales": "sales",
+        "product": "product",
+        "engineering": "engineering",
+        "data": "data",
+        "finance": "finance",
+        "hr": "people operations",
+        "general": "general business",
+    }
+    return labels.get(normalized, normalized.replace("_", " ").strip() or "general business")
+
+
+def build_interview_simulator_candidate_profile_note(
+    candidate_name: str,
+    role: str,
+    industry: str,
+    focus_skills: list[str],
+    resume_text: str,
+) -> str:
+    role_label = safe_text(role).strip() or "this role"
+    industry_label = safe_text(industry).strip()
+    years = extract_interview_simulator_experience_years(resume_text)
+    curated_resume_skills = curate_interview_simulator_profile_skills(focus_skills or [])
+    top_skills = [format_interview_simulator_skill_label(item) for item in curated_resume_skills]
+    target_track = infer_role_track(role, industry)
+    resume_track, resume_track_score = infer_role_track_with_score(" ".join(curated_resume_skills[:6]), "")
+    if resume_track_score <= 0:
+        resume_track, resume_track_score = infer_role_track_with_score(resume_text[:1800], "")
+    track_mismatch = (
+        target_track not in {"", "general"}
+        and resume_track not in {"", "general"}
+        and resume_track != target_track
+        and resume_track_score > 0
+    )
+
+    if years and top_skills:
+        if len(top_skills) == 1:
+            skills_text = top_skills[0]
+        else:
+            skills_text = ", ".join(top_skills[:-1]) + f", and {top_skills[-1]}"
+        if track_mismatch:
+            return (
+                f"about {years} years of experience with {skills_text}, mostly in "
+                f"{format_interview_simulator_track_label(resume_track)}, and is now transitioning into {role_label}"
+            )
+        return f"about {years} years of experience with {skills_text}"
+    if top_skills:
+        if len(top_skills) == 1:
+            skills_text = top_skills[0]
+        else:
+            skills_text = ", ".join(top_skills[:-1]) + f", and {top_skills[-1]}"
+        if track_mismatch:
+            return (
+                f"hands-on work around {skills_text}, with most direct exposure in "
+                f"{format_interview_simulator_track_label(resume_track)} and clear intent to move into {role_label}"
+            )
+        if industry_label and industry_label.lower() != "general":
+            return f"hands-on work around {skills_text} in {industry_label}"
+        return f"hands-on work around {skills_text}"
+    if years:
+        if track_mismatch:
+            return (
+                f"about {years} years of experience in {format_interview_simulator_track_label(resume_track)} "
+                f"and is now moving toward {role_label}"
+            )
+        return f"about {years} years of relevant experience for {role_label}"
+    if track_mismatch:
+        return (
+            f"transferable experience from {format_interview_simulator_track_label(resume_track)} "
+            f"with clear intent around the {role_label} path"
+        )
+    return f"clear intent around the {role_label} path"
+
+
+def build_interview_simulator_recent_turn_memory(turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    memory: list[dict[str, Any]] = []
+    for turn in turns[-2:]:
+        if not isinstance(turn, dict):
+            continue
+        memory.append(
+            {
+                "stage": safe_text(turn.get("stage_label")) or safe_text(turn.get("stage_key")) or "Round",
+                "question": safe_text(turn.get("question"))[:120],
+                "feedback_summary": safe_text(turn.get("feedback_summary"))[:120],
+                "candidate_signal": safe_text(turn.get("candidate_signal"))[:120],
+                "off_topic": bool(turn.get("off_topic")),
+                "overall_score": int(round(clamp_float(safe_float(((turn.get("scores") or {}).get("overall")), 0.0), 0.0, 100.0))),
+            }
+        )
+    return memory
 
 
 def pick_interview_simulator_interviewer_name(role: str, industry: str) -> str:
@@ -12260,24 +13373,236 @@ def pick_interview_simulator_interviewer_name(role: str, industry: str) -> str:
     return pool[int(digest[:8], 16) % len(pool)]
 
 
-def build_interview_simulator_opening_remark(candidate_name: str, interviewer_name: str, role: str) -> str:
+def build_interview_simulator_interviewer_profile(role: str, industry: str) -> dict[str, str]:
+    role_track = infer_role_track(role, industry)
+    profiles: dict[str, list[dict[str, str]]] = {
+        "marketing": [
+            {
+                "name": "Riya Kapoor",
+                "title": "Hiring Lead, Growth & Brand",
+                "voice": "verse",
+                "style": "warm, commercially sharp, observant, and quick to probe specifics",
+            },
+            {
+                "name": "Avery Bennett",
+                "title": "Senior Marketing Hiring Manager",
+                "voice": "sage",
+                "style": "calm, strategic, and focused on decision quality",
+            },
+        ],
+        "product": [
+            {
+                "name": "Jordan Lee",
+                "title": "Product Hiring Lead",
+                "voice": "sage",
+                "style": "structured, thoughtful, and curious about trade-offs",
+            },
+            {
+                "name": "Nina Foster",
+                "title": "Director of Product Interviews",
+                "voice": "shimmer",
+                "style": "measured, clear, and strong on judgment calls",
+            },
+        ],
+        "engineering": [
+            {
+                "name": "Marcus Hale",
+                "title": "Senior Engineering Interviewer",
+                "voice": "echo",
+                "style": "direct, technical, and quietly personable",
+            },
+            {
+                "name": "Samir Patel",
+                "title": "Engineering Hiring Manager",
+                "voice": "alloy",
+                "style": "calm, rigorous, and interested in practical engineering choices",
+            },
+        ],
+        "data": [
+            {
+                "name": "Nina Foster",
+                "title": "Data Hiring Lead",
+                "voice": "shimmer",
+                "style": "analytical, grounded, and precise about evidence",
+            },
+            {
+                "name": "Samir Patel",
+                "title": "Senior Analytics Interviewer",
+                "voice": "sage",
+                "style": "clear, numbers-driven, and quietly warm",
+            },
+        ],
+        "sales": [
+            {
+                "name": "Marcus Hale",
+                "title": "Sales Hiring Lead",
+                "voice": "echo",
+                "style": "energetic, commercially aware, and quick to test conviction",
+            },
+            {
+                "name": "Riya Kapoor",
+                "title": "Commercial Hiring Manager",
+                "voice": "verse",
+                "style": "warm, fast-moving, and attentive to persuasion",
+            },
+        ],
+        "finance": [
+            {
+                "name": "Jordan Lee",
+                "title": "Finance Hiring Lead",
+                "voice": "sage",
+                "style": "measured, precise, and attentive to judgment under pressure",
+            },
+            {
+                "name": "Avery Bennett",
+                "title": "Senior Finance Interviewer",
+                "voice": "alloy",
+                "style": "steady, direct, and evidence-first",
+            },
+        ],
+        "hr": [
+            {
+                "name": "Nina Foster",
+                "title": "People Operations Hiring Lead",
+                "voice": "shimmer",
+                "style": "warm, attentive, and strong on interpersonal nuance",
+            },
+            {
+                "name": "Riya Kapoor",
+                "title": "Senior People Interviewer",
+                "voice": "verse",
+                "style": "calm, empathetic, and lightly conversational",
+            },
+        ],
+        "general": [
+            {
+                "name": "Avery Bennett",
+                "title": "Senior Hiring Manager",
+                "voice": "verse",
+                "style": "warm, concise, and observant",
+            },
+            {
+                "name": "Jordan Lee",
+                "title": "Lead Interviewer",
+                "voice": "sage",
+                "style": "calm, structured, and human",
+            },
+        ],
+    }
+    pool = profiles.get(role_track, profiles["general"])
+    seed = f"{normalize_search_text(role)}|{normalize_search_text(industry)}".encode("utf-8")
+    digest = hashlib.sha256(seed).hexdigest()
+    profile = dict(pool[int(digest[:8], 16) % len(pool)])
+    if not safe_text(profile.get("name")).strip():
+        profile["name"] = pick_interview_simulator_interviewer_name(role, industry)
+    if not safe_text(profile.get("voice")).strip():
+        profile["voice"] = "verse"
+    return profile
+
+
+def build_interview_simulator_opening_remark(
+    candidate_name: str,
+    interviewer_name: str,
+    interviewer_title: str,
+    role: str,
+    candidate_profile_note: str | None = None,
+) -> str:
     candidate = safe_text(candidate_name).strip() or "there"
     interviewer = safe_text(interviewer_name).strip() or "Avery"
+    interviewer_role = safe_text(interviewer_title).strip() or "Lead Interviewer"
     target_role = safe_text(role).strip() or "this role"
+    profile_note = safe_text(candidate_profile_note).strip()
+    profile_sentence = ""
+    if profile_note:
+        profile_sentence = f" I had a quick look at your background, and it seems you bring {profile_note}, so I'll use that as context as we talk."
     return (
-        f"Hi {candidate}, welcome in. I'm {interviewer}, and I'll be your interviewer today for the {target_role} role. "
-        "We’ll start with screening, go deeper only when your answers support it, and finish with an HR close if it makes sense. "
-        "I'll ask one question at a time, and you can answer naturally."
+        f"Hi {candidate}, good to meet you. I'm {interviewer}, {interviewer_role}, and I'll be leading this interview for the {target_role} role."
+        f"{profile_sentence} "
+        "We’ll keep this conversational and practical. I’ll start broad, then go deeper only where your answers earn it. "
+        "Take a breath, answer naturally, and if I interrupt it will only be to go deeper on something important."
     )
 
 
-def build_interview_simulator_closing_remark(candidate_name: str, interviewer_name: str) -> str:
+def build_interview_simulator_closing_remark(
+    candidate_name: str,
+    interviewer_name: str,
+    candidate_connection_notes: list[str] | None = None,
+) -> str:
     candidate = safe_text(candidate_name).strip() or "there"
     interviewer = safe_text(interviewer_name).strip() or "Avery"
+    connection_note = safe_text((candidate_connection_notes or [None])[0]).strip()
+    appreciation = ""
+    if connection_note:
+        appreciation = f" I appreciated how you came across when you spoke about {connection_note}."
     return (
-        f"Thanks for spending the time with me today, {candidate}. I'm {interviewer}. "
+        f"Thanks for spending the time with me today, {candidate}. I'm {interviewer}.{appreciation} "
         "That wraps up the interview, and your report is ready below."
     )
+
+
+def extract_interview_simulator_candidate_signal(answer_text: str) -> str:
+    text = safe_text(answer_text).strip()
+    if not text:
+        return ""
+    sentences = [segment.strip(" -") for segment in re.split(r"(?<=[.!?])\s+", text) if segment.strip()]
+    cue_patterns = [
+        r"\b(?:i enjoy|i love|i care about|i value|i prefer|i'm at my best when|i am at my best when|what motivates me|i learned|i realized|i try to|i like to)\b",
+        r"\b(?:my style|my approach|what matters to me|i work best when|i get energized by|i get energy from)\b",
+    ]
+    for sentence in sentences[:6]:
+        normalized = sentence.lower()
+        if any(re.search(pattern, normalized) for pattern in cue_patterns):
+            clipped = safe_text(sentence)[:140].strip()
+            return clipped.rstrip(".!?")
+    return ""
+
+
+def format_interview_simulator_candidate_signal_for_bridge(signal: str) -> str:
+    text = safe_text(signal).strip().rstrip(".!?")
+    if not text:
+        return ""
+    replacements = [
+        ("i'm at my best when ", "you seem to be at your best when "),
+        ("i am at my best when ", "you seem to be at your best when "),
+        ("i get energized by ", "you get energized by "),
+        ("i get energy from ", "you get energy from "),
+        ("i care about ", "you care about "),
+        ("i value ", "you value "),
+        ("i enjoy ", "you enjoy "),
+        ("i love ", "you love "),
+        ("i prefer ", "you prefer "),
+        ("i learned ", "you learned "),
+        ("i realized ", "you realized "),
+        ("i like to ", "you like to "),
+        ("my approach is ", "your approach is "),
+        ("my style is ", "your style is "),
+    ]
+    lowered = text.lower()
+    for source, target in replacements:
+        if lowered.startswith(source):
+            return f"{target}{text[len(source):]}".strip()
+    return text
+
+
+def interviewer_bridge_references_signal(bridge: str, signal: str) -> bool:
+    bridge_text = safe_text(bridge).strip().lower()
+    signal_text = safe_text(signal).strip().lower()
+    if not bridge_text or not signal_text:
+        return False
+    if phrase_in_text(bridge_text, signal_text) or phrase_in_text(signal_text, bridge_text):
+        return True
+    ignored = {"value", "values", "team", "teams", "work", "working", "approach", "style"}
+    bridge_tokens = {
+        token
+        for token in tokenize_keywords(bridge_text)
+        if token not in STOPWORDS and token not in ignored and len(token) > 2
+    }
+    signal_tokens = {
+        token
+        for token in tokenize_keywords(signal_text)
+        if token not in STOPWORDS and token not in ignored and len(token) > 2
+    }
+    return len(bridge_tokens.intersection(signal_tokens)) >= 2
 
 
 def answer_shows_playful_humor(answer_text: str) -> bool:
@@ -12298,23 +13623,60 @@ def build_interview_simulator_interviewer_bridge(
     answer_text: str,
     overall_score: float,
     improvements: list[str],
+    stage_label: str | None = None,
+    candidate_signal: str | None = None,
+    candidate_profile_note: str | None = None,
+    off_topic: bool = False,
     llm_bridge: str | None = None,
 ) -> str:
     candidate = safe_text(candidate_name).strip() or "there"
     suggested = safe_text(llm_bridge).strip()
+    remembered_signal = safe_text(candidate_signal).strip()
+    remembered_signal_for_bridge = format_interview_simulator_candidate_signal_for_bridge(remembered_signal)
+    profile_note = safe_text(candidate_profile_note).strip()
+    round_label = safe_text(stage_label).strip().lower()
     if answer_shows_playful_humor(answer_text):
         if suggested and re.search(r"\b(?:nice one|good one|smile|laugh|gave me that)\b", suggested.lower()):
             return suggested[:180]
-        return f"Nice one, {candidate}. I'll give you that. Let's keep going."
-    if suggested:
+        return f"Fair enough, {candidate}. I'll give you that one. Let me bring us back to the interview."
+    if off_topic:
+        if suggested:
+            return suggested[:180]
+        if remembered_signal_for_bridge:
+            return f"I caught that, especially the part about {remembered_signal_for_bridge.lower()}, but I need to pull us back to the role for a moment."
+        return f"I’m going to stop you there for a second. I need you to bring this back to the role and the question I asked."
+    if suggested and (not remembered_signal_for_bridge or interviewer_bridge_references_signal(suggested, remembered_signal_for_bridge)):
         return suggested[:180]
+    if remembered_signal_for_bridge:
+        return f"You mentioned that {remembered_signal_for_bridge.lower()}. Stay with that and make it concrete for me."
+    if profile_note and round_label == "screening":
+        return "I can see the shape of your background. Let me pressure-test one part of it."
     if overall_score >= 78:
-        return f"Good answer, {candidate}. That was clear and well grounded."
+        return "That was clear and well grounded. Now make the decision logic explicit for me."
     if overall_score >= 56:
-        return f"Thanks, {candidate}. That helps. Let's build on that."
+        return "I follow you. Give me the part that actually made the difference."
     if improvements:
-        return f"Thanks, {candidate}. I want to go one level deeper on that."
-    return f"Thanks, {candidate}. Let's keep moving."
+        return "I see the outline. Now make it more concrete for me."
+    return "All right. Let’s keep moving."
+
+
+def build_interview_simulator_spoken_text(
+    question_text: str,
+    round_number: int,
+    question_number_in_stage: int,
+    opening_remark: str | None = None,
+    interviewer_bridge: str | None = None,
+) -> str:
+    question = re.sub(r"\s+", " ", safe_text(question_text).strip())
+    if not question:
+        return ""
+    opening = ""
+    if round_number <= 1 and question_number_in_stage <= 1:
+        opening = re.sub(r"\s+", " ", safe_text(opening_remark).strip())
+    bridge = ""
+    if not opening and (round_number > 1 or question_number_in_stage > 1):
+        bridge = re.sub(r"\s+", " ", safe_text(interviewer_bridge).strip()) or "All right. Here's the next question."
+    return re.sub(r"\s+", " ", " ".join(item for item in [opening, bridge, question] if item)).strip()
 
 
 def build_interview_simulator_stage_transition_bridge(next_stage: dict[str, Any], prior_bridge: str | None = None) -> str:
@@ -12341,6 +13703,217 @@ def summarize_interview_simulator_scores(turns: list[dict[str, Any]]) -> float:
     return clamp(sum(values) / max(1, len(values)))
 
 
+def build_interview_simulator_context_keywords(role: str, industry: str, focus_skills: list[str]) -> set[str]:
+    keywords = {
+        token
+        for token in tokenize_keywords(f"{safe_text(role)} {safe_text(industry)}")
+        if token not in STOPWORDS and token not in GENERIC_ROLE_WORDS and token not in INTERVIEW_SIMULATOR_QUESTION_NOISE_WORDS
+    }
+    for skill in focus_skills[:8]:
+        normalized_skill = normalize_token(skill)
+        if not normalized_skill:
+            continue
+        keywords.update(
+            token
+            for token in tokenize_keywords(normalized_skill)
+            if token not in STOPWORDS and token not in INTERVIEW_SIMULATOR_QUESTION_NOISE_WORDS
+        )
+    return {token for token in keywords if token}
+
+
+def analyze_interview_simulator_answer_relevance(
+    question: str,
+    answer_text: str,
+    role: str,
+    industry: str,
+    focus_skills: list[str],
+    matched_focus: list[str],
+) -> dict[str, Any]:
+    question_keywords = {
+        token for token in tokenize_keywords(question) if token not in INTERVIEW_SIMULATOR_QUESTION_NOISE_WORDS
+    }
+    answer_keywords = tokenize_keywords(answer_text)
+    context_keywords = build_interview_simulator_context_keywords(role, industry, focus_skills)
+    question_hits = sorted(question_keywords.intersection(answer_keywords))
+    context_hits = sorted(context_keywords.intersection(answer_keywords))
+    role_explicit_hit = phrase_in_text(answer_text, role)
+    clean_industry = safe_text(industry).strip()
+    industry_explicit_hit = bool(clean_industry and clean_industry.lower() not in {"general"}) and phrase_in_text(answer_text, clean_industry)
+    matched_focus_count = len(dedupe_text_list(matched_focus, limit=8, max_item_len=80))
+    normalized_answer = safe_text(answer_text).lower()
+    target_track = infer_role_track(role, industry)
+    answer_track, answer_track_score = infer_role_track_with_score(answer_text[:1800], "")
+    cross_track_mismatch = (
+        target_track not in {"", "general"}
+        and answer_track not in {"", "general"}
+        and answer_track != target_track
+        and answer_track_score >= 2
+    )
+    self_disqualifying_patterns = [
+        r"\b(?:unrelated|irrelevant|off[- ]topic)\b",
+        r"\b(?:did not connect|not connected|not connect|don't connect|doesn't connect|not related|not relevant|nothing to do with)\b",
+    ]
+    self_disqualifying_hits = sum(1 for pattern in self_disqualifying_patterns if re.search(pattern, normalized_answer))
+
+    relevance_score = clamp(
+        14
+        + min(28, len(question_hits) * 8.0)
+        + min(18, len(context_hits) * 4.5)
+        + min(28, matched_focus_count * 8.0)
+        + (10 if role_explicit_hit else 0)
+        + (6 if industry_explicit_hit else 0)
+    )
+    if question_keywords and not question_hits:
+        relevance_score = clamp(relevance_score - 8)
+    if not context_hits and matched_focus_count <= 0 and not role_explicit_hit:
+        relevance_score = clamp(relevance_score - 14)
+    if question_keywords and len(question_hits) <= 1 and matched_focus_count <= 0 and not role_explicit_hit:
+        relevance_score = clamp(relevance_score - 18)
+    if len(context_hits) <= 1 and matched_focus_count <= 0 and len(answer_keywords) >= 12:
+        relevance_score = clamp(relevance_score - 8)
+    if len(answer_keywords) < 10:
+        relevance_score = clamp(relevance_score - 6)
+    if cross_track_mismatch and not role_explicit_hit and matched_focus_count <= 1:
+        relevance_score = clamp(relevance_score - 18)
+    if self_disqualifying_hits:
+        relevance_score = clamp(relevance_score - min(34, self_disqualifying_hits * 16))
+
+    return {
+        "score": relevance_score,
+        "question_hits": question_hits[:8],
+        "context_hits": context_hits[:8],
+        "role_explicit_hit": role_explicit_hit,
+        "industry_explicit_hit": industry_explicit_hit,
+        "cross_track_mismatch": cross_track_mismatch,
+        "off_topic": relevance_score < 42,
+        "severely_off_topic": relevance_score < 28,
+    }
+
+
+def decide_interview_simulator_screening_outcome(screening_turns: list[dict[str, Any]]) -> dict[str, str]:
+    if not screening_turns:
+        return {"decision": "pending", "reason": ""}
+    overall_average = summarize_interview_simulator_scores(screening_turns)
+    relevance_average = clamp(
+        sum(safe_float(turn.get("relevance_score"), 0.0) for turn in screening_turns) / max(1, len(screening_turns))
+    )
+    evidence_average = clamp(
+        sum(safe_float(turn.get("evidence_score"), 0.0) for turn in screening_turns) / max(1, len(screening_turns))
+    )
+    latest_turn = screening_turns[-1]
+    latest_overall = safe_float(((latest_turn.get("scores") or {}).get("overall")), 0.0)
+    latest_relevance = safe_float(latest_turn.get("relevance_score"), 0.0)
+
+    shortlisted = (
+        overall_average >= 54
+        and relevance_average >= 48
+        and latest_overall >= 52
+        and latest_relevance >= 46
+    )
+    if shortlisted:
+        return {
+            "decision": "shortlisted",
+            "reason": "Shortlisted for round 2 because the screening answers stayed relevant and showed enough proof to continue.",
+        }
+    if relevance_average < 42 or latest_relevance < 40:
+        return {
+            "decision": "rejected",
+            "reason": "Rejected after screening because the answers stayed too far from the target role and question.",
+        }
+    if evidence_average < 46:
+        return {
+            "decision": "rejected",
+            "reason": "Rejected after screening because the answers lacked role-specific evidence and credible examples.",
+        }
+    return {
+        "decision": "rejected",
+        "reason": "Rejected after screening because the overall first-round performance was not strong enough to move forward.",
+    }
+
+
+def decide_interview_simulator_stage_outcome(
+    stage_key: str,
+    stage_turns: list[dict[str, Any]],
+    candidate_level: str | None = None,
+    screening_decision: str | None = None,
+    screening_decision_reason: str | None = None,
+) -> dict[str, str]:
+    normalized_stage = safe_text(stage_key).strip().lower()
+    normalized_level = safe_text(candidate_level).strip().lower()
+    if normalized_stage == "screening":
+        decision = safe_text(screening_decision).strip().lower()
+        if decision in {"shortlisted", "rejected"}:
+            return {
+                "decision": decision,
+                "reason": safe_text(screening_decision_reason).strip()
+                or (
+                    "Shortlisted for round 2 after screening."
+                    if decision == "shortlisted"
+                    else "Rejected after screening."
+                ),
+            }
+        fallback = decide_interview_simulator_screening_outcome(stage_turns)
+        return {
+            "decision": safe_text(fallback.get("decision")).strip().lower() or "rejected",
+            "reason": safe_text(fallback.get("reason")).strip() or "Round 1 decision is ready.",
+        }
+
+    if not stage_turns:
+        return {"decision": "pending", "reason": ""}
+
+    stage_average = summarize_interview_simulator_scores(stage_turns)
+    relevance_average = clamp(
+        sum(safe_float(turn.get("relevance_score"), 0.0) for turn in stage_turns) / max(1, len(stage_turns))
+    )
+    evidence_average = clamp(
+        sum(safe_float(turn.get("evidence_score"), 0.0) for turn in stage_turns) / max(1, len(stage_turns))
+    )
+    latest_turn = stage_turns[-1]
+    latest_overall = safe_float(((latest_turn.get("scores") or {}).get("overall")), 0.0)
+    shortlist_floor = 52.0
+    relevance_floor = 44.0
+    evidence_floor = 44.0
+
+    if normalized_level == "fresher":
+        shortlist_floor -= 4.0
+        relevance_floor -= 3.0
+        evidence_floor -= 2.0
+
+    if normalized_stage == "technical_assessment":
+        shortlist_floor += 2.0
+        relevance_floor += 1.0
+    elif normalized_stage == "in_depth_assessment":
+        shortlist_floor += 1.0
+    elif normalized_stage == "hr":
+        shortlist_floor -= 2.0
+
+    if stage_average >= shortlist_floor and latest_overall >= (shortlist_floor - 2.0) and relevance_average >= relevance_floor:
+        return {
+            "decision": "shortlisted",
+            "reason": (
+                f"Shortlisted after {normalized_stage.replace('_', ' ')} because answers stayed relevant, structured, and role-aligned."
+            ),
+        }
+    if relevance_average < max(30.0, relevance_floor - 6.0):
+        return {
+            "decision": "rejected",
+            "reason": (
+                f"Rejected after {normalized_stage.replace('_', ' ')} because answers drifted away from the role expectations and question intent."
+            ),
+        }
+    if evidence_average < max(28.0, evidence_floor - 6.0):
+        return {
+            "decision": "rejected",
+            "reason": (
+                f"Rejected after {normalized_stage.replace('_', ' ')} because role-specific proof and credible evidence were not strong enough."
+            ),
+        }
+    return {
+        "decision": "rejected",
+        "reason": f"Rejected after {normalized_stage.replace('_', ' ')} because round performance was below shortlist threshold.",
+    }
+
+
 def decide_interview_simulator_stage_progression(
     stage_plan: list[dict[str, Any]],
     current_stage_key: str,
@@ -12348,6 +13921,8 @@ def decide_interview_simulator_stage_progression(
     all_turns: list[dict[str, Any]],
     difficulty: str,
     llm_stage_action: str | None = None,
+    screening_decision: str | None = None,
+    candidate_level: str | None = None,
 ) -> tuple[bool, str | None]:
     stage_entry = get_interview_simulator_stage_entry(stage_plan, current_stage_key)
     stage_question_count = len(current_stage_turns)
@@ -12358,6 +13933,7 @@ def decide_interview_simulator_stage_progression(
     overall_average = summarize_interview_simulator_scores(all_turns)
     action = safe_text(llm_stage_action).strip().lower()
     normalized_difficulty = normalize_interview_simulator_difficulty(difficulty)
+    normalized_candidate_level = safe_text(candidate_level).strip().lower()
 
     if stage_question_count < min_questions:
         return False, current_stage_key
@@ -12383,21 +13959,35 @@ def decide_interview_simulator_stage_progression(
         return False, current_stage_key
 
     if current_stage_key == "screening":
-        return True, "technical_assessment"
+        if safe_text(screening_decision).strip().lower() == "shortlisted":
+            return True, "technical_assessment"
+        return True, None
 
     if current_stage_key == "technical_assessment":
         if action == "finish" and stage_average < 48 and overall_average < 50:
             return True, None
         if action == "skip_to_hr" and stage_average >= 56:
             return True, "hr"
+        if normalized_candidate_level == "fresher":
+            if stage_average >= 62 and normalized_difficulty == "advanced" and action == "advance":
+                return True, "in_depth_assessment"
+            if stage_average >= 42 or overall_average >= 45:
+                return True, "hr"
+            return True, None
         if stage_average >= 74 or (normalized_difficulty == "foundation" and stage_average >= 64):
             return True, "hr"
-        if stage_average >= 46 or overall_average >= 50:
+        if stage_average >= 50 or (action == "advance" and stage_average >= 46) or overall_average >= 52:
             return True, "in_depth_assessment"
+        if stage_average >= 42 and action in {"advance", "skip_to_hr"}:
+            return True, "hr"
         return True, None
 
     if current_stage_key == "in_depth_assessment":
         if action == "finish" and stage_average < 45:
+            return True, None
+        if normalized_candidate_level == "fresher":
+            if stage_average >= 42 or action == "advance":
+                return True, "hr"
             return True, None
         if stage_average >= 48 or overall_average >= 55 or normalized_difficulty == "foundation":
             return True, "hr"
@@ -12409,6 +13999,8 @@ def decide_interview_simulator_stage_progression(
 def build_interview_turn_heuristics(
     question: str,
     answer_text: str,
+    role: str,
+    industry: str,
     focus_skills: list[str],
     response_time_seconds: int | None,
     difficulty: str,
@@ -12443,6 +14035,15 @@ def build_interview_turn_heuristics(
             focus_hits += 1
             matched_focus.append(skill)
     missing_focus = [skill for skill in focus_skills[:8] if skill not in matched_focus]
+    relevance_payload = analyze_interview_simulator_answer_relevance(
+        question=normalized_question,
+        answer_text=normalized_answer,
+        role=role,
+        industry=industry,
+        focus_skills=focus_skills,
+        matched_focus=matched_focus,
+    )
+    relevance_score = safe_float(relevance_payload.get("score"), 0.0)
 
     speaking_time = int(clamp_float(float(response_time_seconds or 0), 0.0, 1800.0))
     timing_bonus = 0
@@ -12462,6 +14063,8 @@ def build_interview_turn_heuristics(
         - min(16, uncertain_hits * 3.5)
         + timing_bonus
     )
+    if relevance_score < 45:
+        communication_score = clamp(communication_score - 8)
     clarity_score = clamp(
         34
         + min(18, max(0.0, (24.0 - abs(avg_sentence_words - 16.0)) * 0.9))
@@ -12469,12 +14072,15 @@ def build_interview_turn_heuristics(
         + min(10, structure_hits * 2.0)
         - min(14, uncertain_hits * 3.2)
     )
-    domain_depth_score = clamp(
+    if relevance_score < 45:
+        clarity_score = clamp(clarity_score - 6)
+    domain_depth_base = clamp(
         28
         + min(30, focus_hits * (25.0 / max(1, min(5, len(focus_skills)))))
         + min(18, metric_hits * 2.6)
         + min(14, impact_hits * 2.0)
     )
+    domain_depth_score = clamp(0.45 * domain_depth_base + 0.55 * relevance_score)
     confidence_score = clamp(
         35
         + min(14, impact_hits * 1.8)
@@ -12483,6 +14089,18 @@ def build_interview_turn_heuristics(
         - min(20, uncertain_hits * 4.0)
         + timing_bonus
     )
+    if relevance_score < 45:
+        confidence_score = clamp(confidence_score - 6)
+
+    evidence_score = clamp(
+        18
+        + min(24, metric_hits * 6.0)
+        + min(20, impact_hits * 4.0)
+        + min(12, structure_hits * 2.0)
+        + min(18, focus_hits * 4.0)
+    )
+    if relevance_score < 48:
+        evidence_score = clamp(evidence_score - 24)
 
     if difficulty == "advanced":
         domain_depth_score = clamp(domain_depth_score - 5 + min(8, focus_hits * 2.0))
@@ -12491,31 +14109,44 @@ def build_interview_turn_heuristics(
         communication_score = clamp(communication_score + 4)
         confidence_score = clamp(confidence_score + 3)
 
-    overall_score = clamp(
+    base_overall_score = clamp(
         0.27 * communication_score + 0.23 * clarity_score + 0.32 * domain_depth_score + 0.18 * confidence_score
     )
+    overall_score = clamp(0.58 * base_overall_score + 0.42 * relevance_score)
+    if relevance_score < 35:
+        overall_score = clamp(min(overall_score, relevance_score + 10))
+    elif relevance_score < 48:
+        overall_score = clamp(min(overall_score, relevance_score + 16))
 
     strengths: list[str] = []
     improvements: list[str] = []
-    if metric_hits >= 1:
-        strengths.append("You used measurable signals, which improves credibility.")
-    if focus_hits >= max(1, int(round(max(1, len(focus_skills[:6])) * 0.5))):
-        strengths.append("Your answer covered key role skills expected in this interview.")
+    if metric_hits >= 1 and relevance_score >= 62 and evidence_score >= 56:
+        strengths.append("You tied measurable evidence directly to the question, which improved credibility.")
+    if focus_hits >= max(1, int(round(max(1, len(focus_skills[:6])) * 0.5))) and relevance_score >= 62:
+        strengths.append("Your answer stayed aligned with key role skills expected in this interview.")
     if structure_hits >= 2:
         strengths.append("Answer structure was clear and easy to follow.")
-    if impact_hits >= 1:
+    if impact_hits >= 1 and relevance_score >= 60:
         strengths.append("You explained business impact instead of generic activity.")
 
     if word_count < 55:
         improvements.append("Expand depth: include context, your action, and final outcome in one answer.")
-    if metric_hits < 1:
+    if relevance_score < 45:
+        improvements.append("Your answer drifted away from the question or target role. Re-anchor it to the scenario being asked.")
+    if metric_hits >= 1 and relevance_score < 48:
+        improvements.append("Metrics did not help this answer because they were not tied to a relevant role-specific example.")
+    if metric_hits < 1 and relevance_score >= 48:
         improvements.append("Add at least one hard metric or timeline to strengthen trust.")
     if focus_hits < max(1, min(3, len(focus_skills[:6]))):
         improvements.append("Anchor the answer to role-critical skills from the JD.")
     if uncertain_hits >= 1:
         improvements.append("Use direct language and reduce uncertain phrases to project confidence.")
     if not strengths:
-        strengths.append("You stayed relevant to the question and maintained direction.")
+        strengths.append(
+            "You gave enough material for the interviewer to assess, but the answer needs sharper role alignment."
+            if word_count >= 35
+            else "You gave a basic response, but it needs much stronger relevance and detail."
+        )
     if not improvements:
         improvements.append("Add a sharper close: what changed, by how much, and what you learned.")
 
@@ -12530,21 +14161,32 @@ def build_interview_turn_heuristics(
             "confidence": confidence_score,
             "overall": overall_score,
         },
+        "relevance_score": relevance_score,
+        "evidence_score": evidence_score,
+        "question_keyword_hits": relevance_payload.get("question_hits") or [],
+        "context_keyword_hits": relevance_payload.get("context_hits") or [],
+        "off_topic": bool(relevance_payload.get("off_topic")),
         "matched_focus_skills": matched_focus[:6],
         "missing_focus_skills": missing_focus[:6],
         "strengths": dedupe_text_list(strengths, limit=4, max_item_len=180),
         "improvements": dedupe_text_list(improvements, limit=4, max_item_len=180),
         "feedback_summary": (
-            "Strong response with clear role alignment."
-            if overall_score >= 78
-            else "Solid base with room to add stronger proof."
-            if overall_score >= 56
-            else "Answer needs stronger structure and role-specific depth."
+            "Answer was mostly off-topic for the question and target role."
+            if relevance_score < 35
+            else "Strong response with clear role alignment."
+            if overall_score >= 78 and relevance_score >= 68
+            else "Reasonably aligned answer with room to add sharper proof."
+            if overall_score >= 56 and relevance_score >= 50
+            else "Answer needs stronger relevance, structure, and role-specific depth."
         ),
     }
 
 
 def request_interview_simulator_turn_overlay(
+    candidate_name: str,
+    interviewer_name: str,
+    interviewer_title: str,
+    interviewer_style: str,
     role: str,
     industry: str,
     difficulty: str,
@@ -12554,23 +14196,36 @@ def request_interview_simulator_turn_overlay(
     total_rounds: int,
     question_number_in_stage: int,
     focus_skills: list[str],
+    candidate_profile_note: str,
+    candidate_connection_notes: list[str],
+    recent_turn_memory: list[dict[str, Any]],
     question: str,
     answer_text: str,
     heuristic_payload: dict[str, Any],
+    candidate_level: str | None = None,
+    candidate_reports_no_direct_experience: bool = False,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
     if client is None:
         return None, None, "OPENAI_API_KEY not configured"
 
     prompt = f"""
-You are an expert interview panel for {safe_text(role)} hiring in {safe_text(industry)}.
+You are {safe_text(interviewer_name) or "Avery Bennett"}, {safe_text(interviewer_title) or "Lead Interviewer"}.
+You are leading a live interview for {safe_text(role)} hiring in {safe_text(industry)}.
+Interviewer style: {safe_text(interviewer_style) or "warm, concise, observant, and direct"}.
 Evaluate the candidate answer and decide whether the current interview round should continue, advance, or end.
+Candidate name: {safe_text(candidate_name) or "Candidate"}
 
 Difficulty: {safe_text(difficulty)}
+Candidate level: {safe_text(candidate_level) or "balanced"}
+Candidate explicitly reported no direct background: {"yes" if candidate_reports_no_direct_experience else "no"}
 Round: {round_number}/{total_rounds}
 Current round label: {safe_text(stage_label)}
 Current round key: {safe_text(stage_key)}
 Question number in this round: {question_number_in_stage}
 Focus skills: {json.dumps(focus_skills[:8], ensure_ascii=False)}
+Candidate background note: {safe_text(candidate_profile_note)}
+Human notes already gathered: {json.dumps(candidate_connection_notes[:4], ensure_ascii=False)}
+Recent turn memory: {json.dumps(recent_turn_memory[:2], ensure_ascii=False)}
 
 Current question:
 {safe_text(question)}
@@ -12588,6 +14243,7 @@ Return strict JSON only with this schema:
   "improvements": ["point 1", "point 2", "point 3"],
   "interviewer_bridge": "one short interviewer line before the next question",
   "follow_up_question": "one targeted next question",
+  "candidate_signal": "one short human detail to remember about this candidate",
   "next_focus_skill": "skill phrase",
   "stage_action": "stay|advance|skip_to_hr|finish",
   "communication_score": 0,
@@ -12597,17 +14253,30 @@ Return strict JSON only with this schema:
 }}
 
 Rules:
-- Sound like a human interviewer: warm, concise, and direct.
+- Sound like a sharp human interviewer: warm, concise, observant, and direct.
+- Sound like a real person in a live video call, not a synthetic assistant or scripted tutor.
 - The interview ladder is: screening -> technical_assessment -> in_depth_assessment -> hr.
 - Use "stay" if the current round needs another question.
 - Use "advance" if the candidate should move to the next deeper round.
 - Use "skip_to_hr" only after technical_assessment when the candidate is strong enough to skip in_depth_assessment.
 - Use "finish" if the interview should end after this round.
 - Make the follow_up_question match the stage_action you chose.
+- If the answer is off-topic, say so clearly in improvements and do not invent role relevance.
+- Never claim metrics improved credibility unless the metrics were clearly tied to the question and role.
+- Make interviewer_bridge feel personal by reacting to something concrete in the answer or gap.
+- The bridge should sound like natural spoken conversation, not an AI coach or dashboard summary.
+- Keep continuity with the recent turn memory when it helps; do not sound like you forgot the earlier exchange.
+- Avoid generic praise like "great answer" unless you immediately say what specifically was strong.
+- If the bridge does not reference a concrete detail, redirect crisply instead of sounding vague.
+- Use the candidate's name sparingly and only when it sounds natural.
+- If the candidate reveals a motivation, value, team preference, or memorable detail, capture it in candidate_signal as a short phrase.
+- Do not overpraise. A smart interviewer is precise, not flattering.
 - If the candidate answer is playful or funny, you may acknowledge it with light professional humor.
+- If the candidate is transitioning from another domain or has limited direct domain experience, ask technical follow-ups that test transferable judgment and learning agility before deep tool trivia.
+- If the candidate explicitly reports no direct background, do not ask "in your direct role experience/project" style questions next.
 - Never mock the candidate or derail the interview.
 """
-    parsed, model, error = request_structured_json_with_llm(prompt, temperature=0.15)
+    parsed, model, error = request_structured_json_with_llm(prompt, temperature=0.22)
     if not isinstance(parsed, dict):
         return None, model, error
 
@@ -12617,6 +14286,7 @@ Rules:
         "improvements": normalize_string_list(parsed.get("improvements"), limit=4, max_item_len=180),
         "interviewer_bridge": safe_text(parsed.get("interviewer_bridge"))[:180],
         "follow_up_question": safe_text(parsed.get("follow_up_question"))[:240],
+        "candidate_signal": safe_text(parsed.get("candidate_signal"))[:140],
         "next_focus_skill": safe_text(parsed.get("next_focus_skill"))[:72],
         "stage_action": safe_text(parsed.get("stage_action")).strip().lower()[:24],
         "communication_score": clamp_float(safe_float(parsed.get("communication_score"), 0.0), 0.0, 100.0),
@@ -12639,6 +14309,9 @@ def build_interview_simulator_follow_up_question(
     improvements: list[str],
     fallback_question: str | None = None,
     next_focus_skill: str | None = None,
+    candidate_profile_note: str | None = None,
+    candidate_level: str | None = None,
+    candidate_reports_no_direct_experience: bool = False,
 ) -> str:
     return build_interview_simulator_stage_question(
         role=role,
@@ -12651,6 +14324,9 @@ def build_interview_simulator_follow_up_question(
         improvements=improvements,
         fallback_question=fallback_question,
         next_focus_skill=next_focus_skill,
+        candidate_profile_note=candidate_profile_note,
+        candidate_level=candidate_level,
+        candidate_reports_no_direct_experience=candidate_reports_no_direct_experience,
     )
 
 
@@ -12663,6 +14339,30 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
     difficulty = normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty")))
     candidate_name = safe_text(session_payload.get("candidate_name"))
     interviewer_name = safe_text(session_payload.get("interviewer_name"))
+    interviewer_title = safe_text(session_payload.get("interviewer_title"))
+    interviewer_voice = safe_text(session_payload.get("interviewer_voice"))
+    screening_decision = safe_text(session_payload.get("screening_decision")).strip().lower()
+    screening_decision_reason = safe_text(session_payload.get("screening_decision_reason")).strip()
+    raw_stage_decisions = session_payload.get("stage_decisions") if isinstance(session_payload.get("stage_decisions"), dict) else {}
+    round_decisions: list[dict[str, Any]] = []
+    for stage in stage_plan:
+        stage_key = safe_text(stage.get("key"))
+        stage_decision_entry = raw_stage_decisions.get(stage_key) if stage_key else None
+        if not isinstance(stage_decision_entry, dict):
+            continue
+        decision = safe_text(stage_decision_entry.get("decision")).strip().lower()
+        reason = safe_text(stage_decision_entry.get("reason")).strip()
+        if decision not in {"shortlisted", "rejected"}:
+            continue
+        round_decisions.append(
+            {
+                "stage_key": stage_key,
+                "stage_label": safe_text(stage_decision_entry.get("stage_label")) or safe_text(stage.get("label")) or "Round",
+                "stage_number": int(stage_decision_entry.get("stage_number") or stage.get("stage_number") or len(round_decisions) + 1),
+                "decision": decision,
+                "reason": reason,
+            }
+        )
     if not turns:
         return {
             "overall_score": 0,
@@ -12682,6 +14382,11 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
             "difficulty": difficulty,
             "candidate_name": candidate_name,
             "interviewer_name": interviewer_name,
+            "interviewer_title": interviewer_title,
+            "interviewer_voice": interviewer_voice,
+            "screening_decision": screening_decision,
+            "screening_decision_reason": screening_decision_reason,
+            "round_decisions": round_decisions,
         }
 
     communication_values = [safe_float(((turn.get("scores") or {}).get("communication")), 0.0) for turn in turns]
@@ -12712,6 +14417,17 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
     if overall_score < 55:
         readiness_label = "low"
     readiness_title = readiness_label.replace("_", " ").title()
+    shortlist_prediction = f"Interview readiness: {readiness_title}"
+    if screening_decision == "rejected":
+        shortlist_prediction = "Screening decision: Rejected after round 1"
+    elif screening_decision == "shortlisted":
+        shortlist_prediction = "Screening decision: Shortlisted for round 2"
+        if len(stage_summaries) > 1:
+            shortlist_prediction = "Interview decision: Advanced beyond screening"
+    elif overall_score >= 76:
+        shortlist_prediction = "Interview decision: Likely shortlisted for later rounds"
+    elif overall_score < 55:
+        shortlist_prediction = "Interview decision: Needs stronger relevance before shortlist"
 
     next_steps = [
         "Build 5 STAR stories with one quantified result each.",
@@ -12728,13 +14444,18 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
     return {
         "overall_score": overall_score,
         "readiness_label": readiness_label,
-        "shortlist_prediction": f"Interview readiness: {readiness_title}",
+        "shortlist_prediction": shortlist_prediction,
         "source": "interview_simulator",
         "role": role,
         "industry": industry,
         "difficulty": difficulty,
         "candidate_name": candidate_name,
         "interviewer_name": interviewer_name,
+        "interviewer_title": interviewer_title,
+        "interviewer_voice": interviewer_voice,
+        "screening_decision": screening_decision,
+        "screening_decision_reason": screening_decision_reason,
+        "round_decisions": round_decisions,
         "score_breakdown": {
             "communication": communication_avg,
             "clarity": clarity_avg,
@@ -12765,6 +14486,8 @@ def build_interview_simulator_archive_payload(
     difficulty = normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty")))
     candidate_name = safe_text(session_payload.get("candidate_name"))
     interviewer_name = safe_text(session_payload.get("interviewer_name"))
+    interviewer_title = safe_text(session_payload.get("interviewer_title"))
+    interviewer_voice = safe_text(session_payload.get("interviewer_voice"))
     opening_remark = safe_text(session_payload.get("opening_remark"))
     closing_remark = safe_text(session_payload.get("closing_remark"))
     completed_at = safe_text(session_payload.get("updated_at")) or now_utc_iso()
@@ -12777,16 +14500,21 @@ def build_interview_simulator_archive_payload(
         "difficulty": difficulty,
         "candidate_name": candidate_name,
         "interviewer_name": interviewer_name,
+        "interviewer_title": interviewer_title,
+        "interviewer_voice": interviewer_voice,
         "opening_remark": opening_remark,
         "closing_remark": closing_remark,
         "stage_plan": stage_plan,
         "question_flow": question_flow,
-        "focus_skills": dedupe_text_list(session_payload.get("focus_skills") or [], limit=10, max_item_len=80),
+        "focus_skills": sanitize_interview_simulator_focus_skills(session_payload.get("focus_skills"), limit=10),
         "questions": questions[:20],
         "turns": turns,
         "overall_score": int(clamp_float(float(report_summary.get("overall_score") or 0), 0.0, 100.0)),
         "shortlist_prediction": safe_text(report_summary.get("shortlist_prediction")) or "Interview readiness: Medium",
         "readiness_label": safe_text(report_summary.get("readiness_label")) or "medium",
+        "screening_decision": safe_text(report_summary.get("screening_decision")),
+        "screening_decision_reason": safe_text(report_summary.get("screening_decision_reason")),
+        "round_decisions": report_summary.get("round_decisions") if isinstance(report_summary.get("round_decisions"), list) else [],
         "score_breakdown": report_summary.get("score_breakdown") if isinstance(report_summary.get("score_breakdown"), dict) else {},
         "strength_signals": normalize_string_list(report_summary.get("strength_signals"), limit=8, max_item_len=180),
         "improvement_signals": normalize_string_list(report_summary.get("improvement_signals"), limit=8, max_item_len=180),
@@ -14416,6 +16144,8 @@ def render_interview_simulator_report_pdf_bytes(report_payload: dict[str, Any], 
     )
     overall_score = int(clamp_float(float(report_summary.get("overall_score") or 0), 0.0, 100.0))
     readiness = safe_text(report_summary.get("readiness_label") or report_payload.get("readiness_label") or "medium").replace("_", " ").title()
+    screening_decision = safe_text(report_summary.get("screening_decision") or report_payload.get("screening_decision")).strip().lower()
+    screening_decision_reason = safe_text(report_summary.get("screening_decision_reason") or report_payload.get("screening_decision_reason"))
     score_breakdown = report_summary.get("score_breakdown") if isinstance(report_summary.get("score_breakdown"), dict) else {}
     turns = report_payload.get("turns") if isinstance(report_payload.get("turns"), list) else []
     stage_summaries = report_summary.get("stage_summaries") if isinstance(report_summary.get("stage_summaries"), list) else []
@@ -14432,6 +16162,7 @@ def render_interview_simulator_report_pdf_bytes(report_payload: dict[str, Any], 
     metrics_rows = [
         ("Overall Score", f"{overall_score}%"),
         ("Readiness", readiness or "Medium"),
+        ("Round 1 Decision", "Shortlisted" if screening_decision == "shortlisted" else "Rejected" if screening_decision == "rejected" else "Pending"),
         ("Industry", industry or "General"),
         ("Interviewer", interviewer_name or "Avery Bennett"),
         ("Questions Answered", str(int(report_summary.get("turns_completed") or len(turns)))),
@@ -14480,6 +16211,20 @@ def render_interview_simulator_report_pdf_bytes(report_payload: dict[str, Any], 
     ]:
         breakdown_lines.append(f"{label}: {int(clamp_float(float(score_breakdown.get(key) or 0), 0.0, 100.0))}%")
     add_section("Score Breakdown", breakdown_lines)
+    if screening_decision or screening_decision_reason:
+        add_section(
+            "Screening Decision",
+            [
+                (
+                    "Shortlisted for round 2."
+                    if screening_decision == "shortlisted"
+                    else "Rejected after screening."
+                    if screening_decision == "rejected"
+                    else "Screening decision pending."
+                ),
+                screening_decision_reason,
+            ],
+        )
     add_section("Strength Signals", analysis_list_items(report_summary.get("strength_signals"), limit=6, max_item_len=190))
     add_section("Improvement Signals", analysis_list_items(report_summary.get("improvement_signals"), limit=6, max_item_len=190))
     add_section("Next Steps", analysis_list_items(report_summary.get("next_steps"), limit=6, max_item_len=200))
