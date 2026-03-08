@@ -1879,6 +1879,21 @@ def begin_write_transaction(cursor: AuthDBCursor) -> None:
     cursor.execute("BEGIN IMMEDIATE")
 
 
+def is_transient_db_write_error(exc: Exception) -> bool:
+    message = safe_text(str(exc)).lower()
+    if not message:
+        return False
+    transient_markers = (
+        "database is locked",
+        "database is busy",
+        "deadlock detected",
+        "could not serialize access",
+        "timeout",
+        "temporarily unavailable",
+    )
+    return any(marker in message for marker in transient_markers)
+
+
 def inserted_row_id(connection: AuthDBConnection, cursor: AuthDBCursor) -> int:
     raw_id = cursor.lastrowid
     if raw_id not in (None, "", 0):
@@ -3092,27 +3107,52 @@ def log_analytics_event(
     user_id: int | None = None,
     meta: dict[str, Any] | None = None,
 ) -> None:
-    with AUTH_DB_LOCK:
-        connection = auth_db_connection()
-        try:
-            connection.execute(
-                """
-                INSERT INTO analytics_events (user_id, event_type, event_name, meta_json, created_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    user_id,
-                    safe_text(event_type) or "system",
-                    safe_text(event_name) or "event",
-                    json.dumps(meta or {}, separators=(",", ":"), sort_keys=True),
-                    now_utc_iso(),
-                ),
-            )
-            connection.commit()
-        except Exception:
-            connection.rollback()
-        finally:
-            connection.close()
+    safe_event_type = safe_text(event_type) or "system"
+    safe_event_name = safe_text(event_name) or "event"
+    serialized_meta = json.dumps(meta or {}, separators=(",", ":"), sort_keys=True)
+    max_attempts = 3 if AUTH_DB_BACKEND == "sqlite" else 2
+
+    for attempt in range(max_attempts):
+        should_retry = False
+        with AUTH_DB_LOCK:
+            connection = auth_db_connection()
+            try:
+                cursor = connection.cursor()
+                begin_write_transaction(cursor)
+                cursor.execute(
+                    """
+                    INSERT INTO analytics_events (user_id, event_type, event_name, meta_json, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        safe_event_type,
+                        safe_event_name,
+                        serialized_meta,
+                        now_utc_iso(),
+                    ),
+                )
+                connection.commit()
+                return
+            except Exception as exc:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                should_retry = attempt + 1 < max_attempts and is_transient_db_write_error(exc)
+                if not should_retry:
+                    logger.exception(
+                        "Failed to persist analytics event after %s attempt(s): event_type=%s event_name=%s user_id=%s",
+                        attempt + 1,
+                        safe_event_type,
+                        safe_event_name,
+                        user_id,
+                    )
+                    return
+            finally:
+                connection.close()
+        if should_retry:
+            time.sleep(0.08 * (attempt + 1))
 
 
 def get_analyze_count(user_id: int) -> int:
@@ -9090,10 +9130,17 @@ def application_copilot_job_tracks(request: Request, auth_token: str | None = No
 def application_copilot_job_track_create(data: ApplicationCopilotTrackCreateRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
     copilot_payload = data.copilot_payload if isinstance(data.copilot_payload, dict) else {}
-    role = safe_text(data.role) or safe_text(copilot_payload.get("role")) or "Target role"
+    industry = safe_text(data.industry) or safe_text(copilot_payload.get("industry")) or "General"
+    raw_role = safe_text(data.role) or safe_text(copilot_payload.get("role"))
+    role = raw_role
+    if is_placeholder_role_value(role):
+        inferred_role = infer_role_from_copilot_payload(copilot_payload, industry_hint=industry)
+        if inferred_role:
+            role = inferred_role
+    if not role:
+        role = "Target role"
     if len(role) < 2:
         raise HTTPException(status_code=400, detail="Role is required to save a job track.")
-    industry = safe_text(data.industry) or safe_text(copilot_payload.get("industry")) or "General"
     company = (safe_text(data.company) or safe_text(copilot_payload.get("company")))[:120]
     status = normalize_application_copilot_status(data.status or copilot_payload.get("status"))
     match_percentage = int(clamp_float(float(copilot_payload.get("match_percentage") or 0), 0.0, 100.0))
@@ -9937,6 +9984,75 @@ def parse_json_string_list(value: Any, limit: int = 16, max_item_len: int = 120)
         if isinstance(parsed, list):
             return normalize_string_list(parsed, limit=limit, max_item_len=max_item_len)
     return []
+
+
+def normalize_role_track_token(value: Any) -> str:
+    token = normalize_search_text(str(value)).replace(" ", "_")
+    aliases = {
+        "human_resources": "hr",
+        "people_ops": "hr",
+        "customer_support": "support",
+        "customer_success": "support",
+        "site_reliability": "devops",
+        "sre": "devops",
+        "business_ops": "operations",
+        "business_operations": "operations",
+    }
+    resolved = aliases.get(token, token)
+    if resolved in ROLE_BLUEPRINTS:
+        return resolved
+    return ""
+
+
+def role_display_name_from_track(role_track: str) -> str:
+    labels = {
+        "hr": "HR",
+        "qa": "QA",
+        "devops": "DevOps",
+    }
+    if role_track in labels:
+        return labels[role_track]
+    return role_track.replace("_", " ").title()
+
+
+def is_placeholder_role_value(value: str) -> bool:
+    token = normalize_search_text(value)
+    return token in {
+        "",
+        "target role",
+        "role",
+        "target",
+        "general role",
+        "general",
+        "not specified",
+        "none",
+        "na",
+        "n a",
+    }
+
+
+def infer_role_from_copilot_payload(copilot_payload: dict[str, Any], industry_hint: str = "") -> str:
+    raw_payload = copilot_payload.get("raw") if isinstance(copilot_payload, dict) else {}
+    raw_jd_match = raw_payload.get("jd_match") if isinstance(raw_payload, dict) else {}
+    jd_match = copilot_payload.get("jd_match") if isinstance(copilot_payload.get("jd_match"), dict) else {}
+
+    candidate_tracks = [
+        raw_jd_match.get("target_track") if isinstance(raw_jd_match, dict) else None,
+        raw_jd_match.get("role_track") if isinstance(raw_jd_match, dict) else None,
+        raw_jd_match.get("detected_jd_track") if isinstance(raw_jd_match, dict) else None,
+        jd_match.get("target_track") if isinstance(jd_match, dict) else None,
+        jd_match.get("detected_jd_track") if isinstance(jd_match, dict) else None,
+    ]
+    for candidate in candidate_tracks:
+        role_track = normalize_role_track_token(candidate)
+        if role_track and role_track != "general":
+            return role_display_name_from_track(role_track)
+
+    fallback_role = safe_text(copilot_payload.get("role"))
+    inferred_track = normalize_role_track_token(infer_role_track(fallback_role, industry_hint))
+    if inferred_track and inferred_track != "general":
+        return role_display_name_from_track(inferred_track)
+    return ""
 
 
 def serialize_application_job_track_row(row: Any) -> dict[str, Any]:

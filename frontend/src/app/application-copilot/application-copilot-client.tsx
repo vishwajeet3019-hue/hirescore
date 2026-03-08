@@ -101,6 +101,7 @@ const AUTH_REQUEST_TIMEOUT_MS = 70000;
 const COPILOT_MIN_LOADING_MS = 4800;
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 const statusDisplay = (value: string) => value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+const safeTrim = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 const fieldClass =
   "w-full rounded-xl border border-cyan-100/28 bg-[#08233f]/72 px-3 py-2.5 text-sm text-cyan-50 placeholder:text-cyan-100/36 outline-none transition focus:border-cyan-100/62";
 const textAreaClass = `${fieldClass} min-h-[132px] leading-relaxed`;
@@ -309,6 +310,9 @@ export default function ApplicationCopilotClient() {
       setCopilotError("Job description is required (at least 24 characters). Upload or paste JD text.");
       return;
     }
+    const requestedIndustry = industry.trim();
+    const requestedRole = role.trim();
+    const requestedCompany = company.trim();
 
     setCopilotError("");
     setTrackActionError("");
@@ -327,9 +331,9 @@ export default function ApplicationCopilotClient() {
             ...authHeader,
           },
           body: JSON.stringify({
-            industry: industry.trim() || "General",
-            role: role.trim() || "Target role",
-            company: company.trim(),
+            industry: requestedIndustry || "General",
+            role: requestedRole || "Target role",
+            company: requestedCompany,
             resume_text: resumeText.trim(),
             job_description: jdInput.trim(),
             auth_token: authToken,
@@ -348,7 +352,13 @@ export default function ApplicationCopilotClient() {
       if (payload.wallet) {
         setWallet(payload.wallet);
       }
-      setCopilotResult(payload);
+      const normalizedPayload: ApplicationCopilotPayload = {
+        ...payload,
+        role: requestedRole || payload.role || "Target role",
+        industry: requestedIndustry || payload.industry || "General",
+        company: requestedCompany || payload.company || "",
+      };
+      setCopilotResult(normalizedPayload);
       setOutputTab("overview");
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
@@ -369,6 +379,13 @@ export default function ApplicationCopilotClient() {
       setTrackActionError("Run Application Copilot before saving a Job Track.");
       return;
     }
+    const trackRole = safeTrim(copilotResult.role) || safeTrim(role);
+    const trackIndustry = safeTrim(copilotResult.industry) || safeTrim(industry) || "General";
+    const trackCompany = safeTrim(copilotResult.company) || safeTrim(company);
+    if (trackRole.length < 2) {
+      setTrackActionError("Set a valid target role before saving a Job Track.");
+      return;
+    }
     setTrackActionError("");
     setTrackActionMessage("");
     setSavingTrack(true);
@@ -383,9 +400,9 @@ export default function ApplicationCopilotClient() {
             ...authHeader,
           },
           body: JSON.stringify({
-            role: role.trim() || copilotResult.role,
-            industry: industry.trim() || copilotResult.industry || "General",
-            company: company.trim() || copilotResult.company || "",
+            role: trackRole,
+            industry: trackIndustry,
+            company: trackCompany,
             status: "saved",
             copilot_payload: copilotResult,
             auth_token: authToken,
@@ -662,10 +679,6 @@ export default function ApplicationCopilotClient() {
                     </button>
                   </div>
                   <p className="mt-2 text-sm text-cyan-100/84">{copilotResult.jd_match?.alignment_summary || "AI generated role-fit summary ready."}</p>
-                  <p className="mt-1 text-xs text-cyan-100/72">
-                    AI Mode: {copilotResult.ai?.used ? "Hybrid LLM + AI enabled" : "Rules fallback"}{" "}
-                    {(copilotResult.ai?.models || []).length ? `| Models: ${(copilotResult.ai?.models || []).join(", ")}` : ""}
-                  </p>
                 </div>
 
                 <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
@@ -807,4 +820,3 @@ export default function ApplicationCopilotClient() {
     </main>
   );
 }
-
