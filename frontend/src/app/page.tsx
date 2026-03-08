@@ -134,6 +134,16 @@ export default function Home() {
     medium: "organic",
     campaign: "home_resources",
   });
+  const homeFeatureGuidesHref = addUtmParams("/features", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_feature_guides",
+  });
+  const homeToolsHubHref = addUtmParams("/tools", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_tools_hub",
+  });
   const homeMonetizationUploadHref = addUtmParams("/upload", {
     source: "home",
     medium: "organic",
@@ -423,14 +433,32 @@ export default function Home() {
                 Role-Specific Resume Playbooks
               </h3>
             </div>
-            <TrackedLink
-              href={homeResourcesHref}
-              eventName="cta_navigation"
-              eventParams={{ cta_location: "home_resources", cta_label: "Explore All Guides" }}
-              className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:w-auto"
-            >
-              Explore All {seoLandingPages.length} Guides
-            </TrackedLink>
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+              <TrackedLink
+                href={homeResourcesHref}
+                eventName="cta_navigation"
+                eventParams={{ cta_location: "home_resources", cta_label: "Explore All Guides" }}
+                className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:w-auto"
+              >
+                Explore All {seoLandingPages.length} Guides
+              </TrackedLink>
+              <TrackedLink
+                href={homeFeatureGuidesHref}
+                eventName="cta_navigation"
+                eventParams={{ cta_location: "home_resources", cta_label: "Feature Guides" }}
+                className="w-full rounded-xl border border-cyan-100/24 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50/88 transition hover:bg-cyan-100/10 sm:w-auto"
+              >
+                Feature Guides
+              </TrackedLink>
+              <TrackedLink
+                href={homeToolsHubHref}
+                eventName="cta_navigation"
+                eventParams={{ cta_location: "home_resources", cta_label: "Tools Hub" }}
+                className="w-full rounded-xl border border-cyan-100/24 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50/88 transition hover:bg-cyan-100/10 sm:w-auto"
+              >
+                Tools Hub
+              </TrackedLink>
+            </div>
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-3">

@@ -110,19 +110,29 @@ const creditRules = [
     description: "Every new user gets 5 free credits, equal to exactly one free analysis report.",
   },
   {
+    title: "Instant JD Fit Check",
+    value: "Free",
+    description: "Use /instant-fit without login for quick JD-resume scoring, missing skills, and shareable score card.",
+  },
+  {
     title: "Analysis Report",
     value: "5 Credits",
     description: "Use on /upload for shortlist probability, salary insights, and callback forecast.",
   },
   {
-    title: "JD Match Analysis",
+    title: "Application Copilot",
     value: "5 Credits",
-    description: "Use on /jd-matcher or in-page scanner to match resume against JD with AI feedback and next steps.",
+    description: "Use on /application-copilot for JD match, resume fixes, and interview-ready next steps in one run.",
   },
   {
-    title: "Interview Copilot",
+    title: "Interview Prep",
     value: "Included",
-    description: "Use on /interview-copilot to generate AI mock questions, STAR drills, and recruiter-ready outreach drafts.",
+    description: "Use on /interview-prep to generate AI mock questions, STAR drills, and recruiter-ready outreach drafts.",
+  },
+  {
+    title: "Live Interview Simulator",
+    value: "1 Free Guest + Unlimited Signed-in",
+    description: "Anyone can run 1 full interview on /interview-simulator without login. Signed-in users get unlimited runs with dashboard report archive.",
   },
   {
     title: "AI Resume Build + TXT",
@@ -190,6 +200,16 @@ export default function PricingPage() {
     source: "pricing",
     medium: "internal",
     campaign: "pricing_page",
+  });
+  const pricingFeatureGuidesHref = addUtmParams("/features", {
+    source: "pricing",
+    medium: "internal",
+    campaign: "pricing_feature_guides",
+  });
+  const pricingToolsHubHref = addUtmParams("/tools", {
+    source: "pricing",
+    medium: "internal",
+    campaign: "pricing_tools_hub",
   });
 
   const applyAuthPayload = (payload: AuthPayload | null | undefined) => {
@@ -845,8 +865,8 @@ export default function PricingPage() {
 
                   <div className="mt-4 space-y-1.5 text-xs text-cyan-50/80">
                     <p>Up to {analysisRuns} analysis reports</p>
-                    <p>Up to {jdMatchRuns} JD match runs</p>
-                    <p>Interview Copilot workflows included</p>
+                    <p>Up to {jdMatchRuns} Application Copilot runs</p>
+                    <p>Interview Prep workflows included</p>
                     <p>Up to {aiBuildRuns} AI resume build + TXT runs</p>
                     <p>Up to {pdfExports} premium PDF exports</p>
                     <p>{isElite ? "Best for power users" : isPro ? "Best for regular users" : "Best to get started"}</p>
@@ -886,10 +906,10 @@ export default function PricingPage() {
                   Analysis: {wallet.pricing.analyze} credits
                 </span>
                 <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
-                  JD Match: {wallet.pricing.jd_match || wallet.pricing.analyze} credits
+                  Application Copilot: {wallet.pricing.jd_match || wallet.pricing.analyze} credits
                 </span>
                 <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
-                  Interview Copilot: Included
+                  Interview Prep: Included
                 </span>
                 <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
                   AI Resume: {wallet.pricing.ai_resume_generation} credits
@@ -1095,6 +1115,22 @@ export default function PricingPage() {
               className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
             >
               Improve Resume Next
+            </TrackedLink>
+            <TrackedLink
+              href={pricingFeatureGuidesHref}
+              eventName="cta_navigation"
+              eventParams={{ cta_location: "pricing_page", cta_label: "Feature Guides" }}
+              className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
+            >
+              Feature Guides
+            </TrackedLink>
+            <TrackedLink
+              href={pricingToolsHubHref}
+              eventName="cta_navigation"
+              eventParams={{ cta_location: "pricing_page", cta_label: "Tools Hub" }}
+              className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
+            >
+              Tools Hub
             </TrackedLink>
           </div>
         </motion.div>

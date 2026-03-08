@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { featureSeoPages } from "@/lib/feature-seo-pages";
 import { seoLandingPages } from "@/lib/seo-landing-pages";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in").replace(/\/+$/, "");
@@ -50,19 +51,37 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
-      url: `${SITE_URL}/jd-matcher`,
-      lastModified: now,
-      changeFrequency: "weekly",
-      priority: 0.8,
-    },
-    {
       url: `${SITE_URL}/application-copilot`,
       lastModified: now,
       changeFrequency: "weekly",
       priority: 0.85,
     },
     {
+      url: `${SITE_URL}/jd-matcher`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+    {
       url: `${SITE_URL}/interview-copilot`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/tools`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.86,
+    },
+    {
+      url: `${SITE_URL}/features`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.87,
+    },
+    {
+      url: `${SITE_URL}/interview-prep`,
       lastModified: now,
       changeFrequency: "weekly",
       priority: 0.8,
@@ -96,5 +115,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     })),
   ];
 
-  return [...baseRoutes, ...resourceRoutes];
+  const featureRoutes: MetadataRoute.Sitemap = featureSeoPages.map((item) => ({
+    url: `${SITE_URL}/features/${item.slug}`,
+    lastModified: now,
+    changeFrequency: "weekly" as const,
+    priority: 0.78,
+  }));
+
+  return [...baseRoutes, ...resourceRoutes, ...featureRoutes];
 }
