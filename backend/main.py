@@ -12197,7 +12197,7 @@ def build_interview_simulator_stage_question(
 
     role_label = safe_text(role).strip() or "this role"
     industry_label = safe_text(industry).strip() or "the business"
-    improvement_note = safe_text(improvements[0]).strip()
+    improvement_note = safe_text(improvements[0] if improvements else "").strip()
     target_skill = choose_interview_simulator_target_skill(
         focus_skills,
         missing_focus_skills=missing_focus_skills,
