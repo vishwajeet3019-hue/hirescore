@@ -41,38 +41,88 @@ export default function AppChrome({ children }: AppChromeProps) {
           </div>
 
           <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">Platform</p>
-              <div className="mt-3 space-y-2 text-sm text-cyan-50/72">
-                <p>Shortlist prediction by role intent</p>
-                <p>Actionable improvement roadmaps</p>
-                <p>In-platform resume building</p>
-                <p>Application Copilot, JD matcher, live interview simulator, and interview workflows</p>
-                <TrackedLink
-                  href={addUtmParams("/resources", {
-                    source: "footer",
-                    medium: "internal",
-                    campaign: "site_footer",
-                  })}
-                  eventName="cta_resources_open"
-                  eventParams={{ cta_location: "footer", cta_label: "Resume Optimization Guides" }}
-                  className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
-                >
-                  Resume Optimization Guides
-                </TrackedLink>
-                <TrackedLink
-                  href={addUtmParams("/case-studies", {
-                    source: "footer",
-                    medium: "internal",
-                    campaign: "site_footer",
-                  })}
-                  eventName="cta_case_studies_click"
-                  eventParams={{ cta_location: "footer", cta_label: "Success Stories" }}
-                  className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
-                >
-                  Success Stories
-                </TrackedLink>
-              </div>
+            <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">Platform</p>
+            <div className="mt-3 space-y-2 text-sm text-cyan-50/72">
+              <p>Shortlist prediction by role intent</p>
+              <p>Actionable improvement roadmaps</p>
+              <p>In-platform resume building</p>
+              <p>Application Copilot, live interview simulator, and interview prep workflows</p>
             </div>
+            <div className="mt-4 grid gap-2 text-sm">
+              <TrackedLink
+                href={addUtmParams("/tools", {
+                  source: "footer",
+                  medium: "internal",
+                  campaign: "site_footer",
+                })}
+                eventName="cta_navigation"
+                eventParams={{ cta_location: "footer", cta_label: "Tools Hub" }}
+                className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+              >
+                Tools Hub
+              </TrackedLink>
+              <TrackedLink
+                href={addUtmParams("/features", {
+                  source: "footer",
+                  medium: "internal",
+                  campaign: "site_footer",
+                })}
+                eventName="cta_navigation"
+                eventParams={{ cta_location: "footer", cta_label: "Feature Guides" }}
+                className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+              >
+                Feature Guides
+              </TrackedLink>
+              <TrackedLink
+                href={addUtmParams("/application-copilot", {
+                  source: "footer",
+                  medium: "internal",
+                  campaign: "site_footer",
+                })}
+                eventName="cta_navigation"
+                eventParams={{ cta_location: "footer", cta_label: "Application Copilot" }}
+                className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+              >
+                Application Copilot
+              </TrackedLink>
+              <TrackedLink
+                href={addUtmParams("/interview-simulator", {
+                  source: "footer",
+                  medium: "internal",
+                  campaign: "site_footer",
+                })}
+                eventName="cta_navigation"
+                eventParams={{ cta_location: "footer", cta_label: "Interview Simulator" }}
+                className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+              >
+                Interview Simulator
+              </TrackedLink>
+              <TrackedLink
+                href={addUtmParams("/resources", {
+                  source: "footer",
+                  medium: "internal",
+                  campaign: "site_footer",
+                })}
+                eventName="cta_resources_open"
+                eventParams={{ cta_location: "footer", cta_label: "Resume Optimization Guides" }}
+                className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+              >
+                Resume Optimization Guides
+              </TrackedLink>
+              <TrackedLink
+                href={addUtmParams("/case-studies", {
+                  source: "footer",
+                  medium: "internal",
+                  campaign: "site_footer",
+                })}
+                eventName="cta_case_studies_click"
+                eventParams={{ cta_location: "footer", cta_label: "Success Stories" }}
+                className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+              >
+                Success Stories
+              </TrackedLink>
+            </div>
+          </div>
 
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/58 sm:tracking-[0.28em]">Trust Signal</p>
