@@ -45,6 +45,7 @@ type SimulatorTurnFeedback = {
   strengths: string[];
   improvements: string[];
   next_focus_skill?: string;
+  interviewer_bridge?: string;
   ai?: {
     used?: boolean;
     model?: string | null;
@@ -103,6 +104,7 @@ type SimulatorTurnPayload = {
   turn_feedback?: SimulatorTurnFeedback | null;
   report?: SimulatorReport | null;
   status: string;
+  interviewer_bridge?: string | null;
   closing_remark?: string | null;
   saved_report_id?: number | null;
 };
@@ -212,6 +214,8 @@ const SESSION_STORAGE_KEY = "hirescore_interview_simulator_session_id";
 const PUBLIC_UPLOAD_SESSION_STORAGE_KEY = "hirescore_interview_simulator_public_upload_session_id";
 const AI_INTERVIEWER_VOICE = "verse";
 const JOIN_CHIME_DURATION_MS = 900;
+const AUTO_START_LISTEN_DELAY_MS = 550;
+const AUTO_SUBMIT_SILENCE_MS = 1400;
 const authApiUrl = (path: string) => `${AUTH_API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 const simulatorApiUrl = (path: string) => `${SIMULATOR_API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
@@ -235,14 +239,13 @@ const composeSpeechAnswer = (base: string, finalized: string, interim = "") => {
   return normalizeSpeechText(chunks.join(" "));
 };
 
-const buildInterviewerSpeechText = (question: string, roundNumber: number, openingRemark = "") => {
+const buildInterviewerSpeechText = (question: string, roundNumber: number, openingRemark = "", interviewerBridge = "") => {
   const normalizedQuestion = normalizeSpeechText(question);
   const normalizedOpening = roundNumber <= 1 ? normalizeSpeechText(openingRemark) : "";
+  const normalizedBridge = roundNumber > 1 ? normalizeSpeechText(interviewerBridge) : "";
   const bridge = normalizedOpening
-    ? "Let's begin."
-    : roundNumber > 1 && normalizedQuestion
-      ? "Thanks for that. Here is the next question."
-      : "";
+    ? "Let's start with the first question."
+    : normalizedBridge || (roundNumber > 1 && normalizedQuestion ? "Thanks. Here is the next question." : "");
   return normalizeSpeechText([normalizedOpening, bridge, normalizedQuestion].filter(Boolean).join(" "));
 };
 
@@ -295,6 +298,7 @@ export default function InterviewSimulatorClient() {
   const [report, setReport] = useState<SimulatorReport | null>(null);
   const [interviewerName, setInterviewerName] = useState("Avery Bennett");
   const [openingRemark, setOpeningRemark] = useState("");
+  const [interviewerBridge, setInterviewerBridge] = useState("");
   const [closingRemark, setClosingRemark] = useState("");
   const [savedDashboardReportId, setSavedDashboardReportId] = useState<number | null>(null);
   const [startLoading, setStartLoading] = useState(false);
@@ -329,6 +333,10 @@ export default function InterviewSimulatorClient() {
   const prefetchedQuestionAudioPromiseRef = useRef<Promise<PrefetchedQuestionAudio | null> | null>(null);
   const prefetchingQuestionKeyRef = useRef("");
   const autoSpokenQuestionRef = useRef("");
+  const autoListenTimeoutRef = useRef<number | null>(null);
+  const autoSubmitTimeoutRef = useRef<number | null>(null);
+  const pendingVoiceAutoSubmitRef = useRef("");
+  const questionPlaybackAutoListenRef = useRef(false);
   const prejoinVideoRef = useRef<HTMLVideoElement | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -343,8 +351,8 @@ export default function InterviewSimulatorClient() {
   const setupReady = hasResumeContext && hasJobDescriptionContext;
   const shouldShowCompactSetup = (setupReady || Boolean(sessionId) || Boolean(report)) && !setupExpanded;
   const spokenQuestionText = useMemo(
-    () => buildInterviewerSpeechText(currentQuestion, roundNumber, openingRemark),
-    [currentQuestion, openingRemark, roundNumber]
+    () => buildInterviewerSpeechText(currentQuestion, roundNumber, openingRemark, interviewerBridge),
+    [currentQuestion, interviewerBridge, openingRemark, roundNumber]
   );
   const meetingRoomCode = useMemo(() => {
     if (!sessionId) return "meet-hirescore-live";
@@ -595,6 +603,7 @@ export default function InterviewSimulatorClient() {
         setIndustry(payload.industry || "");
         setInterviewerName(payload.interviewer_name || "Avery Bennett");
         setOpeningRemark(payload.opening_remark || "");
+        setInterviewerBridge("");
         setClosingRemark(payload.closing_remark || "");
         setSavedDashboardReportId(payload.saved_report_id ?? null);
         setDifficulty((payload.difficulty as "foundation" | "standard" | "advanced") || "standard");
@@ -617,8 +626,10 @@ export default function InterviewSimulatorClient() {
         const turnsCompleted = (payload.turns || []).length;
         const questions = payload.questions || [];
         const fallbackQuestion = questions.length > turnsCompleted ? questions[turnsCompleted] : questions[questions.length - 1] || "";
+        const previousTurn = turnsCompleted > 0 ? payload.turns[turnsCompleted - 1] : null;
         const restoredStage = storedSession?.room_stage === "ready_to_join" ? "ready_to_join" : "live";
         setCurrentQuestion(fallbackQuestion);
+        setInterviewerBridge(previousTurn?.interviewer_bridge || "");
         setRoundNumber(Math.max(1, turnsCompleted + 1));
         setProgressPercent(clampPercent((Math.max(1, turnsCompleted + 1) / Math.max(1, payload.total_rounds || 1)) * 100));
         setPrejoinModalOpen(restoredStage === "ready_to_join");
@@ -640,6 +651,16 @@ export default function InterviewSimulatorClient() {
       interimTranscriptRef.current = "";
       speechBaseAnswerRef.current = "";
       speechFinalTranscriptRef.current = "";
+      pendingVoiceAutoSubmitRef.current = "";
+      questionPlaybackAutoListenRef.current = false;
+      if (autoListenTimeoutRef.current) {
+        window.clearTimeout(autoListenTimeoutRef.current);
+        autoListenTimeoutRef.current = null;
+      }
+      if (autoSubmitTimeoutRef.current) {
+        window.clearTimeout(autoSubmitTimeoutRef.current);
+        autoSubmitTimeoutRef.current = null;
+      }
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
@@ -689,7 +710,34 @@ export default function InterviewSimulatorClient() {
     return `Request failed (${response.status})`;
   };
 
+  const clearAutoListenTimeout = () => {
+    if (autoListenTimeoutRef.current) {
+      window.clearTimeout(autoListenTimeoutRef.current);
+      autoListenTimeoutRef.current = null;
+    }
+  };
+
+  const clearAutoSubmitTimeout = () => {
+    if (autoSubmitTimeoutRef.current) {
+      window.clearTimeout(autoSubmitTimeoutRef.current);
+      autoSubmitTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleAutomaticVoiceCapture = (delayMs = AUTO_START_LISTEN_DELAY_MS) => {
+    if (!speechSupported || roomStage !== "live" || Boolean(report) || submitLoading || joinLoading || !sessionId) return;
+    clearAutoListenTimeout();
+    autoListenTimeoutRef.current = window.setTimeout(() => {
+      autoListenTimeoutRef.current = null;
+      if (!speechSupported || roomStage !== "live" || Boolean(report) || submitLoading || joinLoading || !sessionId) return;
+      if (isListening || isQuestionAudioPlaying || answerText.trim()) return;
+      void startVoiceCapture({ autoStart: true });
+    }, delayMs);
+  };
+
   const stopQuestionAudioPlayback = () => {
+    questionPlaybackAutoListenRef.current = false;
+    clearAutoListenTimeout();
     if (questionAudioAbortRef.current) {
       questionAudioAbortRef.current.abort();
       questionAudioAbortRef.current = null;
@@ -704,6 +752,9 @@ export default function InterviewSimulatorClient() {
     if (questionAudioUrlRef.current) {
       URL.revokeObjectURL(questionAudioUrlRef.current);
       questionAudioUrlRef.current = "";
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
     }
     setIsQuestionAudioPlaying(false);
   };
@@ -784,23 +835,43 @@ export default function InterviewSimulatorClient() {
     };
   };
 
-  const playBrowserSpeechFallback = (text: string) => {
+  const playBrowserSpeechFallback = (text: string, shouldAutoListenAfterPlayback = false) => {
     if (typeof window === "undefined" || !ttsSupported || !("speechSynthesis" in window)) {
       throw new Error("Text-to-speech is not supported in this browser.");
     }
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text.replace(/\s+/g, " ").trim());
-    const preferredVoice = selectedVoiceRef.current;
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
-      utterance.lang = preferredVoice.lang || "en-US";
-    } else {
-      utterance.lang = "en-US";
-    }
-    utterance.rate = 0.95;
-    utterance.pitch = 1.01;
-    utterance.volume = 1;
-    window.speechSynthesis.speak(utterance);
+    questionPlaybackAutoListenRef.current = shouldAutoListenAfterPlayback;
+    return new Promise<void>((resolve, reject) => {
+      const utterance = new SpeechSynthesisUtterance(text.replace(/\s+/g, " ").trim());
+      const preferredVoice = selectedVoiceRef.current;
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+        utterance.lang = preferredVoice.lang || "en-US";
+      } else {
+        utterance.lang = "en-US";
+      }
+      utterance.rate = 0.95;
+      utterance.pitch = 1.01;
+      utterance.volume = 1;
+      utterance.onstart = () => {
+        setIsQuestionAudioPlaying(true);
+      };
+      utterance.onend = () => {
+        setIsQuestionAudioPlaying(false);
+        const shouldAutoListen = questionPlaybackAutoListenRef.current;
+        questionPlaybackAutoListenRef.current = false;
+        if (shouldAutoListen) {
+          scheduleAutomaticVoiceCapture();
+        }
+        resolve();
+      };
+      utterance.onerror = () => {
+        setIsQuestionAudioPlaying(false);
+        questionPlaybackAutoListenRef.current = false;
+        reject(new Error("browser_speech_failed"));
+      };
+      window.speechSynthesis.speak(utterance);
+    });
   };
 
   const storeSessionRef = (nextSessionId: string, nextSessionSecret: string, nextRoomStage: "ready_to_join" | "live") => {
@@ -903,10 +974,14 @@ export default function InterviewSimulatorClient() {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
+    clearAutoListenTimeout();
+    clearAutoSubmitTimeout();
     keepListeningRef.current = false;
     interimTranscriptRef.current = "";
     speechBaseAnswerRef.current = "";
     speechFinalTranscriptRef.current = "";
+    pendingVoiceAutoSubmitRef.current = "";
+    questionPlaybackAutoListenRef.current = false;
     setSessionId("");
     setSessionSecret("");
     setCurrentQuestion("");
@@ -919,6 +994,7 @@ export default function InterviewSimulatorClient() {
     setAnswerTimerSeconds(0);
     setFocusSkills([]);
     setOpeningRemark("");
+    setInterviewerBridge("");
     setClosingRemark("");
     setSavedDashboardReportId(null);
     setInterimTranscript("");
@@ -1001,6 +1077,7 @@ export default function InterviewSimulatorClient() {
       setCandidateName(payload.candidate_name || candidateName.trim());
       setInterviewerName(payload.interviewer_name || "Avery Bennett");
       setOpeningRemark(payload.opening_remark || "");
+      setInterviewerBridge("");
       setClosingRemark(payload.closing_remark || "");
       setSavedDashboardReportId(null);
       setCurrentQuestion(payload.current_question || "");
@@ -1036,15 +1113,23 @@ export default function InterviewSimulatorClient() {
     }
   };
 
-  const handleSubmitAnswer = async () => {
+  const handleSubmitAnswer = async ({
+    overrideAnswer,
+    initiatedByVoice = false,
+  }: {
+    overrideAnswer?: string;
+    initiatedByVoice?: boolean;
+  } = {}) => {
     if (!sessionId || !sessionSecret) {
       setSimulatorError("Start a simulator session first.");
       return;
     }
-    const preparedAnswer = isListening
-      ? composeSpeechAnswer(answerText, speechFinalTranscriptRef.current, interimTranscriptRef.current)
-      : answerText.trim();
-    if (isListening) {
+    clearAutoListenTimeout();
+    clearAutoSubmitTimeout();
+    const preparedAnswer = normalizeSpeechText(
+      overrideAnswer || (isListening ? composeSpeechAnswer(answerText, speechFinalTranscriptRef.current, interimTranscriptRef.current) : answerText.trim())
+    );
+    if (isListening && !initiatedByVoice) {
       stopVoiceCapture();
       setAnswerText(preparedAnswer);
     }
@@ -1094,6 +1179,7 @@ export default function InterviewSimulatorClient() {
       setInterimTranscript("");
       speechBaseAnswerRef.current = "";
       speechFinalTranscriptRef.current = "";
+      pendingVoiceAutoSubmitRef.current = "";
 
       if (payload.completed) {
         stopQuestionAudioPlayback();
@@ -1114,6 +1200,7 @@ export default function InterviewSimulatorClient() {
           payload.closing_remark?.trim() ||
           `Thanks for joining today, ${candidateName || "there"}. Your interview report is ready below.`;
         setCurrentQuestion("");
+        setInterviewerBridge("");
         setReport(payload.report || null);
         setClosingRemark(farewell);
         setSavedDashboardReportId(payload.saved_report_id ?? null);
@@ -1133,6 +1220,7 @@ export default function InterviewSimulatorClient() {
         });
       } else {
         setCurrentQuestion(payload.next_question || "");
+        setInterviewerBridge(payload.interviewer_bridge || payload.turn_feedback?.interviewer_bridge || "");
         if (roomStage === "live") {
           setInterviewerJoined(true);
         }
@@ -1176,6 +1264,9 @@ export default function InterviewSimulatorClient() {
       setCandidateName(payload.candidate_name || candidateName);
       setInterviewerName(payload.interviewer_name || interviewerName);
       setOpeningRemark(payload.opening_remark || openingRemark);
+      const pendingQuestionIndex = (payload.turns || []).length;
+      const previousTurn = pendingQuestionIndex > 0 ? payload.turns[pendingQuestionIndex - 1] : null;
+      setInterviewerBridge(previousTurn?.interviewer_bridge || "");
       setClosingRemark(payload.closing_remark || closingRemark);
       setSavedDashboardReportId(payload.saved_report_id ?? null);
       if (payload.status === "completed") {
@@ -1183,6 +1274,7 @@ export default function InterviewSimulatorClient() {
         clearPrefetchedQuestionAudio();
         setReport(payload.report || null);
         setCurrentQuestion("");
+        setInterviewerBridge("");
         setAnswerText("");
         setInterimTranscript("");
         speechBaseAnswerRef.current = "";
@@ -1200,38 +1292,40 @@ export default function InterviewSimulatorClient() {
     }
   };
 
-  const startVoiceCapture = async () => {
+  const startVoiceCapture = async ({ autoStart = false }: { autoStart?: boolean } = {}) => {
     if (!speechSupported) {
-      setSimulatorError("Speech recognition is not supported in this browser.");
+      if (!autoStart) setSimulatorError("Speech recognition is not supported in this browser.");
       return;
     }
     if (isListening) return;
     if (!sessionId || report) {
-      setSimulatorError("Start a live interview round before using mic capture.");
+      if (!autoStart) setSimulatorError("Start a live interview round before using mic capture.");
       return;
     }
     if (roomStage !== "live") {
-      setSimulatorError("Join the interview room before using mic capture.");
+      if (!autoStart) setSimulatorError("Join the interview room before using mic capture.");
       return;
     }
     if (isQuestionAudioPlaying) {
-      setSimulatorError("Wait until the interviewer finishes speaking before turning on the mic.");
+      if (!autoStart) setSimulatorError("Wait until the interviewer finishes speaking before turning on the mic.");
       return;
     }
     if (typeof window !== "undefined" && !window.isSecureContext) {
       setSimulatorError("Mic capture requires HTTPS secure context.");
       return;
     }
+    clearAutoListenTimeout();
+    clearAutoSubmitTimeout();
     setSimulatorError("");
     const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognitionCtor) {
       setSpeechSupported(false);
-      setSimulatorError("Speech recognition is unavailable.");
+      if (!autoStart) setSimulatorError("Speech recognition is unavailable.");
       return;
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setSimulatorError("Microphone access is not supported in this browser.");
+      if (!autoStart) setSimulatorError("Microphone access is not supported in this browser.");
       return;
     }
     try {
@@ -1262,32 +1356,79 @@ export default function InterviewSimulatorClient() {
       }
       interimTranscriptRef.current = normalizeSpeechText(interim);
       setInterimTranscript(interimTranscriptRef.current);
-      setAnswerText(composeSpeechAnswer(speechBaseAnswerRef.current, speechFinalTranscriptRef.current, interimTranscriptRef.current));
+      const composedAnswer = composeSpeechAnswer(speechBaseAnswerRef.current, speechFinalTranscriptRef.current, interimTranscriptRef.current);
+      setAnswerText(composedAnswer);
+      if (interimTranscriptRef.current) {
+        clearAutoSubmitTimeout();
+        return;
+      }
+      if (speechFinalTranscriptRef.current && composedAnswer.length >= 18 && roomStage === "live" && !submitLoading && !report) {
+        clearAutoSubmitTimeout();
+        autoSubmitTimeoutRef.current = window.setTimeout(() => {
+          const nextAnswer = normalizeSpeechText(
+            composeSpeechAnswer(speechBaseAnswerRef.current, speechFinalTranscriptRef.current, interimTranscriptRef.current)
+          );
+          if (nextAnswer.length < 18 || roomStage !== "live" || Boolean(report) || submitLoading) return;
+          pendingVoiceAutoSubmitRef.current = nextAnswer;
+          keepListeningRef.current = false;
+          try {
+            recognition.stop();
+          } catch {
+            pendingVoiceAutoSubmitRef.current = "";
+            void handleSubmitAnswer({ overrideAnswer: nextAnswer, initiatedByVoice: true });
+          }
+        }, AUTO_SUBMIT_SILENCE_MS);
+      }
     };
     recognition.onend = () => {
+      clearAutoSubmitTimeout();
+      const composedAnswer = composeSpeechAnswer(speechBaseAnswerRef.current, speechFinalTranscriptRef.current, interimTranscriptRef.current);
+      const pendingVoiceAnswer = normalizeSpeechText(pendingVoiceAutoSubmitRef.current || composedAnswer);
       if (keepListeningRef.current) {
         try {
           recognition.start();
           return;
         } catch {}
       }
-      setAnswerText(composeSpeechAnswer(speechBaseAnswerRef.current, speechFinalTranscriptRef.current, interimTranscriptRef.current));
+      setAnswerText(composedAnswer);
       interimTranscriptRef.current = "";
       setInterimTranscript("");
       speechBaseAnswerRef.current = "";
       speechFinalTranscriptRef.current = "";
       setIsListening(false);
+      if (pendingVoiceAutoSubmitRef.current && pendingVoiceAnswer.length >= 18 && roomStage === "live" && !report) {
+        pendingVoiceAutoSubmitRef.current = "";
+        void handleSubmitAnswer({ overrideAnswer: pendingVoiceAnswer, initiatedByVoice: true });
+        return;
+      }
+      pendingVoiceAutoSubmitRef.current = "";
     };
     recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
       const errorCode = (event?.error || "").toLowerCase();
+      const composedAnswer = normalizeSpeechText(
+        composeSpeechAnswer(speechBaseAnswerRef.current, speechFinalTranscriptRef.current, interimTranscriptRef.current)
+      );
+      clearAutoSubmitTimeout();
       if (errorCode === "not-allowed" || errorCode === "service-not-allowed" || errorCode === "audio-capture") {
         keepListeningRef.current = false;
         setSimulatorError("Mic capture blocked. Check browser microphone permissions.");
+      } else if (errorCode === "no-speech" && composedAnswer.length >= 18 && roomStage === "live" && !report) {
+        pendingVoiceAutoSubmitRef.current = composedAnswer;
+        keepListeningRef.current = false;
+        try {
+          recognition.stop();
+          return;
+        } catch {
+          pendingVoiceAutoSubmitRef.current = "";
+          void handleSubmitAnswer({ overrideAnswer: composedAnswer, initiatedByVoice: true });
+          return;
+        }
       } else if (errorCode && errorCode !== "aborted" && errorCode !== "no-speech") {
         setSimulatorError(`Mic capture error: ${errorCode}. Try again.`);
       } else if (errorCode === "no-speech") {
         setSimulatorError("No speech detected. Speak closer to mic and retry.");
       }
+      pendingVoiceAutoSubmitRef.current = "";
       setIsListening(false);
     };
 
@@ -1308,6 +1449,8 @@ export default function InterviewSimulatorClient() {
   };
 
   const stopVoiceCapture = () => {
+    clearAutoSubmitTimeout();
+    pendingVoiceAutoSubmitRef.current = "";
     setAnswerText(composeSpeechAnswer(speechBaseAnswerRef.current, speechFinalTranscriptRef.current, interimTranscriptRef.current));
     interimTranscriptRef.current = "";
     keepListeningRef.current = false;
@@ -1367,6 +1510,7 @@ export default function InterviewSimulatorClient() {
     overrideText?: string;
   } = {}) => {
     const questionText = normalizeSpeechText(overrideText || spokenQuestionText);
+    const shouldAutoListenAfterPlayback = !overrideText && roomStage === "live" && !report;
     if (!questionText) return;
 
     if (isQuestionAudioPlaying && !force) {
@@ -1381,6 +1525,7 @@ export default function InterviewSimulatorClient() {
     if (isListening) {
       stopVoiceCapture();
     }
+    clearAutoListenTimeout();
     stopQuestionAudioPlayback();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
@@ -1430,13 +1575,28 @@ export default function InterviewSimulatorClient() {
       const audioUrl = URL.createObjectURL(payload.blob);
       questionAudioUrlRef.current = audioUrl;
       const audio = new Audio(audioUrl);
+      let playbackSettled = false;
+      const finalizePlayback = () => {
+        if (playbackSettled) return;
+        playbackSettled = true;
+        if (questionAudioRef.current === audio) {
+          questionAudioRef.current = null;
+        }
+        if (questionAudioUrlRef.current === audioUrl) {
+          URL.revokeObjectURL(audioUrl);
+          questionAudioUrlRef.current = "";
+        }
+        setIsQuestionAudioPlaying(false);
+        const autoListenAfterPlayback = questionPlaybackAutoListenRef.current;
+        questionPlaybackAutoListenRef.current = false;
+        if (autoListenAfterPlayback) {
+          scheduleAutomaticVoiceCapture();
+        }
+      };
       audio.preload = "auto";
-      audio.onended = () => {
-        setIsQuestionAudioPlaying(false);
-      };
-      audio.onpause = () => {
-        setIsQuestionAudioPlaying(false);
-      };
+      questionPlaybackAutoListenRef.current = shouldAutoListenAfterPlayback;
+      audio.onended = finalizePlayback;
+      audio.onpause = finalizePlayback;
       questionAudioRef.current = audio;
       await audio.play();
       setIsQuestionAudioPlaying(true);
@@ -1448,8 +1608,15 @@ export default function InterviewSimulatorClient() {
       }
     } catch (error) {
       questionAudioAbortRef.current = null;
+      if (questionAudioRef.current) {
+        questionAudioRef.current = null;
+      }
+      if (questionAudioUrlRef.current) {
+        URL.revokeObjectURL(questionAudioUrlRef.current);
+        questionAudioUrlRef.current = "";
+      }
       try {
-        playBrowserSpeechFallback(questionText);
+        await playBrowserSpeechFallback(questionText, shouldAutoListenAfterPlayback);
         if (!silentErrors) {
           setSimulatorError("AI voice unavailable right now. Using browser voice fallback.");
         }
@@ -1606,8 +1773,8 @@ export default function InterviewSimulatorClient() {
   ].filter(Boolean);
   const liveInterviewerIntro =
     roundNumber <= 1
-      ? openingRemark || `Hi ${candidateName || "there"}, I'm ${interviewerName}. Thanks for joining today.`
-      : `Thanks ${candidateName || "there"}. Let's continue.`;
+      ? openingRemark || `Hi ${candidateName || "there"}, welcome in. I'm ${interviewerName}, and I'll guide this interview one question at a time.`
+      : interviewerBridge || `Thanks ${candidateName || "there"}. Let's continue.`;
 
   return (
     <main className="min-h-screen px-4 pb-16 pt-8 sm:px-6 lg:px-8">
@@ -1784,6 +1951,9 @@ export default function InterviewSimulatorClient() {
                             {roomStage === "live" && currentQuestion ? (
                               <div className="rounded-[1.4rem] border border-cyan-100/18 bg-cyan-100/8 p-5">
                                 <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">Current Question</p>
+                                {interviewerBridge && roundNumber > 1 ? (
+                                  <p className="mt-3 text-sm text-cyan-100/78">{interviewerBridge}</p>
+                                ) : null}
                                 <p className="mt-3 text-xl leading-relaxed text-cyan-50 sm:text-2xl">{currentQuestion}</p>
                               </div>
                             ) : (
@@ -1879,7 +2049,9 @@ export default function InterviewSimulatorClient() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
                             <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">Your Answer</p>
-                            <p className="mt-1 text-sm text-cyan-50/72">Type or capture your answer after the interviewer stops speaking.</p>
+                            <p className="mt-1 text-sm text-cyan-50/72">
+                              Type or speak your answer after the interviewer stops speaking. Voice replies auto-submit once you pause.
+                            </p>
                           </div>
                           <div className="rounded-full border border-cyan-100/16 bg-cyan-100/8 px-3 py-1 text-xs text-cyan-100/78">
                             Timer {formatSeconds(answerTimerSeconds)}
@@ -2436,16 +2608,16 @@ export default function InterviewSimulatorClient() {
 
           <div className="mt-5 flex flex-wrap gap-3">
             <TrackedLink
-              href={addUtmParams("/interview-copilot", {
+              href={addUtmParams("/interview-prep", {
                 source: "interview_simulator_report",
                 medium: "internal",
-                campaign: "simulator_to_copilot",
+                campaign: "simulator_to_interview_prep",
               })}
               eventName="cta_interview_copilot_click"
-              eventParams={{ cta_location: "interview_simulator_report", cta_label: "Open Interview Copilot" }}
+              eventParams={{ cta_location: "interview_simulator_report", cta_label: "Open Interview Prep" }}
               className="rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
             >
-              Open Interview Copilot
+              Open Interview Prep
             </TrackedLink>
             <TrackedLink
               href={addUtmParams("/pricing", {

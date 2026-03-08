@@ -8698,6 +8698,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "turn_feedback": None,
                 "report": report_payload,
                 "status": "completed",
+                "interviewer_bridge": None,
                 "closing_remark": safe_text(existing.get("closing_remark")),
                 "saved_report_id": int(existing.get("saved_report_id") or 0) or None,
             }
@@ -8712,6 +8713,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         )
         role = safe_text(existing.get("role")) or "Target role"
         industry = safe_text(existing.get("industry")) or "General"
+        candidate_name = safe_text(existing.get("candidate_name")) or "there"
         difficulty = normalize_interview_simulator_difficulty(safe_text(existing.get("difficulty")))
         focus_skills = dedupe_text_list(existing.get("focus_skills") or [], limit=10, max_item_len=80)
         total_rounds = int(clamp_float(float(existing.get("total_rounds") or 5), INTERVIEW_SIMULATOR_MIN_ROUNDS, INTERVIEW_SIMULATOR_MAX_ROUNDS))
@@ -8742,6 +8744,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     feedback_summary = safe_text(heuristic_payload.get("feedback_summary"))[:220]
     next_focus_skill = ""
     follow_up_question = ""
+    interviewer_bridge = ""
     ai_used = False
 
     if isinstance(llm_overlay, dict):
@@ -8766,6 +8769,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         strengths = dedupe_text_list([*normalize_string_list(llm_overlay.get("strengths"), limit=4, max_item_len=180), *strengths], limit=4, max_item_len=180)
         improvements = dedupe_text_list([*normalize_string_list(llm_overlay.get("improvements"), limit=4, max_item_len=180), *improvements], limit=4, max_item_len=180)
         next_focus_skill = safe_text(llm_overlay.get("next_focus_skill"))[:72]
+        interviewer_bridge = safe_text(llm_overlay.get("interviewer_bridge"))[:180]
         follow_up_question = safe_text(llm_overlay.get("follow_up_question"))[:240]
 
     scores["overall"] = clamp(
@@ -8773,6 +8777,13 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         + 0.23 * safe_float(scores.get("clarity"), 0.0)
         + 0.32 * safe_float(scores.get("domain_depth"), 0.0)
         + 0.18 * safe_float(scores.get("confidence"), 0.0)
+    )
+    interviewer_bridge = build_interview_simulator_interviewer_bridge(
+        candidate_name,
+        answer_text,
+        safe_float(scores.get("overall"), 0.0),
+        improvements,
+        llm_bridge=interviewer_bridge,
     )
 
     turn_payload = {
@@ -8794,6 +8805,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         "strengths": strengths,
         "improvements": improvements,
         "next_focus_skill": next_focus_skill,
+        "interviewer_bridge": interviewer_bridge,
         "ai": {
             "used": ai_used,
             "model": llm_model if ai_used else None,
@@ -8925,6 +8937,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         "turn_feedback": turn_payload,
         "report": report_payload,
         "status": "completed" if completed else "active",
+        "interviewer_bridge": None if completed else interviewer_bridge,
         "closing_remark": safe_text((session_snapshot_for_archive or {}).get("closing_remark")) if completed else None,
         "saved_report_id": saved_report_id or None,
     }
@@ -11904,13 +11917,54 @@ def build_interview_simulator_opening_remark(candidate_name: str, interviewer_na
     candidate = safe_text(candidate_name).strip() or "there"
     interviewer = safe_text(interviewer_name).strip() or "Avery"
     target_role = safe_text(role).strip() or "this role"
-    return f"Hi {candidate}, thanks for joining today. I'm {interviewer}, and I'll be leading this mock interview for the {target_role} role."
+    return (
+        f"Hi {candidate}, welcome in. I'm {interviewer}, and I'll be your interviewer today for the {target_role} role. "
+        "We'll keep this conversational. I'll ask one question at a time, and you can answer naturally."
+    )
 
 
 def build_interview_simulator_closing_remark(candidate_name: str, interviewer_name: str) -> str:
     candidate = safe_text(candidate_name).strip() or "there"
     interviewer = safe_text(interviewer_name).strip() or "Avery"
-    return f"Thanks for joining today, {candidate}. I'm {interviewer}. That wraps up the interview, and your report is ready below."
+    return (
+        f"Thanks for spending the time with me today, {candidate}. I'm {interviewer}. "
+        "That wraps up the interview, and your report is ready below."
+    )
+
+
+def answer_shows_playful_humor(answer_text: str) -> bool:
+    normalized = safe_text(answer_text).strip().lower()
+    if not normalized:
+        return False
+    playful_markers = [
+        r"\b(?:haha|hehe|lol|lmao|rofl)\b",
+        r"\b(?:joking|just kidding|kidding)\b",
+        r"[😂🤣😄😅]",
+        r"\b(?:because i(?:'| a)?m batman|plot twist)\b",
+    ]
+    return any(re.search(pattern, normalized) for pattern in playful_markers)
+
+
+def build_interview_simulator_interviewer_bridge(
+    candidate_name: str,
+    answer_text: str,
+    overall_score: float,
+    improvements: list[str],
+    llm_bridge: str | None = None,
+) -> str:
+    candidate = safe_text(candidate_name).strip() or "there"
+    suggested = safe_text(llm_bridge).strip()
+    if suggested:
+        return suggested[:180]
+    if answer_shows_playful_humor(answer_text):
+        return f"Nice one, {candidate}. I'll give you that. Let's keep going."
+    if overall_score >= 78:
+        return f"Good answer, {candidate}. That was clear and well grounded."
+    if overall_score >= 56:
+        return f"Thanks, {candidate}. That helps. Let's build on that."
+    if improvements:
+        return f"Thanks, {candidate}. I want to go one level deeper on that."
+    return f"Thanks, {candidate}. Let's keep moving."
 
 
 def build_interview_turn_heuristics(
@@ -12087,6 +12141,7 @@ Return strict JSON only with this schema:
   "feedback_summary": "single concise summary",
   "strengths": ["point 1", "point 2", "point 3"],
   "improvements": ["point 1", "point 2", "point 3"],
+  "interviewer_bridge": "one short interviewer line before the next question",
   "follow_up_question": "one targeted next question",
   "next_focus_skill": "skill phrase",
   "communication_score": 0,
@@ -12094,6 +12149,11 @@ Return strict JSON only with this schema:
   "domain_depth_score": 0,
   "confidence_score": 0
 }}
+
+Rules:
+- Sound like a human interviewer: warm, concise, and direct.
+- If the candidate answer is playful or funny, you may acknowledge it with light professional humor.
+- Never mock the candidate or derail the interview.
 """
     parsed, model, error = request_structured_json_with_llm(prompt, temperature=0.15)
     if not isinstance(parsed, dict):
@@ -12103,6 +12163,7 @@ Return strict JSON only with this schema:
         "feedback_summary": safe_text(parsed.get("feedback_summary"))[:220],
         "strengths": normalize_string_list(parsed.get("strengths"), limit=4, max_item_len=180),
         "improvements": normalize_string_list(parsed.get("improvements"), limit=4, max_item_len=180),
+        "interviewer_bridge": safe_text(parsed.get("interviewer_bridge"))[:180],
         "follow_up_question": safe_text(parsed.get("follow_up_question"))[:240],
         "next_focus_skill": safe_text(parsed.get("next_focus_skill"))[:72],
         "communication_score": clamp_float(safe_float(parsed.get("communication_score"), 0.0), 0.0, 100.0),
