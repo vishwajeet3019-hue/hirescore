@@ -238,7 +238,11 @@ const composeSpeechAnswer = (base: string, finalized: string, interim = "") => {
 const buildInterviewerSpeechText = (question: string, roundNumber: number, openingRemark = "") => {
   const normalizedQuestion = normalizeSpeechText(question);
   const normalizedOpening = roundNumber <= 1 ? normalizeSpeechText(openingRemark) : "";
-  const bridge = roundNumber > 1 && normalizedQuestion ? "Thanks. Next question." : "";
+  const bridge = normalizedOpening
+    ? "Let's begin."
+    : roundNumber > 1 && normalizedQuestion
+      ? "Thanks for that. Here is the next question."
+      : "";
   return normalizeSpeechText([normalizedOpening, bridge, normalizedQuestion].filter(Boolean).join(" "));
 };
 
@@ -1572,7 +1576,8 @@ export default function InterviewSimulatorClient() {
       : joinLoading
         ? "Joining..."
         : "Join Interview";
-  const livePromptVisible = roomStage === "live" && Boolean(currentQuestion);
+  const interviewOverlayActive = (prejoinModalOpen || roomStage === "joining" || roomStage === "live") && !report;
+  const showPrejoinOverlay = prejoinModalOpen && roomStage !== "joining" && roomStage !== "live" && !report;
   const reportArchiveNote = savedDashboardReportId
     ? "Saved to your dashboard archive."
     : report
@@ -1599,6 +1604,10 @@ export default function InterviewSimulatorClient() {
     `Difficulty: ${difficulty}`,
     `${rounds} rounds`,
   ].filter(Boolean);
+  const liveInterviewerIntro =
+    roundNumber <= 1
+      ? openingRemark || `Hi ${candidateName || "there"}, I'm ${interviewerName}. Thanks for joining today.`
+      : `Thanks ${candidateName || "there"}. Let's continue.`;
 
   return (
     <main className="min-h-screen px-4 pb-16 pt-8 sm:px-6 lg:px-8">
@@ -1625,105 +1634,370 @@ export default function InterviewSimulatorClient() {
         }}
       />
 
-      {livePromptVisible ? (
-        <div className="pointer-events-none fixed left-1/2 top-20 z-20 w-[min(720px,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-cyan-100/20 bg-[#081729]/84 px-4 py-3 shadow-[0_18px_45px_rgba(2,8,22,0.42)] backdrop-blur-xl">
-          <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/72">{interviewerName} is asking</p>
-          <p className="mt-1 text-sm text-cyan-50 sm:text-base">{currentQuestion}</p>
-        </div>
-      ) : null}
-
-      {prejoinModalOpen && !report ? (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-[#020611]/54 px-4 backdrop-blur-xl">
-          <div className="w-full max-w-4xl rounded-[2rem] border border-cyan-100/20 bg-[linear-gradient(160deg,rgba(6,18,34,0.97),rgba(4,12,24,0.98))] p-5 shadow-[0_26px_80px_rgba(2,8,22,0.6)] sm:p-7">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Interview Preview</p>
-                <h2 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">Review the room before you join.</h2>
-                <p className="mt-2 max-w-2xl text-sm text-cyan-50/74">
-                  {openingRemark || `${interviewerName} will greet ${candidateName || "you"} and begin the interview immediately after join.`}
-                </p>
-              </div>
-              <div className="rounded-full border border-cyan-100/18 bg-cyan-100/8 px-3 py-1 text-[11px] text-cyan-100/76">
-                {roomStage === "joining" ? "Connecting..." : meetingRoomCode}
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <article className="relative overflow-hidden rounded-[1.6rem] border border-cyan-100/18 bg-[#030913]">
-                <p className="absolute left-4 top-4 z-10 rounded-full border border-cyan-100/20 bg-[#071627]/78 px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/78">
-                  You
-                </p>
-                <video
-                  ref={prejoinVideoRef}
-                  muted
-                  playsInline
-                  autoPlay
-                  className={`h-[280px] w-full object-cover transition ${cameraEnabled ? "opacity-100" : "opacity-0"}`}
-                />
-                {!cameraEnabled ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.18),rgba(2,6,23,0.96))]">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full border border-cyan-100/18 bg-cyan-100/10 text-2xl font-semibold text-cyan-50">
-                      {(candidateName || "You").slice(0, 1).toUpperCase()}
-                    </div>
-                    <p className="mt-3 text-sm text-cyan-50/80">{candidateName || "Candidate preview"}</p>
-                    <p className="mt-1 text-xs text-cyan-100/70">Camera off</p>
+      {interviewOverlayActive ? (
+        <div className="fixed inset-0 z-30 overflow-y-auto bg-[#020611]/58 px-4 py-6 backdrop-blur-xl sm:px-6 sm:py-8">
+          <div className="mx-auto flex min-h-full w-full max-w-[1480px] items-center justify-center">
+            {showPrejoinOverlay ? (
+              <div className="w-full max-w-4xl rounded-[2rem] border border-cyan-100/20 bg-[linear-gradient(160deg,rgba(6,18,34,0.97),rgba(4,12,24,0.98))] p-5 shadow-[0_26px_80px_rgba(2,8,22,0.6)] sm:p-7">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Interview Preview</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">Review the room before you join.</h2>
+                    <p className="mt-2 max-w-2xl text-sm text-cyan-50/74">
+                      {openingRemark || `${interviewerName} will greet ${candidateName || "you"} and begin the interview immediately after join.`}
+                    </p>
                   </div>
-                ) : null}
-              </article>
-
-              <article className="relative overflow-hidden rounded-[1.6rem] border border-cyan-100/18 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.18),rgba(4,10,18,0.96))] p-6">
-                <p className="rounded-full border border-cyan-100/20 bg-[#071627]/78 px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/78">
-                  AI Interviewer
-                </p>
-                <div className="mt-10 flex flex-col items-center justify-center text-center">
-                  <div className="flex h-24 w-24 items-center justify-center rounded-full border border-emerald-200/26 bg-emerald-200/12 text-3xl font-semibold text-emerald-50">
-                    {interviewerName
-                      .split(" ")
-                      .map((part) => part.slice(0, 1).toUpperCase())
-                      .join("")
-                      .slice(0, 2)}
-                  </div>
-                  <h3 className="mt-4 text-2xl font-semibold text-cyan-50">{interviewerName}</h3>
-                  <p className="mt-2 text-sm text-cyan-50/72">Role-specific interviewer for {role || "your target role"}</p>
-                  <div className="mt-5 rounded-2xl border border-cyan-100/16 bg-[#071425]/70 p-4 text-left">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/66">Opening Prompt</p>
-                    <p className="mt-2 text-sm text-cyan-50/80">{currentQuestion || "Your first question will appear here."}</p>
-                  </div>
+                  <div className="rounded-full border border-cyan-100/18 bg-cyan-100/8 px-3 py-1 text-[11px] text-cyan-100/76">{meetingRoomCode}</div>
                 </div>
-              </article>
-            </div>
 
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[1.4rem] border border-cyan-100/16 bg-[#071425]/72 px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void toggleCameraPreview()}
-                  disabled={joinLoading}
-                  className="rounded-full border border-cyan-100/22 bg-cyan-100/10 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18 disabled:opacity-60"
-                >
-                  {cameraEnabled ? "Camera On" : "Turn Camera On"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPrejoinModalOpen(false);
-                    setSetupExpanded(true);
-                  }}
-                  disabled={joinLoading}
-                  className="rounded-full border border-cyan-100/22 bg-transparent px-4 py-2 text-xs font-semibold text-cyan-50/84 transition hover:bg-cyan-100/10 disabled:opacity-60"
-                >
-                  Edit Setup
-                </button>
+                <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                  <article className="relative overflow-hidden rounded-[1.6rem] border border-cyan-100/18 bg-[#030913]">
+                    <p className="absolute left-4 top-4 z-10 rounded-full border border-cyan-100/20 bg-[#071627]/78 px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/78">
+                      You
+                    </p>
+                    <video
+                      ref={prejoinVideoRef}
+                      muted
+                      playsInline
+                      autoPlay
+                      className={`h-[280px] w-full object-cover transition ${cameraEnabled ? "opacity-100" : "opacity-0"}`}
+                    />
+                    {!cameraEnabled ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.18),rgba(2,6,23,0.96))]">
+                        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-cyan-100/18 bg-cyan-100/10 text-2xl font-semibold text-cyan-50">
+                          {(candidateName || "You").slice(0, 1).toUpperCase()}
+                        </div>
+                        <p className="mt-3 text-sm text-cyan-50/80">{candidateName || "Candidate preview"}</p>
+                        <p className="mt-1 text-xs text-cyan-100/70">Camera off</p>
+                      </div>
+                    ) : null}
+                  </article>
+
+                  <article className="relative overflow-hidden rounded-[1.6rem] border border-cyan-100/18 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.18),rgba(4,10,18,0.96))] p-6">
+                    <p className="rounded-full border border-cyan-100/20 bg-[#071627]/78 px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/78">
+                      AI Interviewer
+                    </p>
+                    <div className="mt-10 flex flex-col items-center justify-center text-center">
+                      <div className="flex h-24 w-24 items-center justify-center rounded-full border border-emerald-200/26 bg-emerald-200/12 text-3xl font-semibold text-emerald-50">
+                        {interviewerName
+                          .split(" ")
+                          .map((part) => part.slice(0, 1).toUpperCase())
+                          .join("")
+                          .slice(0, 2)}
+                      </div>
+                      <h3 className="mt-4 text-2xl font-semibold text-cyan-50">{interviewerName}</h3>
+                      <p className="mt-2 text-sm text-cyan-50/72">Role-specific interviewer for {role || "your target role"}</p>
+                      <div className="mt-5 rounded-2xl border border-cyan-100/16 bg-[#071425]/70 p-4 text-left">
+                        <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/66">Introduction</p>
+                        <p className="mt-2 text-sm text-cyan-50/84">{liveInterviewerIntro}</p>
+                        <p className="mt-3 text-[10px] uppercase tracking-[0.16em] text-cyan-100/66">Opening Question</p>
+                        <p className="mt-2 text-sm text-cyan-50/80">{currentQuestion || "Your first question will appear here."}</p>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[1.4rem] border border-cyan-100/16 bg-[#071425]/72 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void toggleCameraPreview()}
+                      disabled={joinLoading}
+                      className="rounded-full border border-cyan-100/22 bg-cyan-100/10 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18 disabled:opacity-60"
+                    >
+                      {cameraEnabled ? "Camera On" : "Turn Camera On"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrejoinModalOpen(false);
+                        setSetupExpanded(true);
+                      }}
+                      disabled={joinLoading}
+                      className="rounded-full border border-cyan-100/22 bg-transparent px-4 py-2 text-xs font-semibold text-cyan-50/84 transition hover:bg-cyan-100/10 disabled:opacity-60"
+                    >
+                      Edit Setup
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleJoinInterviewRoom()}
+                    disabled={joinButtonDisabled}
+                    className="rounded-full border border-emerald-200/36 bg-emerald-300/18 px-5 py-2.5 text-sm font-semibold text-emerald-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {joinButtonLabel}
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleJoinInterviewRoom()}
-                disabled={joinButtonDisabled}
-                className="rounded-full border border-emerald-200/36 bg-emerald-300/18 px-5 py-2.5 text-sm font-semibold text-emerald-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {joinButtonLabel}
-              </button>
-            </div>
+            ) : (
+              <div className="w-full rounded-[2rem] border border-cyan-100/18 bg-[linear-gradient(160deg,rgba(6,18,34,0.98),rgba(4,12,24,0.99))] p-4 shadow-[0_30px_90px_rgba(2,8,22,0.68)] sm:p-6">
+                <div className="grid gap-5 xl:grid-cols-[1.7fr_0.8fr]">
+                  <section className="space-y-5">
+                    <article className="overflow-hidden rounded-[2rem] border border-cyan-100/18 bg-[#040911] shadow-[0_22px_60px_rgba(2,8,22,0.46)]">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-100/10 bg-[#07101b]/88 px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${
+                              roomStage === "live"
+                                ? "bg-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.7)]"
+                                : "bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.7)]"
+                            }`}
+                          />
+                          <div>
+                            <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/66">Interview Room</p>
+                            <p className="text-sm text-cyan-50">{interviewerRoomStatus}</p>
+                          </div>
+                        </div>
+                        <div className="text-right text-xs text-cyan-100/74">
+                          <p>{roomStage === "live" ? formatRoomTime(roomClock) : "Connecting..."}</p>
+                          <p className="mt-1">{meetingRoomCode}</p>
+                        </div>
+                      </div>
+
+                      <div className="relative min-h-[520px] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(21,94,117,0.28),rgba(2,6,23,0.98)_68%)] px-4 pb-5 pt-4 sm:px-6 sm:pt-6">
+                        <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.16),transparent_72%)]" />
+                        <div className="relative min-h-[460px] rounded-[1.9rem] border border-cyan-100/16 bg-[linear-gradient(160deg,rgba(8,18,34,0.72),rgba(6,12,22,0.92))] p-6">
+                          <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                              <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">AI Interviewer</p>
+                              <h2 className="mt-2 text-3xl font-semibold text-cyan-50">{interviewerName}</h2>
+                              <p className="mt-2 max-w-xl text-sm text-cyan-50/74">
+                                {roomStage === "live" && roundNumber <= 1 ? liveInterviewerIntro : interviewerRoomStatus}
+                              </p>
+                            </div>
+                            <div className="flex h-20 w-20 items-center justify-center rounded-full border border-emerald-200/22 bg-emerald-200/10 text-2xl font-semibold text-emerald-50">
+                              {interviewerName
+                                .split(" ")
+                                .map((part) => part.slice(0, 1).toUpperCase())
+                                .join("")
+                                .slice(0, 2)}
+                            </div>
+                          </div>
+
+                          <div className="mt-10 max-w-3xl space-y-4">
+                            {roomStage === "live" && roundNumber <= 1 ? (
+                              <div className="rounded-[1.4rem] border border-emerald-200/18 bg-emerald-200/10 p-5">
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-100/74">Introduction</p>
+                                <p className="mt-3 text-base leading-relaxed text-emerald-50/90">{liveInterviewerIntro}</p>
+                              </div>
+                            ) : null}
+                            {roomStage === "live" && currentQuestion ? (
+                              <div className="rounded-[1.4rem] border border-cyan-100/18 bg-cyan-100/8 p-5">
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">Current Question</p>
+                                <p className="mt-3 text-xl leading-relaxed text-cyan-50 sm:text-2xl">{currentQuestion}</p>
+                              </div>
+                            ) : (
+                              <div className="rounded-[1.4rem] border border-amber-100/18 bg-amber-100/8 p-5 text-sm text-amber-50/84">
+                                Connecting you to the interview room. {interviewerName} will introduce themself before the first question begins.
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="absolute right-4 top-4 w-[160px] overflow-hidden rounded-[1.4rem] border border-cyan-100/16 bg-[#030913] shadow-[0_18px_40px_rgba(2,8,22,0.34)] sm:right-6 sm:top-6 sm:w-[220px]">
+                            <div className="flex items-center justify-between border-b border-cyan-100/10 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-cyan-100/70">
+                              <span>{candidateName || "You"}</span>
+                              <span>{cameraEnabled ? "Camera On" : "Camera Off"}</span>
+                            </div>
+                            <div className="relative h-[140px] sm:h-[170px]">
+                              <video
+                                ref={liveVideoRef}
+                                muted
+                                playsInline
+                                autoPlay
+                                className={`h-full w-full object-cover transition ${cameraEnabled ? "opacity-100" : "opacity-0"}`}
+                              />
+                              {!cameraEnabled ? (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.16),rgba(2,6,23,0.96))]">
+                                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-cyan-100/18 bg-cyan-100/10 text-xl font-semibold text-cyan-50">
+                                    {(candidateName || "You").slice(0, 1).toUpperCase()}
+                                  </div>
+                                  <p className="mt-2 text-xs text-cyan-100/76">Camera off</p>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="relative mt-5 flex flex-wrap items-center justify-center gap-2 rounded-full border border-cyan-100/12 bg-[#0c1422]/84 px-3 py-3 shadow-[0_20px_50px_rgba(2,8,22,0.44)]">
+                          <button
+                            type="button"
+                            onClick={isListening ? stopVoiceCapture : () => void startVoiceCapture()}
+                            disabled={!speechSupported || !sessionId || roomStage !== "live" || submitLoading || Boolean(report) || isQuestionAudioPlaying}
+                            className={`rounded-full border px-4 py-2 text-xs font-semibold transition disabled:opacity-50 ${
+                              isListening
+                                ? "border-emerald-200/32 bg-emerald-300/18 text-emerald-50"
+                                : "border-cyan-100/22 bg-cyan-100/10 text-cyan-50 hover:bg-cyan-100/18"
+                            }`}
+                          >
+                            {speechSupported ? (isListening ? "Mic On" : "Start Mic") : "Mic Unsupported"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void toggleCameraPreview()}
+                            disabled={submitLoading}
+                            className="rounded-full border border-cyan-100/22 bg-cyan-100/10 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18 disabled:opacity-60"
+                          >
+                            {cameraEnabled ? "Camera On" : "Turn Camera On"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void speakCurrentQuestion()}
+                            disabled={!currentQuestion || roomStage !== "live" || submitLoading || ttsLoading}
+                            className="rounded-full border border-cyan-100/22 bg-cyan-100/10 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18 disabled:opacity-60"
+                          >
+                            {ttsLoading ? "Interviewer Speaking..." : isQuestionAudioPlaying ? "Stop Voice" : "Hear Question"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleSubmitAnswer()}
+                            disabled={!canSubmitAnswer}
+                            className="rounded-full border border-cyan-100/28 bg-cyan-200/18 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/26 disabled:opacity-60"
+                          >
+                            {submitLoading ? "Scoring Answer..." : "Submit Answer"}
+                          </button>
+                          {sessionId && !report ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                stopQuestionAudioPlayback();
+                                if (isListening) stopVoiceCapture();
+                                setInterviewerJoined(false);
+                                setRoomStage("ready_to_join");
+                                setPrejoinModalOpen(true);
+                                storeSessionRef(sessionId, sessionSecret, "ready_to_join");
+                              }}
+                              disabled={joinLoading || submitLoading}
+                              className="rounded-full border border-rose-200/26 bg-rose-300/18 px-4 py-2 text-xs font-semibold text-rose-50 transition hover:bg-rose-300/24 disabled:opacity-60"
+                            >
+                              Leave Room
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="border-t border-cyan-100/10 bg-[linear-gradient(180deg,rgba(6,14,24,0.95),rgba(4,10,18,0.98))] p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">Your Answer</p>
+                            <p className="mt-1 text-sm text-cyan-50/72">Type or capture your answer after the interviewer stops speaking.</p>
+                          </div>
+                          <div className="rounded-full border border-cyan-100/16 bg-cyan-100/8 px-3 py-1 text-xs text-cyan-100/78">
+                            Timer {formatSeconds(answerTimerSeconds)}
+                          </div>
+                        </div>
+                        <textarea
+                          value={answerText}
+                          onChange={(event) => setAnswerText(event.target.value)}
+                          placeholder="Your response appears here."
+                          disabled={roomStage !== "live" || Boolean(report)}
+                          className={`${textAreaClass} mt-4 min-h-[170px] disabled:cursor-not-allowed disabled:opacity-60`}
+                        />
+                        {interimTranscript ? (
+                          <p className="mt-3 rounded-xl border border-cyan-100/14 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/80">
+                            Live transcript: {interimTranscript}
+                          </p>
+                        ) : null}
+                        {cameraError ? <p className="mt-3 text-xs text-amber-100">{cameraError}</p> : null}
+                        {simulatorError ? <p className="mt-3 text-xs text-amber-100">{simulatorError}</p> : null}
+                      </div>
+                    </article>
+                  </section>
+
+                  <aside className="space-y-5">
+                    <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Interview Snapshot</p>
+                        <button
+                          type="button"
+                          onClick={() => void handleRefreshReport()}
+                          disabled={!sessionId || loadingReport}
+                          className="rounded-full border border-cyan-100/20 bg-cyan-100/8 px-3 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-100/14 disabled:opacity-60"
+                        >
+                          {loadingReport ? "Refreshing..." : "Refresh"}
+                        </button>
+                      </div>
+                      <div className="mt-4 space-y-3 text-sm text-cyan-50/80">
+                        <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
+                          <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Candidate</p>
+                          <p className="mt-1 text-sm text-cyan-50">{candidateName || "Pending"}</p>
+                        </div>
+                        <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
+                          <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Round Progress</p>
+                          <p className="mt-1 text-sm text-cyan-50">
+                            Round {Math.max(0, roundNumber)} of {Math.max(0, totalRounds)}
+                          </p>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-cyan-100/10">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-cyan-300/80 via-sky-300/80 to-emerald-200/80 transition-all duration-500"
+                              style={{ width: `${clampPercent(progressPercent)}%` }}
+                            />
+                          </div>
+                        </div>
+                        {focusSkills.length > 0 ? (
+                          <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Focus Skills</p>
+                            <p className="mt-2 text-xs text-cyan-50/80">{focusSkills.slice(0, 10).join(", ")}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+
+                    <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Live Scoreboard</p>
+                      {!latestTurnFeedback ? (
+                        <p className="mt-4 text-sm text-cyan-50/72">Submit your first answer to see round-by-round scoring.</p>
+                      ) : (
+                        <div className="mt-4 space-y-3">
+                          {[
+                            { label: "Communication", value: latestTurnFeedback.scores.communication },
+                            { label: "Clarity", value: latestTurnFeedback.scores.clarity },
+                            { label: "Domain Depth", value: latestTurnFeedback.scores.domain_depth },
+                            { label: "Confidence", value: latestTurnFeedback.scores.confidence },
+                            { label: "Overall", value: latestTurnFeedback.scores.overall || 0 },
+                          ].map((metric) => (
+                            <div key={metric.label}>
+                              <div className="flex items-center justify-between text-xs text-cyan-100/80">
+                                <span>{metric.label}</span>
+                                <span>{clampPercent(metric.value)}%</span>
+                              </div>
+                              <div className="mt-1 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-[#061a34]">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-300 to-emerald-200 transition-all duration-700"
+                                  style={{ width: `${clampPercent(metric.value)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                          <p className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/78">
+                            {latestTurnFeedback.feedback_summary}
+                          </p>
+                        </div>
+                      )}
+                    </article>
+
+                    <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Turn History</p>
+                      {turnHistory.length === 0 ? (
+                        <p className="mt-4 text-sm text-cyan-50/72">No rounds completed yet.</p>
+                      ) : (
+                        <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                          {turnHistory.map((turn) => (
+                            <article key={`turn-${turn.round_number}`} className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-semibold text-cyan-100">Round {turn.round_number}</p>
+                                <span className="text-[11px] text-cyan-100/70">{turn.response_time_seconds}s</span>
+                              </div>
+                              <p className="mt-2 text-[11px] text-cyan-50/84">{turn.feedback_summary}</p>
+                              <p className="mt-2 text-[11px] text-cyan-100/70">Overall {clampPercent(turn.scores.overall || 0)}%</p>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  </aside>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : null}
@@ -1820,23 +2094,35 @@ export default function InterviewSimulatorClient() {
               ) : null}
             </div>
             <div className="mt-5 grid gap-3 lg:grid-cols-5">
-              <input
-                value={candidateName}
-                onChange={(event) => setCandidateName(event.target.value)}
-                placeholder="Your name"
-                className={`${fieldClass} lg:col-span-1`}
-              />
-              <input value={role} onChange={(event) => setRole(event.target.value)} placeholder="Target role" className={`${fieldClass} lg:col-span-2`} />
-              <input value={industry} onChange={(event) => setIndustry(event.target.value)} placeholder="Industry" className={`${fieldClass} lg:col-span-1`} />
-              <select
-                value={difficulty}
-                onChange={(event) => setDifficulty(event.target.value as "foundation" | "standard" | "advanced")}
-                className={`${fieldClass} lg:col-span-1`}
-              >
-                <option value="foundation">Foundation</option>
-                <option value="standard">Standard</option>
-                <option value="advanced">Advanced</option>
-              </select>
+              <label className="grid gap-1 lg:col-span-1">
+                <span className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/70">Name (Required)</span>
+                <input
+                  value={candidateName}
+                  onChange={(event) => setCandidateName(event.target.value)}
+                  placeholder="Your name"
+                  className={fieldClass}
+                />
+              </label>
+              <label className="grid gap-1 lg:col-span-2">
+                <span className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/70">Target Role (Required)</span>
+                <input value={role} onChange={(event) => setRole(event.target.value)} placeholder="Target role" className={fieldClass} />
+              </label>
+              <label className="grid gap-1 lg:col-span-1">
+                <span className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/70">Industry</span>
+                <input value={industry} onChange={(event) => setIndustry(event.target.value)} placeholder="Industry" className={fieldClass} />
+              </label>
+              <label className="grid gap-1 lg:col-span-1">
+                <span className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/70">Difficulty</span>
+                <select
+                  value={difficulty}
+                  onChange={(event) => setDifficulty(event.target.value as "foundation" | "standard" | "advanced")}
+                  className={fieldClass}
+                >
+                  <option value="foundation">Foundation</option>
+                  <option value="standard">Standard</option>
+                  <option value="advanced">Advanced</option>
+                </select>
+              </label>
             </div>
             <div className="mt-3 grid gap-3 lg:grid-cols-[1fr,1fr,180px]">
               <button
@@ -1918,175 +2204,70 @@ export default function InterviewSimulatorClient() {
                 <div className="flex items-center gap-3">
                   <span
                     className={`h-2.5 w-2.5 rounded-full ${
-                      roomStage === "live"
+                      interviewOverlayActive
                         ? "bg-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.7)]"
-                        : roomStage === "joining"
-                          ? "bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.7)]"
-                          : report
-                            ? "bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.55)]"
-                            : "bg-cyan-100/60"
+                        : report
+                          ? "bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.55)]"
+                          : "bg-cyan-100/60"
                     }`}
                   />
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/66">Interview Room</p>
-                    <p className="text-sm text-cyan-50">{interviewerRoomStatus}</p>
+                    <p className="text-sm text-cyan-50">
+                      {interviewOverlayActive
+                        ? "Interview is running in focused mode. Finish the session to unlock the full page again."
+                        : sessionId
+                          ? "Your interview opens in a focused popup card."
+                          : "Complete the setup card above to generate your interview room."}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right text-xs text-cyan-100/74">
-                  <p>{roomStage === "live" ? formatRoomTime(roomClock) : "Preview Mode"}</p>
+                  <p>{report ? "Completed" : interviewOverlayActive ? formatRoomTime(roomClock) : "Ready"}</p>
                   <p className="mt-1">{meetingRoomCode}</p>
                 </div>
               </div>
-
-              <div className="relative min-h-[520px] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(21,94,117,0.28),rgba(2,6,23,0.98)_68%)] px-4 pb-5 pt-4 sm:px-6 sm:pt-6">
-                <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.16),transparent_72%)]" />
-                <div className="relative min-h-[460px] rounded-[1.9rem] border border-cyan-100/16 bg-[linear-gradient(160deg,rgba(8,18,34,0.72),rgba(6,12,22,0.92))] p-6">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">AI Interviewer</p>
-                      <h2 className="mt-2 text-3xl font-semibold text-cyan-50">{interviewerName}</h2>
-                      <p className="mt-2 max-w-xl text-sm text-cyan-50/74">{openingRemark || interviewerRoomStatus}</p>
+              <div className="grid gap-4 bg-[radial-gradient(circle_at_top,rgba(21,94,117,0.18),rgba(2,6,23,0.96)_72%)] p-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="rounded-[1.4rem] border border-cyan-100/14 bg-cyan-100/8 p-5">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/66">Focused Interview Mode</p>
+                  <h3 className="mt-3 text-2xl font-semibold text-cyan-50">Popup interview room</h3>
+                  <p className="mt-3 text-sm text-cyan-50/76">
+                    Once you join, the interview takes over the screen in a dedicated popup card with the rest of the dashboard blurred behind it.
+                  </p>
+                  <div className="mt-5 space-y-3 text-sm text-cyan-50/80">
+                    <div className="rounded-xl border border-cyan-100/14 bg-[#071425]/78 p-3">
+                      <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Required fields</p>
+                      <p className="mt-2">Name and target role must be filled before interview start.</p>
                     </div>
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full border border-emerald-200/22 bg-emerald-200/10 text-2xl font-semibold text-emerald-50">
-                      {interviewerName
-                        .split(" ")
-                        .map((part) => part.slice(0, 1).toUpperCase())
-                        .join("")
-                        .slice(0, 2)}
-                    </div>
-                  </div>
-
-                  <div className="mt-10 max-w-3xl">
-                    {roomStage === "live" && currentQuestion ? (
-                      <div className="rounded-[1.4rem] border border-cyan-100/18 bg-cyan-100/8 p-5">
-                        <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">Current Question</p>
-                        <p className="mt-3 text-xl leading-relaxed text-cyan-50 sm:text-2xl">{currentQuestion}</p>
-                      </div>
-                    ) : roomStage === "joining" ? (
-                      <div className="rounded-[1.4rem] border border-amber-100/18 bg-amber-100/8 p-5 text-sm text-amber-50/84">
-                        Connecting you to the interview room. The first prompt will start automatically.
-                      </div>
-                    ) : roomStage === "ended" && closingRemark ? (
-                      <div className="rounded-[1.4rem] border border-emerald-200/18 bg-emerald-200/10 p-5 text-sm text-emerald-50/86">
-                        {closingRemark}
-                      </div>
-                    ) : sessionId ? (
-                      <div className="rounded-[1.4rem] border border-cyan-100/18 bg-cyan-100/8 p-5 text-sm text-cyan-50/80">
-                        Join from the preview modal when you are ready to begin. The interviewer will greet {candidateName || "you"} by name and start immediately.
-                      </div>
-                    ) : (
-                      <div className="rounded-[1.4rem] border border-cyan-100/18 bg-cyan-100/8 p-5 text-sm text-cyan-50/80">
-                        Complete the setup card above to generate your first interview room.
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="absolute right-4 top-4 w-[160px] overflow-hidden rounded-[1.4rem] border border-cyan-100/16 bg-[#030913] shadow-[0_18px_40px_rgba(2,8,22,0.34)] sm:right-6 sm:top-6 sm:w-[220px]">
-                    <div className="flex items-center justify-between border-b border-cyan-100/10 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-cyan-100/70">
-                      <span>{candidateName || "You"}</span>
-                      <span>{cameraEnabled ? "Camera On" : "Camera Off"}</span>
-                    </div>
-                    <div className="relative h-[140px] sm:h-[170px]">
-                      <video
-                        ref={liveVideoRef}
-                        muted
-                        playsInline
-                        autoPlay
-                        className={`h-full w-full object-cover transition ${cameraEnabled ? "opacity-100" : "opacity-0"}`}
-                      />
-                      {!cameraEnabled ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.16),rgba(2,6,23,0.96))]">
-                          <div className="flex h-16 w-16 items-center justify-center rounded-full border border-cyan-100/18 bg-cyan-100/10 text-xl font-semibold text-cyan-50">
-                            {(candidateName || "You").slice(0, 1).toUpperCase()}
-                          </div>
-                          <p className="mt-2 text-xs text-cyan-100/76">Camera off</p>
-                        </div>
-                      ) : null}
+                    <div className="rounded-xl border border-cyan-100/14 bg-[#071425]/78 p-3">
+                      <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Interviewer intro</p>
+                      <p className="mt-2">{liveInterviewerIntro}</p>
                     </div>
                   </div>
                 </div>
-
-                <div className="relative mt-5 flex flex-wrap items-center justify-center gap-2 rounded-full border border-cyan-100/12 bg-[#0c1422]/84 px-3 py-3 shadow-[0_20px_50px_rgba(2,8,22,0.44)]">
-                  <button
-                    type="button"
-                    onClick={isListening ? stopVoiceCapture : () => void startVoiceCapture()}
-                    disabled={!speechSupported || !sessionId || roomStage !== "live" || submitLoading || Boolean(report) || isQuestionAudioPlaying}
-                    className={`rounded-full border px-4 py-2 text-xs font-semibold transition disabled:opacity-50 ${
-                      isListening
-                        ? "border-emerald-200/32 bg-emerald-300/18 text-emerald-50"
-                        : "border-cyan-100/22 bg-cyan-100/10 text-cyan-50 hover:bg-cyan-100/18"
-                    }`}
-                  >
-                    {speechSupported ? (isListening ? "Mic On" : "Start Mic") : "Mic Unsupported"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void toggleCameraPreview()}
-                    disabled={submitLoading}
-                    className="rounded-full border border-cyan-100/22 bg-cyan-100/10 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18 disabled:opacity-60"
-                  >
-                    {cameraEnabled ? "Camera On" : "Turn Camera On"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void speakCurrentQuestion()}
-                    disabled={!currentQuestion || roomStage !== "live" || submitLoading || ttsLoading}
-                    className="rounded-full border border-cyan-100/22 bg-cyan-100/10 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18 disabled:opacity-60"
-                  >
-                    {ttsLoading ? "Interviewer Speaking..." : isQuestionAudioPlaying ? "Stop Voice" : "Hear Question"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleSubmitAnswer()}
-                    disabled={!canSubmitAnswer}
-                    className="rounded-full border border-cyan-100/28 bg-cyan-200/18 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/26 disabled:opacity-60"
-                  >
-                    {submitLoading ? "Scoring Answer..." : "Submit Answer"}
-                  </button>
-                  {sessionId && !report ? (
+                <div className="rounded-[1.4rem] border border-cyan-100/14 bg-[#071425]/74 p-5">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Room Actions</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {sessionId && !report ? (
+                      <button
+                        type="button"
+                        onClick={() => setPrejoinModalOpen(true)}
+                        className="rounded-full border border-emerald-200/26 bg-emerald-300/16 px-4 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-300/24"
+                      >
+                        {roomStage === "live" ? "Return to Interview" : "Open Interview Popup"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={() => {
-                        stopQuestionAudioPlayback();
-                        if (isListening) stopVoiceCapture();
-                        setInterviewerJoined(false);
-                        setRoomStage("ready_to_join");
-                        setPrejoinModalOpen(true);
-                        storeSessionRef(sessionId, sessionSecret, "ready_to_join");
-                      }}
-                      disabled={joinLoading || submitLoading}
-                      className="rounded-full border border-rose-200/26 bg-rose-300/18 px-4 py-2 text-xs font-semibold text-rose-50 transition hover:bg-rose-300/24 disabled:opacity-60"
+                      onClick={() => setSetupExpanded(true)}
+                      className="rounded-full border border-cyan-100/22 bg-transparent px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/10"
                     >
-                      Leave Room
+                      Edit Setup
                     </button>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="border-t border-cyan-100/10 bg-[linear-gradient(180deg,rgba(6,14,24,0.95),rgba(4,10,18,0.98))] p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">Your Answer</p>
-                    <p className="mt-1 text-sm text-cyan-50/72">Type or capture your answer after the interviewer stops speaking.</p>
                   </div>
-                  <div className="rounded-full border border-cyan-100/16 bg-cyan-100/8 px-3 py-1 text-xs text-cyan-100/78">
-                    Timer {formatSeconds(answerTimerSeconds)}
-                  </div>
+                  {simulatorError ? <p className="mt-4 text-xs text-amber-100">{simulatorError}</p> : null}
+                  {cameraError ? <p className="mt-2 text-xs text-amber-100">{cameraError}</p> : null}
                 </div>
-                <textarea
-                  value={answerText}
-                  onChange={(event) => setAnswerText(event.target.value)}
-                  placeholder="Your response appears here."
-                  disabled={roomStage !== "live" || Boolean(report)}
-                  className={`${textAreaClass} mt-4 min-h-[170px] disabled:cursor-not-allowed disabled:opacity-60`}
-                />
-                {interimTranscript ? (
-                  <p className="mt-3 rounded-xl border border-cyan-100/14 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/80">
-                    Live transcript: {interimTranscript}
-                  </p>
-                ) : null}
-                {cameraError ? <p className="mt-3 text-xs text-amber-100">{cameraError}</p> : null}
-                {simulatorError ? <p className="mt-3 text-xs text-amber-100">{simulatorError}</p> : null}
               </div>
             </article>
           </section>
