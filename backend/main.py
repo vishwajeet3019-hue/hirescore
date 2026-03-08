@@ -311,6 +311,9 @@ INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS: list[dict[str, Any]] = [
     },
 ]
 INTERVIEW_SIMULATOR_STAGE_BLUEPRINT_MAP = {item["key"]: item for item in INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS}
+INTERVIEW_SIMULATOR_MODE_FULL = "full"
+INTERVIEW_SIMULATOR_MODE_DEMO = "demo"
+INTERVIEW_SIMULATOR_DEMO_QUESTION_COUNT = 3
 try:
     INTERVIEW_SIMULATOR_LLM_BLEND = float((os.getenv("INTERVIEW_SIMULATOR_LLM_BLEND") or "0.34").strip())
 except Exception:
@@ -564,6 +567,7 @@ class InterviewSimulatorStartRequest(BaseModel):
     job_description: str | None = None
     resume_text: str | None = None
     difficulty: str | None = None
+    mode: str | None = None
     rounds: int | None = None
     auth_token: str | None = None
 
@@ -8778,18 +8782,23 @@ def analysis_interview_simulator_start(data: InterviewSimulatorStartRequest, req
         raise HTTPException(status_code=400, detail="Enter a valid role before starting the simulator.")
 
     difficulty = normalize_interview_simulator_difficulty(data.difficulty)
+    mode = normalize_interview_simulator_mode(data.mode)
     resume_text = safe_text(data.resume_text)[:14000]
     job_description = safe_text(data.job_description)[:14000]
-    if len(resume_text.strip()) < 24:
-        raise HTTPException(status_code=400, detail="Upload or paste your resume before starting.")
-    if len(job_description.strip()) < 24:
-        raise HTTPException(status_code=400, detail="Upload or paste the JD before starting.")
+    if mode == INTERVIEW_SIMULATOR_MODE_FULL:
+        if len(resume_text.strip()) < 24:
+            raise HTTPException(status_code=400, detail="Upload or paste your resume before starting.")
+        if len(job_description.strip()) < 24:
+            raise HTTPException(status_code=400, detail="Upload or paste the JD before starting.")
     candidate_level = infer_interview_simulator_candidate_level(role, resume_text)
-    stage_plan = build_interview_simulator_stage_plan(difficulty, candidate_level=candidate_level)
+    if mode == INTERVIEW_SIMULATOR_MODE_DEMO:
+        stage_plan = build_interview_simulator_demo_stage_plan()
+    else:
+        stage_plan = build_interview_simulator_stage_plan(difficulty, candidate_level=candidate_level)
     total_rounds = len(stage_plan)
     guest_fingerprint = ""
     guest_free_interviews_remaining: int | None = None
-    if owner_user_id <= 0:
+    if owner_user_id <= 0 and mode == INTERVIEW_SIMULATOR_MODE_FULL:
         guest_fingerprint, _guest_usage_count, guest_remaining = enforce_guest_interview_quota(request)
         guest_free_interviews_remaining = max(0, guest_remaining - 1)
     focus_skills = sanitize_interview_simulator_focus_skills(
@@ -8875,6 +8884,7 @@ Output JSON schema:
         "candidate_connection_notes": [],
         "opening_remark": opening_remark,
         "closing_remark": closing_remark,
+        "mode": mode,
         "difficulty": difficulty,
         "candidate_level": candidate_level,
         "focus_skills": focus_skills,
@@ -8901,7 +8911,7 @@ Output JSON schema:
             "reason": opener_error or ("llm_opening" if opener_model else "rules_opening"),
         },
     }
-    if owner_user_id <= 0 and guest_fingerprint:
+    if owner_user_id <= 0 and mode == INTERVIEW_SIMULATOR_MODE_FULL and guest_fingerprint:
         consume_guest_interview_quota(guest_fingerprint, request)
 
     with INTERVIEW_SIMULATOR_LOCK:
@@ -8931,6 +8941,7 @@ Output JSON schema:
             "role": role,
             "industry": industry,
             "difficulty": difficulty,
+            "mode": mode,
             "total_rounds": total_rounds,
             "focus_skills": focus_skills[:6],
             "guest_mode": owner_user_id <= 0,
@@ -8947,6 +8958,7 @@ Output JSON schema:
         "interviewer_voice": interviewer_voice,
         "opening_remark": opening_remark,
         "closing_remark": closing_remark,
+        "mode": mode,
         "difficulty": difficulty,
         "candidate_level": candidate_level,
         "focus_skills": sanitize_interview_simulator_focus_skills(focus_skills, limit=8),
@@ -9001,6 +9013,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             last_turn = existing_turns[-1] if existing_turns else {}
             return {
                 "session_id": session_id,
+                "mode": normalize_interview_simulator_mode(safe_text(existing.get("mode"))),
                 "completed": True,
                 "round_number": int(last_turn.get("round_number") or len(build_interview_simulator_stage_summaries(existing_turns, stage_plan)) or 1),
                 "current_stage_key": normalize_interview_simulator_turn_stage_key(last_turn if isinstance(last_turn, dict) else {}),
@@ -9025,6 +9038,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         role = safe_text(existing.get("role")) or "Target role"
         industry = safe_text(existing.get("industry")) or "General"
         candidate_name = safe_text(existing.get("candidate_name")) or "there"
+        mode = normalize_interview_simulator_mode(safe_text(existing.get("mode")))
         difficulty = normalize_interview_simulator_difficulty(safe_text(existing.get("difficulty")))
         focus_skills = dedupe_text_list(existing.get("focus_skills") or [], limit=10, max_item_len=80)
         interviewer_name = safe_text(existing.get("interviewer_name")) or "Avery Bennett"
@@ -9139,6 +9153,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         )
         return {
             "session_id": session_id,
+            "mode": mode,
             "completed": False,
             "round_number": round_number,
             "current_stage_key": current_stage_key,
@@ -9446,6 +9461,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "interviewer_voice": safe_text(refreshed.get("interviewer_voice")),
                 "opening_remark": safe_text(refreshed.get("opening_remark")),
                 "closing_remark": safe_text(refreshed.get("closing_remark")),
+                "mode": normalize_interview_simulator_mode(safe_text(refreshed.get("mode"))),
                 "difficulty": safe_text(refreshed.get("difficulty")),
                 "stage_plan": json.loads(json.dumps(stage_plan, ensure_ascii=False, default=str)),
                 "focus_skills": json.loads(json.dumps(refreshed.get("focus_skills") or [], ensure_ascii=False, default=str)),
@@ -9522,7 +9538,14 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             requested_voice=interviewer_voice or INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE,
         )
 
-    if completed and report_payload and owner_user_id > 0 and saved_report_id <= 0 and session_snapshot_for_archive:
+    if (
+        completed
+        and report_payload
+        and mode == INTERVIEW_SIMULATOR_MODE_FULL
+        and owner_user_id > 0
+        and saved_report_id <= 0
+        and session_snapshot_for_archive
+    ):
         archive_payload = build_interview_simulator_archive_payload(session_snapshot_for_archive, report_payload)
         persisted_report_id = save_analysis_report(
             owner_user_id,
@@ -9550,6 +9573,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "overall_score": int(report_payload.get("overall_score") or 0),
                 "readiness": safe_text(report_payload.get("readiness_label")),
                 "ai_used": ai_used,
+                "mode": mode,
                 "saved_report_id": saved_report_id or None,
                 "guest_mode": owner_user_id <= 0,
             },
@@ -9565,12 +9589,14 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "round_number": response_round_number,
                 "overall": int((turn_payload.get("scores") or {}).get("overall") or 0),
                 "ai_used": ai_used,
+                "mode": mode,
                 "guest_mode": owner_user_id <= 0,
             },
         )
 
     return {
         "session_id": session_id,
+        "mode": mode,
         "completed": completed,
         "round_number": response_round_number,
         "current_stage_key": response_stage_key,
@@ -9630,6 +9656,7 @@ def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, r
 
     return {
         "session_id": session_id,
+        "mode": normalize_interview_simulator_mode(safe_text(session_payload.get("mode"))),
         "candidate_name": safe_text(session_payload.get("candidate_name")),
         "role": safe_text(session_payload.get("role")) or "Target role",
         "industry": safe_text(session_payload.get("industry")) or "General",
@@ -12278,6 +12305,13 @@ def normalize_interview_simulator_difficulty(value: str | None) -> str:
     return "standard"
 
 
+def normalize_interview_simulator_mode(value: str | None) -> str:
+    token = safe_text(value).strip().lower()
+    if token in {"demo", "quick_demo", "quick", "preview"}:
+        return INTERVIEW_SIMULATOR_MODE_DEMO
+    return INTERVIEW_SIMULATOR_MODE_FULL
+
+
 def normalize_interview_simulator_rounds(value: int | None) -> int:
     if value is None:
         return len(INTERVIEW_SIMULATOR_STAGE_BLUEPRINTS)
@@ -12666,6 +12700,20 @@ def collect_interview_simulator_resume_focus_skills(resume_text: str) -> list[st
     return dedupe_text_list(normalized_candidates, limit=10, max_item_len=80)
 
 
+def build_interview_simulator_demo_stage_plan() -> list[dict[str, Any]]:
+    screening_blueprint = INTERVIEW_SIMULATOR_STAGE_BLUEPRINT_MAP.get("screening") or {}
+    return [
+        {
+            "stage_number": 1,
+            "key": "screening",
+            "label": safe_text(screening_blueprint.get("label")) or "Screening",
+            "objective": safe_text(screening_blueprint.get("objective")) or "confirm initial role fit quickly",
+            "min_questions": INTERVIEW_SIMULATOR_DEMO_QUESTION_COUNT,
+            "max_questions": INTERVIEW_SIMULATOR_DEMO_QUESTION_COUNT,
+        }
+    ]
+
+
 def build_interview_simulator_stage_plan(difficulty: str, candidate_level: str | None = None) -> list[dict[str, Any]]:
     normalized_difficulty = normalize_interview_simulator_difficulty(difficulty)
     normalized_candidate_level = safe_text(candidate_level).strip().lower()
@@ -12731,6 +12779,16 @@ def get_interview_simulator_stage_plan(session_payload: dict[str, Any]) -> list[
         normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty"))),
         candidate_level=safe_text(session_payload.get("candidate_level")) or None,
     )
+
+
+def interview_simulator_stage_exists(stage_plan: list[dict[str, Any]], stage_key: str) -> bool:
+    normalized_stage_key = safe_text(stage_key).strip().lower()
+    if not normalized_stage_key:
+        return False
+    for stage in stage_plan:
+        if safe_text(stage.get("key")).strip().lower() == normalized_stage_key:
+            return True
+    return False
 
 
 def get_interview_simulator_stage_entry(stage_plan: list[dict[str, Any]], stage_key: str) -> dict[str, Any]:
@@ -13936,6 +13994,11 @@ def decide_interview_simulator_stage_progression(
     normalized_difficulty = normalize_interview_simulator_difficulty(difficulty)
     normalized_candidate_level = safe_text(candidate_level).strip().lower()
 
+    def pick_stage_if_present(stage_key: str) -> str | None:
+        if interview_simulator_stage_exists(stage_plan, stage_key):
+            return stage_key
+        return None
+
     if stage_question_count < min_questions:
         return False, current_stage_key
 
@@ -13961,26 +14024,26 @@ def decide_interview_simulator_stage_progression(
 
     if current_stage_key == "screening":
         if safe_text(screening_decision).strip().lower() == "shortlisted":
-            return True, "technical_assessment"
+            return True, pick_stage_if_present("technical_assessment")
         return True, None
 
     if current_stage_key == "technical_assessment":
         if action == "finish" and stage_average < 48 and overall_average < 50:
             return True, None
         if action == "skip_to_hr" and stage_average >= 56:
-            return True, "hr"
+            return True, pick_stage_if_present("hr")
         if normalized_candidate_level == "fresher":
             if stage_average >= 62 and normalized_difficulty == "advanced" and action == "advance":
-                return True, "in_depth_assessment"
+                return True, pick_stage_if_present("in_depth_assessment") or pick_stage_if_present("hr")
             if stage_average >= 42 or overall_average >= 45:
-                return True, "hr"
+                return True, pick_stage_if_present("hr")
             return True, None
         if stage_average >= 74 or (normalized_difficulty == "foundation" and stage_average >= 64):
-            return True, "hr"
+            return True, pick_stage_if_present("hr")
         if stage_average >= 50 or (action == "advance" and stage_average >= 46) or overall_average >= 52:
-            return True, "in_depth_assessment"
+            return True, pick_stage_if_present("in_depth_assessment") or pick_stage_if_present("hr")
         if stage_average >= 42 and action in {"advance", "skip_to_hr"}:
-            return True, "hr"
+            return True, pick_stage_if_present("hr")
         return True, None
 
     if current_stage_key == "in_depth_assessment":
@@ -13988,10 +14051,10 @@ def decide_interview_simulator_stage_progression(
             return True, None
         if normalized_candidate_level == "fresher":
             if stage_average >= 42 or action == "advance":
-                return True, "hr"
+                return True, pick_stage_if_present("hr")
             return True, None
         if stage_average >= 48 or overall_average >= 55 or normalized_difficulty == "foundation":
-            return True, "hr"
+            return True, pick_stage_if_present("hr")
         return True, None
 
     return True, None
@@ -14338,6 +14401,7 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
     role = safe_text(session_payload.get("role")) or "Target role"
     industry = safe_text(session_payload.get("industry")) or "General"
     difficulty = normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty")))
+    mode = normalize_interview_simulator_mode(safe_text(session_payload.get("mode")))
     candidate_name = safe_text(session_payload.get("candidate_name"))
     interviewer_name = safe_text(session_payload.get("interviewer_name"))
     interviewer_title = safe_text(session_payload.get("interviewer_title"))
@@ -14381,6 +14445,7 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
             "role": role,
             "industry": industry,
             "difficulty": difficulty,
+            "mode": mode,
             "candidate_name": candidate_name,
             "interviewer_name": interviewer_name,
             "interviewer_title": interviewer_title,
@@ -14430,6 +14495,16 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
     elif overall_score < 55:
         shortlist_prediction = "Interview decision: Needs stronger relevance before shortlist"
 
+    if mode == INTERVIEW_SIMULATOR_MODE_DEMO:
+        if screening_decision == "shortlisted":
+            shortlist_prediction = "Demo result: Shortlisted in screening preview"
+        elif screening_decision == "rejected":
+            shortlist_prediction = "Demo result: Not shortlisted in screening preview"
+        elif overall_score >= 60:
+            shortlist_prediction = "Demo result: Positive screening signal"
+        else:
+            shortlist_prediction = "Demo result: Needs stronger screening alignment"
+
     next_steps = [
         "Build 5 STAR stories with one quantified result each.",
         "Practice 90-second answers for your top 3 weak-signal questions.",
@@ -14441,6 +14516,12 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
         next_steps[1] = improvement_signals[1]
     if len(improvement_signals) > 2:
         next_steps[2] = improvement_signals[2]
+    if mode == INTERVIEW_SIMULATOR_MODE_DEMO:
+        next_steps = [
+            "Upload resume + JD and run the full adaptive interview for detailed round-by-round scoring.",
+            "Practice concise, role-relevant answers with measurable outcomes in 60-90 seconds.",
+            "Repeat the 90-second demo until screening readiness crosses 70%.",
+        ]
 
     return {
         "overall_score": overall_score,
@@ -14450,6 +14531,7 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
         "role": role,
         "industry": industry,
         "difficulty": difficulty,
+        "mode": mode,
         "candidate_name": candidate_name,
         "interviewer_name": interviewer_name,
         "interviewer_title": interviewer_title,
@@ -14485,6 +14567,7 @@ def build_interview_simulator_archive_payload(
     role = safe_text(session_payload.get("role")) or "Target role"
     industry = safe_text(session_payload.get("industry")) or "General"
     difficulty = normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty")))
+    mode = normalize_interview_simulator_mode(safe_text(session_payload.get("mode")))
     candidate_name = safe_text(session_payload.get("candidate_name"))
     interviewer_name = safe_text(session_payload.get("interviewer_name"))
     interviewer_title = safe_text(session_payload.get("interviewer_title"))
@@ -14499,6 +14582,7 @@ def build_interview_simulator_archive_payload(
         "role": role,
         "industry": industry,
         "difficulty": difficulty,
+        "mode": mode,
         "candidate_name": candidate_name,
         "interviewer_name": interviewer_name,
         "interviewer_title": interviewer_title,

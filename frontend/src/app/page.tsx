@@ -7,19 +7,19 @@ import { addUtmParams } from "@/lib/utm";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
 
 export const metadata: Metadata = {
-  title: "AI Resume Analyzer for Better Shortlisting",
+  title: "AI Interview Simulator + Resume Analyzer | HireScore",
   description:
-    "Run AI role-fit analysis, see shortlist prediction, and improve your resume with actionable recommendations.",
+    "Run a live interview simulator, get role-fit analysis, shortlist prediction, and actionable improvements to win more interviews.",
   alternates: {
     canonical: "/",
   },
 };
 
 const proofStats = [
+  { label: "Interview Simulator", value: "Live + Human-like" },
   { label: "Prediction Layers", value: "12+" },
   { label: "Jobs We Cover", value: "All Major Domains" },
-  { label: "Premium Resume Templates", value: "6" },
-  { label: "Actionable Suggestions", value: "Deep Strategy" },
+  { label: "Free Guest Interview", value: "1 Without Login" },
 ];
 
 const valueCards = [
@@ -99,15 +99,20 @@ const successStories = [
 
 export default function Home() {
   const featuredGuides = seoLandingPages.slice(0, 3);
-  const homeUploadHref = addUtmParams("/upload", {
+  const homeUploadHref = addUtmParams("/instant-fit", {
     source: "home",
     medium: "organic",
-    campaign: "home_hero",
+    campaign: "home_instant_fit",
   });
   const homePricingHref = addUtmParams("/pricing", {
     source: "home",
     medium: "organic",
     campaign: "home_hero",
+  });
+  const homeInterviewDemoHref = addUtmParams("/interview-simulator?mode=demo", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_demo_hero",
   });
   const homeShareHref = addUtmParams("/upload", {
     source: "home_social",
@@ -212,18 +217,26 @@ export default function Home() {
               </h1>
 
               <p className="mt-6 max-w-2xl text-sm leading-relaxed text-cyan-50/72 sm:text-base">
-                HireScore helps candidates spend effort where it converts. Analyze role fit, close high-impact gaps, and
-                build professional resumes that improve interview outcomes.
+                HireScore helps candidates spend effort where it converts. Practice in a live interview simulator, analyze role fit, close high-impact gaps, and build resumes that improve interview outcomes.
               </p>
 
             <div className="mt-8 flex flex-wrap gap-3 sm:mt-10 sm:gap-4">
             <TrackedLink
                   href={homeUploadHref}
-                  eventName="cta_check_my_score_click"
-                  eventParams={{ cta_location: "home_hero", cta_label: "Check My Score (Free)" }}
+                  eventName="cta_instant_fit_click"
+                  eventParams={{ cta_location: "home_hero", cta_label: "Instant Fit Check (Free)" }}
                   className="w-full rounded-2xl border border-cyan-100/40 bg-gradient-to-r from-cyan-300/28 via-cyan-200/30 to-amber-100/20 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
                 >
-                  Check My Score (Free)
+                  Instant Fit Check (Free)
+                </TrackedLink>
+
+                <TrackedLink
+                  href={homeInterviewDemoHref}
+                  eventName="cta_interview_demo_click"
+                  eventParams={{ cta_location: "home_hero", cta_label: "Try Free 90-Second Interview" }}
+                  className="w-full rounded-2xl border border-emerald-100/34 bg-gradient-to-r from-emerald-300/24 via-cyan-300/20 to-cyan-200/14 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
+                >
+                  Try Free 90-Second Interview
                 </TrackedLink>
 
                 <TrackedLink

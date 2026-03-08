@@ -6,6 +6,8 @@ import { addUtmParams } from "@/lib/utm";
 import { trackEvent } from "@/lib/analytics";
 import TrackedLink from "../components/tracked-link";
 
+type InterviewSimulatorMode = "full" | "demo";
+
 type CreditWallet = {
   credits: number;
   pricing: {
@@ -83,6 +85,7 @@ type SimulatorRoundDecision = {
 type SimulatorReport = {
   overall_score: number;
   readiness_label: string;
+  mode?: InterviewSimulatorMode;
   shortlist_prediction?: string;
   screening_decision?: string;
   screening_decision_reason?: string;
@@ -105,6 +108,7 @@ type SimulatorReport = {
 type SimulatorStartPayload = {
   session_id: string;
   session_secret?: string;
+  mode?: InterviewSimulatorMode;
   role: string;
   industry: string;
   candidate_name?: string;
@@ -134,6 +138,7 @@ type SimulatorStartPayload = {
 
 type SimulatorTurnPayload = {
   session_id: string;
+  mode?: InterviewSimulatorMode;
   completed: boolean;
   round_number: number;
   current_stage_key?: string;
@@ -175,6 +180,7 @@ type PendingRoundStartState = {
 
 type SimulatorReportPayload = {
   session_id: string;
+  mode?: InterviewSimulatorMode;
   role: string;
   industry: string;
   candidate_name?: string;
@@ -298,6 +304,7 @@ const fieldClass =
 const textAreaClass = `${fieldClass} min-h-[120px] leading-relaxed`;
 
 const clampPercent = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+const normalizeSimulatorMode = (value?: string | null): InterviewSimulatorMode => (String(value || "").trim().toLowerCase() === "demo" ? "demo" : "full");
 
 const formatSeconds = (value: number) => {
   const safe = Math.max(0, Math.floor(value));
@@ -436,6 +443,7 @@ export default function InterviewSimulatorClient() {
   const [role, setRole] = useState("");
   const [industry, setIndustry] = useState("");
   const [difficulty, setDifficulty] = useState<"foundation" | "standard" | "advanced">("standard");
+  const [simulatorMode, setSimulatorMode] = useState<InterviewSimulatorMode>("full");
   const [resumeText, setResumeText] = useState("");
   const [resumeUploadedFileName, setResumeUploadedFileName] = useState("");
   const [resumeFileUploading, setResumeFileUploading] = useState(false);
@@ -518,6 +526,8 @@ export default function InterviewSimulatorClient() {
   const hasTargetRole = role.trim().length >= 2;
   const hasResumeContext = resumeText.trim().length >= 24;
   const hasJobDescriptionContext = jobDescription.trim().length >= 24;
+  const isDemoMode = simulatorMode === "demo";
+  const setupRequiresResumeAndJd = !isDemoMode;
   const shouldShowCompactSetup = (Boolean(sessionId) || Boolean(report)) && !setupExpanded;
   const currentSessionAccountKey = useMemo(() => {
     const normalizedEmail = authEmail.trim().toLowerCase();
@@ -541,6 +551,12 @@ export default function InterviewSimulatorClient() {
     if (AUTH_API_BASE_URL !== SIMULATOR_API_BASE_URL) {
       void warmBackend(authApiUrl);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const queryMode = normalizeSimulatorMode(new URLSearchParams(window.location.search).get("mode"));
+    setSimulatorMode(queryMode);
   }, []);
 
   useEffect(() => {
@@ -805,6 +821,7 @@ export default function InterviewSimulatorClient() {
         setSavedDashboardReportId(payload.saved_report_id ?? null);
         setScreeningDecision(payload.screening_decision || payload.report?.screening_decision || "");
         setScreeningDecisionReason(payload.screening_decision_reason || payload.report?.screening_decision_reason || "");
+        setSimulatorMode(normalizeSimulatorMode(payload.mode || payload.report?.mode));
         setPendingRoundStart(null);
         setDifficulty((payload.difficulty as "foundation" | "standard" | "advanced") || "standard");
         setTotalRounds(payload.total_rounds || 0);
@@ -1234,11 +1251,11 @@ export default function InterviewSimulatorClient() {
       setSimulatorError("Enter a target role before starting.");
       return;
     }
-    if (!hasResumeContext) {
+    if (setupRequiresResumeAndJd && !hasResumeContext) {
       setSimulatorError("Upload or paste your resume before starting.");
       return;
     }
-    if (!hasJobDescriptionContext) {
+    if (setupRequiresResumeAndJd && !hasJobDescriptionContext) {
       setSimulatorError("Upload or paste the JD before starting.");
       return;
     }
@@ -1274,6 +1291,7 @@ export default function InterviewSimulatorClient() {
             role: role.trim(),
             industry: industry.trim() || "General",
             difficulty,
+            mode: simulatorMode,
             resume_text: resumeText.trim(),
             job_description: jobDescription.trim(),
             auth_token: authToken || undefined,
@@ -1291,6 +1309,7 @@ export default function InterviewSimulatorClient() {
 
       setSessionId(payload.session_id);
       setSessionSecret(payload.session_secret || "");
+      setSimulatorMode(normalizeSimulatorMode(payload.mode));
       setCandidateName(payload.candidate_name || candidateName.trim());
       setInterviewerName(payload.interviewer_name || "Avery Bennett");
       setInterviewerTitle(payload.interviewer_title || "Lead Interviewer");
@@ -1326,6 +1345,7 @@ export default function InterviewSimulatorClient() {
       trackEvent("interview_simulator_start", {
         role: role.trim(),
         difficulty,
+        mode: normalizeSimulatorMode(payload.mode),
         rounds: payload.total_rounds || 4,
       });
     } catch (error) {
@@ -1401,6 +1421,7 @@ export default function InterviewSimulatorClient() {
       if (elapsed < SIMULATOR_MIN_LOADING_MS) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, SIMULATOR_MIN_LOADING_MS - elapsed));
       }
+      setSimulatorMode(normalizeSimulatorMode(payload.mode));
 
       const nextTurnHistory = payload.turn_feedback ? [...turnHistory, payload.turn_feedback as SimulatorTurnFeedback] : turnHistory;
       if (payload.turn_feedback) {
@@ -1616,6 +1637,7 @@ export default function InterviewSimulatorClient() {
       setSavedDashboardReportId(payload.saved_report_id ?? null);
       setScreeningDecision(payload.screening_decision || payload.report?.screening_decision || "");
       setScreeningDecisionReason(payload.screening_decision_reason || payload.report?.screening_decision_reason || "");
+      setSimulatorMode(normalizeSimulatorMode(payload.mode || payload.report?.mode));
       setPendingRoundStart(null);
       setRoundQuestionText("");
       setRoundQuestionReply("");
@@ -2094,11 +2116,11 @@ export default function InterviewSimulatorClient() {
     URL.revokeObjectURL(url);
   };
 
+  const hasRequiredSessionContext = isDemoMode || (hasResumeContext && hasJobDescriptionContext);
   const canStartSession =
     hasCandidateName &&
     hasTargetRole &&
-    hasResumeContext &&
-    hasJobDescriptionContext &&
+    hasRequiredSessionContext &&
     !startLoading &&
     !submitLoading &&
     !resumeFileUploading &&
@@ -2107,13 +2129,15 @@ export default function InterviewSimulatorClient() {
   const setupMissingRequirements = [
     hasCandidateName ? "" : "Name",
     hasTargetRole ? "" : "Target role",
-    hasResumeContext ? "" : "Resume",
-    hasJobDescriptionContext ? "" : "JD",
+    isDemoMode || hasResumeContext ? "" : "Resume",
+    isDemoMode || hasJobDescriptionContext ? "" : "JD",
   ].filter(Boolean);
   const setupReadinessLabel =
     setupMissingRequirements.length > 0
       ? `Required before start: ${setupMissingRequirements.join(", ")}`
-      : "Setup complete. You can start the interview now.";
+      : isDemoMode
+        ? "Demo setup complete. You can start the 90-second interview now."
+        : "Setup complete. You can start the interview now.";
   const canSubmitAnswer =
     Boolean(sessionId) &&
     Boolean(sessionSecret) &&
@@ -2145,9 +2169,11 @@ export default function InterviewSimulatorClient() {
         : "Sign in to archive completed interview reports.";
   const guestInterviewNote = authToken
     ? "Signed-in mode keeps unlimited simulator runs and auto-saves every completed report to dashboard."
-    : guestFreeInterviewsRemaining === 0
-      ? "Your 1 free guest interview is used. Sign in to continue and keep reports in dashboard."
-      : "1 full interview simulation is free without login.";
+    : isDemoMode
+      ? "90-second demo is always free. Full adaptive simulation remains 1 free run without login."
+      : guestFreeInterviewsRemaining === 0
+        ? "Your 1 free guest interview is used. Sign in to continue and keep reports in dashboard."
+        : "1 full interview simulation is free without login.";
   const interviewerRoomStatus =
     roomStage === "live"
       ? pendingRoundStart
@@ -2165,7 +2191,8 @@ export default function InterviewSimulatorClient() {
     role ? `Role: ${role}` : "",
     `Industry: ${industry || "General"}`,
     `Difficulty: ${difficulty}`,
-    "Adaptive 4-round flow",
+    isDemoMode ? "Mode: 90-second demo" : "Mode: Full simulation",
+    isDemoMode ? "Screening preview flow" : "Adaptive 4-round flow",
   ].filter(Boolean);
   const screeningDecisionLabel =
     screeningDecision === "shortlisted"
@@ -2208,6 +2235,16 @@ export default function InterviewSimulatorClient() {
     if (last.decision === "rejected") return "rejected";
     return "";
   }, [report]);
+  const reportSessionMode = normalizeSimulatorMode(report?.mode || simulatorMode);
+
+  useEffect(() => {
+    if (!interviewOverlayActive) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [interviewOverlayActive]);
 
   return (
     <main className="min-h-screen px-4 pb-16 pt-8 sm:px-6 lg:px-8">
@@ -2239,7 +2276,7 @@ export default function InterviewSimulatorClient() {
           <div className="mx-auto flex min-h-full w-full max-w-[1480px] items-start justify-center">
             {showPrejoinOverlay ? (
               <div className="w-full max-w-4xl rounded-[2rem] border border-cyan-100/20 bg-[linear-gradient(160deg,rgba(6,18,34,0.97),rgba(4,12,24,0.98))] p-5 shadow-[0_26px_80px_rgba(2,8,22,0.6)] sm:p-7">
-                <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-start justify-between gap-4 rounded-xl bg-[#06152a]/94 px-1 pb-3 backdrop-blur">
+                <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-cyan-100/10 bg-[#06152a]/94 px-3 py-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">Interview Preview</p>
                     <h2 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">Review the room before you join.</h2>
@@ -2247,13 +2284,13 @@ export default function InterviewSimulatorClient() {
                       {openingRemark || `${interviewerName} will greet ${candidateName || "you"} and begin the interview immediately after join.`}
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="rounded-full border border-cyan-100/18 bg-cyan-100/8 px-3 py-1 text-[11px] text-cyan-100/76">{meetingRoomCode}</div>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                    <div className="rounded-full border border-cyan-100/18 bg-cyan-100/8 px-3 py-1 text-[11px] text-cyan-100/76 break-all">{meetingRoomCode}</div>
                     <button
                       type="button"
                       onClick={() => void handleJoinInterviewRoom()}
                       disabled={joinButtonDisabled}
-                      className="rounded-full border border-emerald-200/36 bg-emerald-300/18 px-4 py-2 text-xs font-semibold text-emerald-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="w-full rounded-full border border-emerald-200/36 bg-emerald-300/18 px-4 py-2 text-xs font-semibold text-emerald-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                     >
                       {joinButtonLabel}
                     </button>
@@ -2335,7 +2372,7 @@ export default function InterviewSimulatorClient() {
               </div>
             ) : (
               <div className="w-full rounded-[2rem] border border-cyan-100/18 bg-[linear-gradient(160deg,rgba(6,18,34,0.98),rgba(4,12,24,0.99))] p-4 shadow-[0_30px_90px_rgba(2,8,22,0.68)] sm:p-6">
-                <div className="grid gap-5 xl:grid-cols-[1.7fr_0.8fr]">
+                <div className="grid gap-5">
                   <section className="space-y-5">
                     <article className="overflow-hidden rounded-[2rem] border border-cyan-100/18 bg-[#040911] shadow-[0_22px_60px_rgba(2,8,22,0.46)]">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-100/10 bg-[#07101b]/88 px-5 py-4">
@@ -2360,117 +2397,37 @@ export default function InterviewSimulatorClient() {
 
                       <div className="relative min-h-[520px] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(21,94,117,0.28),rgba(2,6,23,0.98)_68%)] px-4 pb-5 pt-4 sm:px-6 sm:pt-6">
                         <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.16),transparent_72%)]" />
-                        <div className="relative min-h-[460px] rounded-[1.9rem] border border-cyan-100/16 bg-[linear-gradient(160deg,rgba(8,18,34,0.72),rgba(6,12,22,0.92))] p-4 sm:p-6">
-                          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
-                            <div>
-                              <div className="flex flex-wrap items-start justify-between gap-4">
-                                <div>
-                                  <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">AI Interviewer</p>
-                                  <h2 className="mt-2 text-3xl font-semibold text-cyan-50">{interviewerName}</h2>
-                                  <p className="mt-2 text-sm text-cyan-100/76">{interviewerTitle}</p>
-                                  <p className="mt-2 max-w-xl text-sm text-cyan-50/74">
-                                    {roomStage === "live" && isFirstInterviewPrompt ? liveInterviewerIntro : interviewerRoomStatus}
-                                  </p>
-                                </div>
-                                <div className="flex h-20 w-20 items-center justify-center rounded-full border border-emerald-200/22 bg-emerald-200/10 text-2xl font-semibold text-emerald-50">
+                        <div className="relative min-h-[520px] rounded-[1.9rem] border border-cyan-100/16 bg-[linear-gradient(160deg,rgba(8,18,34,0.72),rgba(6,12,22,0.92))] p-4 sm:p-6">
+                          <div className="grid gap-4 lg:grid-cols-2">
+                            <article className="relative overflow-hidden rounded-[1.5rem] border border-cyan-100/16 bg-[radial-gradient(circle_at_top,rgba(45,212,191,0.12),rgba(2,6,23,0.96))] p-4 sm:min-h-[290px]">
+                              <div className="flex items-center justify-between">
+                                <p className="rounded-full border border-cyan-100/18 bg-[#071627]/84 px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/78">
+                                  AI Interviewer
+                                </p>
+                                <span className="text-[10px] uppercase tracking-[0.12em] text-cyan-100/72">{formatRoundLabel(roundNumber, currentStageLabel)}</span>
+                              </div>
+                              <div className="mt-8 flex flex-col items-center text-center">
+                                <div className="flex h-24 w-24 items-center justify-center rounded-full border border-emerald-200/24 bg-emerald-200/12 text-3xl font-semibold text-emerald-50">
                                   {interviewerName
                                     .split(" ")
                                     .map((part) => part.slice(0, 1).toUpperCase())
                                     .join("")
                                     .slice(0, 2)}
                                 </div>
+                                <h2 className="mt-4 text-3xl font-semibold text-cyan-50">{interviewerName}</h2>
+                                <p className="mt-2 text-sm text-cyan-100/76">{interviewerTitle}</p>
+                                <p className="mt-3 max-w-lg text-sm text-cyan-50/74">
+                                  {roomStage === "live" && isFirstInterviewPrompt ? liveInterviewerIntro : interviewerRoomStatus}
+                                </p>
                               </div>
+                            </article>
 
-                              <div className="mt-8 space-y-4">
-                                {roomStage === "live" && isFirstInterviewPrompt ? (
-                                  <div className="rounded-[1.4rem] border border-emerald-200/18 bg-emerald-200/10 p-5">
-                                    <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-100/74">Introduction</p>
-                                    <p className="mt-3 text-base leading-relaxed text-emerald-50/90">{liveInterviewerIntro}</p>
-                                  </div>
-                                ) : null}
-                                {roomStage === "live" && pendingRoundStart ? (
-                                  <div className="rounded-[1.4rem] border border-emerald-200/20 bg-emerald-200/10 p-5">
-                                    <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-100/74">
-                                      {formatRoundLabel(pendingRoundStart.completedRoundNumber, pendingRoundStart.completedStageLabel)} Completed
-                                    </p>
-                                    <p className="mt-3 text-lg text-emerald-50 sm:text-xl">{pendingRoundStart.stageDecisionLabel}</p>
-                                    <p className="mt-2 text-sm text-emerald-50/86">{pendingRoundStart.stageDecisionReason}</p>
-                                    <p className="mt-3 text-xs text-emerald-100/76">
-                                      Round score {clampPercent(pendingRoundStart.completedStageAverageScore)}% across {pendingRoundStart.completedStageQuestionCount} question
-                                      {pendingRoundStart.completedStageQuestionCount > 1 ? "s" : ""}.
-                                    </p>
-                                    <p className="mt-3 text-xs text-emerald-100/76">{pendingRoundFollowUpMessage}</p>
-                                    <div className="mt-4 rounded-xl border border-emerald-200/18 bg-emerald-200/8 p-3">
-                                      <p className="text-[10px] uppercase tracking-[0.14em] text-emerald-100/74">Questions Before Next Round?</p>
-                                      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                                        <input
-                                          value={roundQuestionText}
-                                          onChange={(event) => setRoundQuestionText(event.target.value)}
-                                          placeholder="Ask the interviewer about next steps, role, feedback, or timeline"
-                                          className="w-full rounded-lg border border-emerald-200/20 bg-[#061827]/70 px-3 py-2 text-xs text-emerald-50 placeholder:text-emerald-100/52 outline-none focus:border-emerald-200/48"
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const reply = buildInterviewerRoundAnswer(
-                                              roundQuestionText,
-                                              pendingRoundStart.completedStageLabel,
-                                              pendingRoundStart.completedStageDecision
-                                            );
-                                            if (!reply) {
-                                              setSimulatorError("Add your question first.");
-                                              return;
-                                            }
-                                            setSimulatorError("");
-                                            setRoundQuestionReply(reply);
-                                          }}
-                                          className="rounded-full border border-emerald-200/30 bg-emerald-300/18 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-300/26"
-                                        >
-                                          Ask Interviewer
-                                        </button>
-                                      </div>
-                                      {roundQuestionReply ? <p className="mt-2 text-xs text-emerald-50/88">{roundQuestionReply}</p> : null}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={handleStartNextRound}
-                                      disabled={
-                                        pendingRoundStart.completedStageDecision !== "shortlisted" ||
-                                        !pendingRoundStart.nextQuestion ||
-                                        submitLoading ||
-                                        joinLoading
-                                      }
-                                      className="mt-4 w-full rounded-full border border-emerald-200/34 bg-emerald-300/18 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
-                                    >
-                                      {pendingRoundStartCtaLabel || "Start Next Round"}
-                                    </button>
-                                  </div>
-                                ) : roomStage === "live" && currentQuestion ? (
-                                  <div className="rounded-[1.4rem] border border-cyan-100/18 bg-cyan-100/8 p-5">
-                                    <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">{formatRoundLabel(roundNumber, currentStageLabel)}</p>
-                                    <p className="mt-2 text-xs text-cyan-100/74">Question {Math.max(1, questionNumberInStage)} in this round</p>
-                                    {interviewerBridge && !isFirstInterviewPrompt ? (
-                                      <p className="mt-3 text-sm text-cyan-100/78">{interviewerBridge}</p>
-                                    ) : null}
-                                    <p className="mt-3 text-xl leading-relaxed text-cyan-50 sm:text-2xl">{currentQuestion}</p>
-                                  </div>
-                                ) : (
-                                  <div className="rounded-[1.4rem] border border-cyan-100/18 bg-cyan-100/8 p-5">
-                                    <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">Live Interview Simulator</p>
-                                    <p className="mt-3 text-sm text-cyan-50/84">
-                                      Preparing the next interview prompt. Stay in the room while {interviewerName} transitions to the next question.
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="relative w-full overflow-hidden rounded-[1.4rem] border border-cyan-100/18 bg-[#030913] shadow-[0_18px_40px_rgba(2,8,22,0.34)] lg:mt-1">
+                            <article className="relative overflow-hidden rounded-[1.5rem] border border-cyan-100/16 bg-[#030913] shadow-[0_18px_40px_rgba(2,8,22,0.34)] sm:min-h-[290px]">
                               <div className="flex items-center justify-between border-b border-cyan-100/10 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-cyan-100/70">
                                 <span className="truncate">{candidateName || "You"}</span>
                                 <span>{cameraEnabled ? "Preview On" : "Preview Off"}</span>
                               </div>
-                              <div className="relative h-[160px] sm:h-[190px]">
+                              <div className="relative h-[220px] sm:h-[250px]">
                                 <video
                                   ref={liveVideoRef}
                                   muted
@@ -2488,11 +2445,78 @@ export default function InterviewSimulatorClient() {
                                 ) : null}
                               </div>
                               <p className="border-t border-cyan-100/10 px-3 py-2 text-[11px] text-cyan-100/68">Local camera preview only. Not shared with interviewer AI.</p>
-                            </div>
+                            </article>
                           </div>
+
+                          {roomStage === "live" && pendingRoundStart ? (
+                            <div className="mt-4 rounded-[1.4rem] border border-emerald-200/20 bg-emerald-200/10 p-5">
+                              <p className="text-[10px] uppercase tracking-[0.16em] text-emerald-100/74">
+                                {formatRoundLabel(pendingRoundStart.completedRoundNumber, pendingRoundStart.completedStageLabel)} Completed
+                              </p>
+                              <p className="mt-3 text-lg text-emerald-50 sm:text-xl">{pendingRoundStart.stageDecisionLabel}</p>
+                              <p className="mt-2 text-sm text-emerald-50/86">{pendingRoundStart.stageDecisionReason}</p>
+                              <p className="mt-3 text-xs text-emerald-100/76">{pendingRoundFollowUpMessage}</p>
+                              <div className="mt-4 rounded-xl border border-emerald-200/18 bg-emerald-200/8 p-3">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-emerald-100/74">Questions Before Next Round?</p>
+                                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                                  <input
+                                    value={roundQuestionText}
+                                    onChange={(event) => setRoundQuestionText(event.target.value)}
+                                    placeholder="Ask the interviewer about next steps, role, feedback, or timeline"
+                                    className="w-full rounded-lg border border-emerald-200/20 bg-[#061827]/70 px-3 py-2 text-xs text-emerald-50 placeholder:text-emerald-100/52 outline-none focus:border-emerald-200/48"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const reply = buildInterviewerRoundAnswer(
+                                        roundQuestionText,
+                                        pendingRoundStart.completedStageLabel,
+                                        pendingRoundStart.completedStageDecision
+                                      );
+                                      if (!reply) {
+                                        setSimulatorError("Add your question first.");
+                                        return;
+                                      }
+                                      setSimulatorError("");
+                                      setRoundQuestionReply(reply);
+                                    }}
+                                    className="rounded-full border border-emerald-200/30 bg-emerald-300/18 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-300/26"
+                                  >
+                                    Ask Interviewer
+                                  </button>
+                                </div>
+                                {roundQuestionReply ? <p className="mt-2 text-xs text-emerald-50/88">{roundQuestionReply}</p> : null}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleStartNextRound}
+                                disabled={
+                                  pendingRoundStart.completedStageDecision !== "shortlisted" ||
+                                  !pendingRoundStart.nextQuestion ||
+                                  submitLoading ||
+                                  joinLoading
+                                }
+                                className="mt-4 w-full rounded-full border border-emerald-200/34 bg-emerald-300/18 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
+                              >
+                                {pendingRoundStartCtaLabel || "Start Next Round"}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="mt-4 rounded-2xl border border-cyan-100/18 bg-[#020915]/92 px-5 py-4 text-center shadow-[0_10px_26px_rgba(2,8,22,0.42)]">
+                              <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/68">
+                                {formatRoundLabel(roundNumber, currentStageLabel)} • Question {Math.max(1, questionNumberInStage)}
+                              </p>
+                              {interviewerBridge && !isFirstInterviewPrompt ? (
+                                <p className="mt-2 text-sm text-cyan-100/82">{interviewerBridge}</p>
+                              ) : null}
+                              <p className="mt-2 text-lg leading-relaxed text-cyan-50 sm:text-2xl">
+                                {currentQuestion || "Preparing the next interview prompt..."}
+                              </p>
+                            </div>
+                          )}
                         </div>
 
-                        <div className="relative mt-5 flex flex-wrap items-center justify-center gap-2 rounded-full border border-cyan-100/12 bg-[#0c1422]/84 px-3 py-3 shadow-[0_20px_50px_rgba(2,8,22,0.44)]">
+                        <div className="relative mt-5 flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-cyan-100/12 bg-[#0c1422]/84 px-3 py-3 shadow-[0_20px_50px_rgba(2,8,22,0.44)] sm:rounded-full">
                           <button
                             type="button"
                             onClick={isListening ? stopVoiceCapture : () => void startVoiceCapture()}
@@ -2600,144 +2624,7 @@ export default function InterviewSimulatorClient() {
                     </article>
                   </section>
 
-                  <aside className="space-y-5">
-                    <article className="relative overflow-hidden rounded-[1.8rem] border border-cyan-200/22 bg-[linear-gradient(160deg,rgba(9,32,57,0.96),rgba(6,18,34,0.98)_58%,rgba(9,35,60,0.95))] p-5 shadow-[0_24px_56px_rgba(2,8,22,0.44)]">
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.16),transparent_72%)]" />
-                      <div className="flex items-center justify-between">
-                        <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Interview Snapshot</p>
-                        <button
-                          type="button"
-                          onClick={() => void handleRefreshReport()}
-                          disabled={!sessionId || loadingReport}
-                          className="rounded-full border border-cyan-100/20 bg-cyan-100/8 px-3 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-100/14 disabled:opacity-60"
-                        >
-                          {loadingReport ? "Refreshing..." : "Refresh"}
-                        </button>
-                      </div>
-                      <div className="mt-4 grid grid-cols-3 gap-2 text-[11px]">
-                        <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2 py-1.5 text-center text-cyan-100/82">
-                          {roomStage === "live" ? "Live" : "Waiting"}
-                        </div>
-                        <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2 py-1.5 text-center text-cyan-100/82">
-                          {cameraEnabled ? "Preview On" : "Preview Off"}
-                        </div>
-                        <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2 py-1.5 text-center text-cyan-100/82">
-                          {isListening ? "Mic On" : "Mic Off"}
-                        </div>
-                      </div>
-                      <div className="mt-4 space-y-3 text-sm text-cyan-50/80">
-                        <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
-                          <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Candidate</p>
-                          <p className="mt-1 text-sm text-cyan-50">{candidateName || "Pending"}</p>
-                        </div>
-                        <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
-                          <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Round Progress</p>
-                          <p className="mt-1 text-sm text-cyan-50">
-                            {formatRoundLabel(roundNumber, currentStageLabel)} of {Math.max(0, totalRounds)}
-                          </p>
-                          <p className="mt-1 text-xs text-cyan-100/72">Question {Math.max(1, questionNumberInStage)} in this round</p>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-cyan-100/10">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-cyan-300/80 via-sky-300/80 to-emerald-200/80 transition-all duration-500"
-                              style={{ width: `${clampPercent(progressPercent)}%` }}
-                            />
-                          </div>
-                        </div>
-                        {screeningDecisionLabel ? (
-                          <div className={`rounded-xl border p-3 ${screeningDecisionCardClass}`}>
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Round 1 Decision</p>
-                            <p className="mt-1 text-sm font-semibold text-cyan-50">{screeningDecisionLabel}</p>
-                            <p className="mt-2 text-xs text-cyan-50/80">
-                              {screeningDecisionReason || "The simulator evaluated your screening answers and set the next-step decision."}
-                            </p>
-                          </div>
-                        ) : null}
-                        {latestRoundDecision ? (
-                          <div className={`rounded-xl border p-3 ${latestRoundDecision === "shortlisted" ? "border-emerald-200/24 bg-emerald-200/10" : "border-rose-200/24 bg-rose-200/10"}`}>
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Latest Round Result</p>
-                            <p className="mt-1 text-sm font-semibold text-cyan-50">
-                              {latestRoundDecision === "shortlisted" ? "Shortlisted" : "Rejected"}
-                            </p>
-                            <p className="mt-2 text-xs text-cyan-50/80">
-                              {latestTurnFeedback?.round_decision_reason || "Round decision has been applied to progression."}
-                            </p>
-                          </div>
-                        ) : null}
-                        {pendingRoundStart ? (
-                          <div className="rounded-xl border border-emerald-200/24 bg-emerald-200/10 p-3">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-emerald-100/74">Round Gate</p>
-                            <p className="mt-1 text-sm font-semibold text-emerald-50">{pendingRoundStart.stageDecisionLabel}</p>
-                            <p className="mt-2 text-xs text-emerald-50/84">{pendingRoundStart.stageDecisionReason}</p>
-                            <p className="mt-2 text-xs text-emerald-100/76">
-                              Round score {clampPercent(pendingRoundStart.completedStageAverageScore)}% across {pendingRoundStart.completedStageQuestionCount} question
-                              {pendingRoundStart.completedStageQuestionCount > 1 ? "s" : ""}.
-                            </p>
-                            <p className="mt-2 text-xs text-emerald-100/76">{pendingRoundFollowUpMessage}</p>
-                          </div>
-                        ) : null}
-                        {focusSkillsForDisplay.length > 0 ? (
-                          <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Focus Skills</p>
-                            <p className="mt-2 text-xs text-cyan-50/80">{focusSkillsForDisplay.join(", ")}</p>
-                          </div>
-                        ) : null}
-                      </div>
-                    </article>
-
-                    <article className="rounded-[1.8rem] border border-cyan-200/18 bg-[linear-gradient(155deg,rgba(7,26,49,0.94),rgba(4,15,29,0.98))] p-5 shadow-[0_20px_48px_rgba(2,8,22,0.38)]">
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Live Scoreboard</p>
-                      {!latestTurnFeedback ? (
-                        <p className="mt-4 text-sm text-cyan-50/72">Submit your first answer to see stage-by-stage scoring.</p>
-                      ) : (
-                        <div className="mt-4 space-y-3">
-                          {[
-                            { label: "Communication", value: latestTurnFeedback.scores.communication },
-                            { label: "Clarity", value: latestTurnFeedback.scores.clarity },
-                            { label: "Domain Depth", value: latestTurnFeedback.scores.domain_depth },
-                            { label: "Confidence", value: latestTurnFeedback.scores.confidence },
-                            { label: "Overall", value: latestTurnFeedback.scores.overall || 0 },
-                          ].map((metric) => (
-                            <div key={metric.label}>
-                              <div className="flex items-center justify-between text-xs text-cyan-100/80">
-                                <span>{metric.label}</span>
-                                <span>{clampPercent(metric.value)}%</span>
-                              </div>
-                              <div className="mt-1 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-[#061a34]">
-                                <div
-                                  className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-300 to-emerald-200 transition-all duration-700"
-                                  style={{ width: `${clampPercent(metric.value)}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                          <p className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/78">
-                            {latestTurnFeedback.feedback_summary}
-                          </p>
-                        </div>
-                      )}
-                    </article>
-
-                    <article className="rounded-[1.8rem] border border-cyan-200/18 bg-[linear-gradient(155deg,rgba(7,26,49,0.94),rgba(4,15,29,0.98))] p-5 shadow-[0_20px_48px_rgba(2,8,22,0.38)]">
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Turn History</p>
-                      {turnHistory.length === 0 ? (
-                        <p className="mt-4 text-sm text-cyan-50/72">No interview answers scored yet.</p>
-                      ) : (
-                        <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                          {turnHistory.map((turn, index) => (
-                            <article key={`turn-${turn.round_number}-${turn.question_number_in_stage || 1}-${index}`} className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-semibold text-cyan-100">{formatRoundLabel(turn.round_number, turn.stage_label || "Round")}</p>
-                                <span className="text-[11px] text-cyan-100/70">{turn.response_time_seconds}s</span>
-                              </div>
-                              <p className="mt-2 text-[11px] text-cyan-100/68">Question {turn.question_number_in_stage || 1}</p>
-                              <p className="mt-2 text-[11px] text-cyan-50/84">{turn.feedback_summary}</p>
-                              <p className="mt-2 text-[11px] text-cyan-100/70">Overall {clampPercent(turn.scores.overall || 0)}%</p>
-                            </article>
-                          ))}
-                        </div>
-                      )}
-                    </article>
-                  </aside>
+                  {null}
                 </div>
               </div>
             )}
@@ -2756,7 +2643,11 @@ export default function InterviewSimulatorClient() {
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
               <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3">
                 <p className="text-[11px] uppercase tracking-[0.11em] text-cyan-100/68">Step 1</p>
-                <p className="mt-1 text-xs text-cyan-50/84">Add your name, target role, resume, and JD. The setup card collapses only after you click Start Interview.</p>
+                <p className="mt-1 text-xs text-cyan-50/84">
+                  {isDemoMode
+                    ? "Add your name and target role to run the 90-second screening demo. The setup card collapses only after you click Start Interview."
+                    : "Add your name, target role, resume, and JD. The setup card collapses only after you click Start Interview."}
+                </p>
               </div>
               <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3">
                 <p className="text-[11px] uppercase tracking-[0.11em] text-cyan-100/68">Step 2</p>
@@ -2764,7 +2655,11 @@ export default function InterviewSimulatorClient() {
               </div>
               <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/7 p-3">
                 <p className="text-[11px] uppercase tracking-[0.11em] text-cyan-100/68">Step 3</p>
-                <p className="mt-1 text-xs text-cyan-50/84">The simulator moves through screening, technical, in-depth, and HR rounds only when your performance justifies them.</p>
+                <p className="mt-1 text-xs text-cyan-50/84">
+                  {isDemoMode
+                    ? "The demo runs a single screening round with 3 adaptive questions and instant result."
+                    : "The simulator moves through screening, technical, in-depth, and HR rounds only when your performance justifies them."}
+                </p>
               </div>
             </div>
           </div>
@@ -2797,8 +2692,11 @@ export default function InterviewSimulatorClient() {
                 ))}
               </div>
               <p className="mt-3 text-xs text-cyan-100/72">
-                {resumeUploadedFileName ? `Resume: ${resumeUploadedFileName}` : "Resume ready"} •{" "}
-                {jdUploadedFileName ? `JD: ${jdUploadedFileName}` : "JD ready"}
+                {isDemoMode
+                  ? "Demo mode active: resume and JD are optional."
+                  : `${resumeUploadedFileName ? `Resume: ${resumeUploadedFileName}` : "Resume ready"} • ${
+                      jdUploadedFileName ? `JD: ${jdUploadedFileName}` : "JD ready"
+                    }`}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2856,7 +2754,7 @@ export default function InterviewSimulatorClient() {
                       <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-50" />
                     </span>
                   ) : null}
-                  {startLoading ? "Initializing Interview..." : "Start Interview"}
+                  {startLoading ? "Initializing Interview..." : isDemoMode ? "Start 90-Second Demo" : "Start Interview"}
                 </button>
                 <button
                   type="button"
@@ -2867,6 +2765,40 @@ export default function InterviewSimulatorClient() {
                   Reset Session
                 </button>
               </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
+              <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">Simulation Mode</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setSimulatorMode("full")}
+                  disabled={startLoading || submitLoading}
+                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                    simulatorMode === "full"
+                      ? "border-emerald-200/40 bg-emerald-300/16 text-emerald-50"
+                      : "border-cyan-100/22 bg-transparent text-cyan-50/84 hover:bg-cyan-100/10"
+                  }`}
+                >
+                  Full Simulation
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSimulatorMode("demo")}
+                  disabled={startLoading || submitLoading}
+                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                    simulatorMode === "demo"
+                      ? "border-emerald-200/40 bg-emerald-300/16 text-emerald-50"
+                      : "border-cyan-100/22 bg-transparent text-cyan-50/84 hover:bg-cyan-100/10"
+                  }`}
+                >
+                  90-Second Demo
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-cyan-100/72">
+                {isDemoMode
+                  ? "Demo asks 3 screening questions with instant decision preview."
+                  : "Full mode uses resume + JD and unlocks adaptive multi-round interview flow."}
+              </p>
             </div>
             <div className="mt-5 grid gap-3 lg:grid-cols-5">
               <label className="grid gap-1 lg:col-span-1">
@@ -2899,51 +2831,61 @@ export default function InterviewSimulatorClient() {
                 </select>
               </label>
             </div>
-            <div className="mt-3 grid gap-3 lg:grid-cols-[1fr,1fr,180px]">
-              <button
-                type="button"
-                onClick={() => resumeFileInputRef.current?.click()}
-                disabled={resumeFileUploading}
-                className="rounded-xl border border-cyan-100/28 bg-cyan-100/10 px-3 py-2.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:opacity-60"
-              >
-                {resumeFileUploading ? "Extracting Resume..." : "Upload Resume"}
-              </button>
-              <button
-                type="button"
-                onClick={() => jdFileInputRef.current?.click()}
-                disabled={jdFileUploading}
-                className="rounded-xl border border-cyan-100/28 bg-cyan-100/10 px-3 py-2.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:opacity-60"
-              >
-                {jdFileUploading ? "Extracting JD..." : "Upload JD"}
-              </button>
-              <div className="flex items-center rounded-xl border border-cyan-100/18 bg-cyan-100/8 px-3 py-2.5 text-xs text-cyan-50/84">
-                Adaptive rounds: Screening, Technical, In-Depth, HR
+            {setupRequiresResumeAndJd ? (
+              <>
+                <div className="mt-3 grid gap-3 lg:grid-cols-[1fr,1fr,180px]">
+                  <button
+                    type="button"
+                    onClick={() => resumeFileInputRef.current?.click()}
+                    disabled={resumeFileUploading}
+                    className="rounded-xl border border-cyan-100/28 bg-cyan-100/10 px-3 py-2.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:opacity-60"
+                  >
+                    {resumeFileUploading ? "Extracting Resume..." : "Upload Resume"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => jdFileInputRef.current?.click()}
+                    disabled={jdFileUploading}
+                    className="rounded-xl border border-cyan-100/28 bg-cyan-100/10 px-3 py-2.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:opacity-60"
+                  >
+                    {jdFileUploading ? "Extracting JD..." : "Upload JD"}
+                  </button>
+                  <div className="flex items-center rounded-xl border border-cyan-100/18 bg-cyan-100/8 px-3 py-2.5 text-xs text-cyan-50/84">
+                    Adaptive rounds: Screening, Technical, In-Depth, HR
+                  </div>
+                </div>
+                {(resumeUploadedFileName || jdUploadedFileName) ? (
+                  <p className="mt-3 text-xs text-cyan-100/74">
+                    {resumeUploadedFileName ? `Resume: ${resumeUploadedFileName}` : "Resume loaded"} •{" "}
+                    {jdUploadedFileName ? `JD: ${jdUploadedFileName}` : "JD loaded"}
+                  </p>
+                ) : null}
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <textarea
+                    value={resumeText}
+                    onChange={(event) => setResumeText(event.target.value)}
+                    placeholder="Resume context"
+                    className={`${textAreaClass} min-h-[180px]`}
+                  />
+                  <textarea
+                    value={jobDescription}
+                    onChange={(event) => setJobDescription(event.target.value)}
+                    placeholder="JD context"
+                    className={`${textAreaClass} min-h-[180px]`}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="mt-3 rounded-xl border border-cyan-100/16 bg-cyan-100/8 px-3 py-3 text-xs text-cyan-100/80">
+                Resume and JD are optional in demo mode. Add them and switch to Full Simulation for deeper adaptive rounds and dashboard-grade analysis.
               </div>
-            </div>
-            {(resumeUploadedFileName || jdUploadedFileName) ? (
-              <p className="mt-3 text-xs text-cyan-100/74">
-                {resumeUploadedFileName ? `Resume: ${resumeUploadedFileName}` : "Resume loaded"} •{" "}
-                {jdUploadedFileName ? `JD: ${jdUploadedFileName}` : "JD loaded"}
-              </p>
-            ) : null}
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              <textarea
-                value={resumeText}
-                onChange={(event) => setResumeText(event.target.value)}
-                placeholder="Resume context"
-                className={`${textAreaClass} min-h-[180px]`}
-              />
-              <textarea
-                value={jobDescription}
-                onChange={(event) => setJobDescription(event.target.value)}
-                placeholder="JD context"
-                className={`${textAreaClass} min-h-[180px]`}
-              />
-            </div>
+            )}
             {focusSkillsForDisplay.length > 0 ? (
               <div className="mt-4 rounded-2xl border border-cyan-100/16 bg-cyan-100/6 p-4">
                 <p className="text-[11px] uppercase tracking-[0.11em] text-cyan-100/72">Focus Skills</p>
-                <p className="mt-1 text-xs text-cyan-100/72">Short role keywords extracted from your JD and resume.</p>
+                <p className="mt-1 text-xs text-cyan-100/72">
+                  {isDemoMode ? "Short role keywords extracted from role context." : "Short role keywords extracted from your JD and resume."}
+                </p>
                 <p className="mt-2 text-sm text-cyan-50/82">{focusSkillsForDisplay.join(", ")}</p>
               </div>
             ) : null}
@@ -2951,7 +2893,7 @@ export default function InterviewSimulatorClient() {
           </article>
         )}
 
-        <div className="grid gap-5 xl:grid-cols-[1.7fr_0.8fr]">
+        <div className={`grid gap-5 ${report ? "xl:grid-cols-[1.7fr_0.8fr]" : ""}`}>
           <section className="space-y-5">
             <article className="overflow-hidden rounded-[2rem] border border-cyan-100/18 bg-[#040911] shadow-[0_22px_60px_rgba(2,8,22,0.46)]">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-100/10 bg-[#07101b]/88 px-5 py-4">
@@ -3030,100 +2972,102 @@ export default function InterviewSimulatorClient() {
             </article>
           </section>
 
-          <aside className="space-y-5">
-            <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Interview Snapshot</p>
-                <button
-                  type="button"
-                  onClick={() => void handleRefreshReport()}
-                  disabled={!sessionId || loadingReport}
-                  className="rounded-full border border-cyan-100/20 bg-cyan-100/8 px-3 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-100/14 disabled:opacity-60"
-                >
-                  {loadingReport ? "Refreshing..." : "Refresh"}
-                </button>
-              </div>
-              <div className="mt-4 space-y-3 text-sm text-cyan-50/80">
-                <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Candidate</p>
-                  <p className="mt-1 text-sm text-cyan-50">{candidateName || "Pending"}</p>
+          {report ? (
+            <aside className="space-y-5">
+              <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Session Snapshot</p>
+                  <button
+                    type="button"
+                    onClick={() => void handleRefreshReport()}
+                    disabled={!sessionId || loadingReport}
+                    className="rounded-full border border-cyan-100/20 bg-cyan-100/8 px-3 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-100/14 disabled:opacity-60"
+                  >
+                    {loadingReport ? "Refreshing..." : "Refresh"}
+                  </button>
                 </div>
-                <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Round Progress</p>
-                  <p className="mt-1 text-sm text-cyan-50">
-                    {formatRoundLabel(roundNumber, currentStageLabel)} of {Math.max(0, totalRounds)}
-                  </p>
-                  <p className="mt-1 text-xs text-cyan-100/72">Question {Math.max(1, questionNumberInStage)} in this round</p>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-cyan-100/10">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-cyan-300/80 via-sky-300/80 to-emerald-200/80 transition-all duration-500"
-                      style={{ width: `${clampPercent(progressPercent)}%` }}
-                    />
-                  </div>
-                </div>
-                {focusSkillsForDisplay.length > 0 ? (
+                <div className="mt-4 space-y-3 text-sm text-cyan-50/80">
                   <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
-                    <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Focus Skills</p>
-                    <p className="mt-2 text-xs text-cyan-50/80">{focusSkillsForDisplay.join(", ")}</p>
+                    <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Candidate</p>
+                    <p className="mt-1 text-sm text-cyan-50">{candidateName || "Pending"}</p>
                   </div>
-                ) : null}
-              </div>
-            </article>
-
-            <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Live Scoreboard</p>
-              {!latestTurnFeedback ? (
-                <p className="mt-4 text-sm text-cyan-50/72">Submit your first answer to see stage-by-stage scoring.</p>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {[
-                    { label: "Communication", value: latestTurnFeedback.scores.communication },
-                    { label: "Clarity", value: latestTurnFeedback.scores.clarity },
-                    { label: "Domain Depth", value: latestTurnFeedback.scores.domain_depth },
-                    { label: "Confidence", value: latestTurnFeedback.scores.confidence },
-                    { label: "Overall", value: latestTurnFeedback.scores.overall || 0 },
-                  ].map((metric) => (
-                    <div key={metric.label}>
-                      <div className="flex items-center justify-between text-xs text-cyan-100/80">
-                        <span>{metric.label}</span>
-                        <span>{clampPercent(metric.value)}%</span>
-                      </div>
-                      <div className="mt-1 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-[#061a34]">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-300 to-emerald-200 transition-all duration-700"
-                          style={{ width: `${clampPercent(metric.value)}%` }}
-                        />
-                      </div>
+                  <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
+                    <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Round Progress</p>
+                    <p className="mt-1 text-sm text-cyan-50">
+                      {formatRoundLabel(roundNumber, currentStageLabel)} of {Math.max(0, totalRounds)}
+                    </p>
+                    <p className="mt-1 text-xs text-cyan-100/72">Question {Math.max(1, questionNumberInStage)} in this round</p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-cyan-100/10">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-cyan-300/80 via-sky-300/80 to-emerald-200/80 transition-all duration-500"
+                        style={{ width: `${clampPercent(progressPercent)}%` }}
+                      />
                     </div>
-                  ))}
-                  <p className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/78">
-                    {latestTurnFeedback.feedback_summary}
-                  </p>
+                  </div>
+                  {focusSkillsForDisplay.length > 0 ? (
+                    <div className="rounded-xl border border-cyan-100/14 bg-cyan-100/8 p-3">
+                      <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-100/66">Focus Skills</p>
+                      <p className="mt-2 text-xs text-cyan-50/80">{focusSkillsForDisplay.join(", ")}</p>
+                    </div>
+                  ) : null}
                 </div>
-              )}
-            </article>
+              </article>
 
-            <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Turn History</p>
-              {turnHistory.length === 0 ? (
-                <p className="mt-4 text-sm text-cyan-50/72">No interview answers scored yet.</p>
-              ) : (
-                <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                  {turnHistory.map((turn, index) => (
-                    <article key={`turn-${turn.round_number}-${turn.question_number_in_stage || 1}-${index}`} className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold text-cyan-100">{formatRoundLabel(turn.round_number, turn.stage_label || "Round")}</p>
-                        <span className="text-[11px] text-cyan-100/70">{turn.response_time_seconds}s</span>
+              <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Session Scoreboard</p>
+                {!latestTurnFeedback ? (
+                  <p className="mt-4 text-sm text-cyan-50/72">No scored answers available for this session.</p>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {[
+                      { label: "Communication", value: latestTurnFeedback.scores.communication },
+                      { label: "Clarity", value: latestTurnFeedback.scores.clarity },
+                      { label: "Domain Depth", value: latestTurnFeedback.scores.domain_depth },
+                      { label: "Confidence", value: latestTurnFeedback.scores.confidence },
+                      { label: "Overall", value: latestTurnFeedback.scores.overall || 0 },
+                    ].map((metric) => (
+                      <div key={metric.label}>
+                        <div className="flex items-center justify-between text-xs text-cyan-100/80">
+                          <span>{metric.label}</span>
+                          <span>{clampPercent(metric.value)}%</span>
+                        </div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full border border-cyan-100/16 bg-[#061a34]">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-300 to-emerald-200 transition-all duration-700"
+                            style={{ width: `${clampPercent(metric.value)}%` }}
+                          />
+                        </div>
                       </div>
-                      <p className="mt-2 text-[11px] text-cyan-100/68">Question {turn.question_number_in_stage || 1}</p>
-                      <p className="mt-2 text-[11px] text-cyan-50/84">{turn.feedback_summary}</p>
-                      <p className="mt-2 text-[11px] text-cyan-100/70">Overall {clampPercent(turn.scores.overall || 0)}%</p>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </article>
-          </aside>
+                    ))}
+                    <p className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/78">
+                      {latestTurnFeedback.feedback_summary}
+                    </p>
+                  </div>
+                )}
+              </article>
+
+              <article className="rounded-[1.7rem] border border-cyan-100/18 bg-[linear-gradient(145deg,rgba(8,24,44,0.9),rgba(5,16,31,0.96))] p-5">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/74">Turn History</p>
+                {turnHistory.length === 0 ? (
+                  <p className="mt-4 text-sm text-cyan-50/72">No interview answers scored yet.</p>
+                ) : (
+                  <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                    {turnHistory.map((turn, index) => (
+                      <article key={`turn-${turn.round_number}-${turn.question_number_in_stage || 1}-${index}`} className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-cyan-100">{formatRoundLabel(turn.round_number, turn.stage_label || "Round")}</p>
+                          <span className="text-[11px] text-cyan-100/70">{turn.response_time_seconds}s</span>
+                        </div>
+                        <p className="mt-2 text-[11px] text-cyan-100/68">Question {turn.question_number_in_stage || 1}</p>
+                        <p className="mt-2 text-[11px] text-cyan-50/84">{turn.feedback_summary}</p>
+                        <p className="mt-2 text-[11px] text-cyan-100/70">Overall {clampPercent(turn.scores.overall || 0)}%</p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </article>
+            </aside>
+          ) : null}
         </div>
       </section>
 
@@ -3136,6 +3080,22 @@ export default function InterviewSimulatorClient() {
               <p className="mt-1 text-sm text-cyan-100/80">Readiness band: {report.readiness_label.replace(/_/g, " ")}</p>
               {report.shortlist_prediction ? <p className="mt-1 text-sm text-cyan-100/76">{report.shortlist_prediction}</p> : null}
               <p className="mt-3 rounded-xl border border-emerald-200/18 bg-emerald-200/10 px-3 py-2 text-xs text-emerald-50/88">{reportArchiveNote}</p>
+              {reportSessionMode === "demo" ? (
+                <div className="mt-3 rounded-xl border border-cyan-100/20 bg-cyan-100/8 px-3 py-2">
+                  <p className="text-xs text-cyan-100/84">Demo complete. Switch to full simulation with resume + JD for multi-round depth and stronger dashboard insights.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSimulatorMode("full");
+                      setSetupExpanded(true);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="mt-2 rounded-full border border-cyan-100/28 bg-cyan-200/14 px-3 py-1.5 text-[11px] font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
+                  >
+                    Switch to Full Simulation
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
