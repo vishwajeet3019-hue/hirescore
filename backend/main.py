@@ -11954,10 +11954,12 @@ def build_interview_simulator_interviewer_bridge(
 ) -> str:
     candidate = safe_text(candidate_name).strip() or "there"
     suggested = safe_text(llm_bridge).strip()
+    if answer_shows_playful_humor(answer_text):
+        if suggested and re.search(r"\b(?:nice one|good one|smile|laugh|gave me that)\b", suggested.lower()):
+            return suggested[:180]
+        return f"Nice one, {candidate}. I'll give you that. Let's keep going."
     if suggested:
         return suggested[:180]
-    if answer_shows_playful_humor(answer_text):
-        return f"Nice one, {candidate}. I'll give you that. Let's keep going."
     if overall_score >= 78:
         return f"Good answer, {candidate}. That was clear and well grounded."
     if overall_score >= 56:
