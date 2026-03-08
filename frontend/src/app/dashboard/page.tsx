@@ -169,6 +169,15 @@ const formatReportDate = (value: string) => {
     timeStyle: "short",
   });
 };
+const formatReportSource = (value: string) => {
+  const normalized = (value || "").trim().toLowerCase();
+  if (normalized === "interview_simulator") return "Interview Simulator";
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ") || "Analysis";
+};
 const downloadFilename = (response: Response, fallback: string) => {
   const disposition = response.headers.get("content-disposition") || "";
   const match = disposition.match(/filename\*?=(?:UTF-8''|\"?)([^\";]+)/i);
@@ -1052,7 +1061,7 @@ export default function DashboardPage() {
           <section className="mt-6 rounded-[2rem] border border-amber-100/28 bg-[linear-gradient(145deg,rgba(45,33,14,0.78),rgba(13,20,33,0.92))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
             <p className="text-xs uppercase tracking-[0.14em] text-amber-100/76">Saved Analysis Reports</p>
             <h2 className="mt-2 text-xl font-semibold text-amber-50">Offer Intelligence Archive</h2>
-            <p className="mt-1 text-sm text-cyan-50/70">Each analysis is auto-saved to your account dashboard.</p>
+            <p className="mt-1 text-sm text-cyan-50/70">Each analysis and completed interview simulator report is auto-saved to your account dashboard.</p>
             {reportsError && <p className="mt-3 text-xs text-amber-100">{reportsError}</p>}
             {!reports.length ? (
               <p className="mt-4 text-sm text-cyan-50/70">No reports saved yet. Run one analysis to see it here.</p>
@@ -1069,7 +1078,8 @@ export default function DashboardPage() {
                         {report.industry || "General"} • {formatReportDate(report.created_at)}
                       </p>
                       <p className="mt-1 text-xs text-cyan-50/68">
-                        Score: {report.overall_score ?? "N/A"} • {report.shortlist_prediction || "Prediction unavailable"}
+                        {formatReportSource(report.source)} • Score: {report.overall_score ?? "N/A"} •{" "}
+                        {report.shortlist_prediction || "Prediction unavailable"}
                       </p>
                     </div>
                     <button

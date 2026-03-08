@@ -521,6 +521,7 @@ class InterviewPrepRequest(BaseModel):
 class InterviewSimulatorStartRequest(BaseModel):
     industry: str
     role: str
+    candidate_name: str | None = None
     job_description: str | None = None
     resume_text: str | None = None
     difficulty: str | None = None
@@ -8545,8 +8546,11 @@ def analysis_interview_prep(data: InterviewPrepRequest, request: Request) -> dic
 @app.post("/analysis/interview-simulator/start")
 def analysis_interview_simulator_start(data: InterviewSimulatorStartRequest, request: Request) -> dict[str, Any]:
     user = resolve_optional_authenticated_user(request, data.auth_token)
+    candidate_name = safe_text(data.candidate_name).strip()
     role = safe_text(data.role).strip()
     industry = safe_text(data.industry).strip() or "General"
+    if len(candidate_name) < 2:
+        raise HTTPException(status_code=400, detail="Enter your name before starting the simulator.")
     if len(role) < 2:
         raise HTTPException(status_code=400, detail="Enter a valid role before starting the simulator.")
 
@@ -8554,7 +8558,14 @@ def analysis_interview_simulator_start(data: InterviewSimulatorStartRequest, req
     total_rounds = normalize_interview_simulator_rounds(data.rounds)
     resume_text = safe_text(data.resume_text)[:14000]
     job_description = safe_text(data.job_description)[:14000]
+    if len(resume_text.strip()) < 24:
+        raise HTTPException(status_code=400, detail="Upload or paste your resume before starting.")
+    if len(job_description.strip()) < 24:
+        raise HTTPException(status_code=400, detail="Upload or paste the JD before starting.")
     focus_skills = collect_interview_simulator_focus_skills(role, industry, resume_text, job_description)
+    interviewer_name = pick_interview_simulator_interviewer_name(role, industry)
+    opening_remark = build_interview_simulator_opening_remark(candidate_name, interviewer_name, role)
+    closing_remark = build_interview_simulator_closing_remark(candidate_name, interviewer_name)
     opening_question = build_interview_simulator_opening_question(role, industry, difficulty, focus_skills)
 
     opener_model: str | None = None
@@ -8584,14 +8595,19 @@ Output JSON schema:
         "id": session_id,
         "session_secret": session_secret,
         "user_id": owner_user_id,
+        "candidate_name": candidate_name,
         "role": role,
         "industry": industry,
+        "interviewer_name": interviewer_name,
+        "opening_remark": opening_remark,
+        "closing_remark": closing_remark,
         "difficulty": difficulty,
         "focus_skills": focus_skills,
         "total_rounds": total_rounds,
         "questions": [opening_question],
         "turns": [],
         "status": "active",
+        "saved_report_id": 0,
         "created_at": now_iso,
         "updated_at": now_iso,
         "created_at_ts": now_ts,
@@ -8627,8 +8643,12 @@ Output JSON schema:
     return {
         "session_id": session_id,
         "session_secret": session_secret,
+        "candidate_name": candidate_name,
         "role": role,
         "industry": industry,
+        "interviewer_name": interviewer_name,
+        "opening_remark": opening_remark,
+        "closing_remark": closing_remark,
         "difficulty": difficulty,
         "focus_skills": focus_skills[:8],
         "round_number": 1,
@@ -8678,6 +8698,8 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "turn_feedback": None,
                 "report": report_payload,
                 "status": "completed",
+                "closing_remark": safe_text(existing.get("closing_remark")),
+                "saved_report_id": int(existing.get("saved_report_id") or 0) or None,
             }
         turns = existing.get("turns") if isinstance(existing.get("turns"), list) else []
         questions = existing.get("questions") if isinstance(existing.get("questions"), list) else []
@@ -8781,6 +8803,8 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     }
 
     report_payload: dict[str, Any] | None = None
+    session_snapshot_for_archive: dict[str, Any] | None = None
+    saved_report_id = 0
     next_question: str | None = None
     completed = round_number >= total_rounds
 
@@ -8795,9 +8819,34 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         refreshed_turns.append(turn_payload)
         refreshed["turns"] = refreshed_turns
         refreshed_questions = refreshed.get("questions") if isinstance(refreshed.get("questions"), list) else []
+        refreshed["updated_at"] = now_utc_iso()
+        refreshed["expires_at_ts"] = time.time() + INTERVIEW_SIMULATOR_TTL_SECONDS
         if completed:
             refreshed["status"] = "completed"
+            refreshed["closing_remark"] = safe_text(refreshed.get("closing_remark")) or build_interview_simulator_closing_remark(
+                safe_text(refreshed.get("candidate_name")),
+                safe_text(refreshed.get("interviewer_name")),
+            )
             report_payload = build_interview_simulator_report_payload(refreshed)
+            session_snapshot_for_archive = {
+                "id": safe_text(refreshed.get("id")),
+                "candidate_name": safe_text(refreshed.get("candidate_name")),
+                "role": safe_text(refreshed.get("role")),
+                "industry": safe_text(refreshed.get("industry")),
+                "interviewer_name": safe_text(refreshed.get("interviewer_name")),
+                "opening_remark": safe_text(refreshed.get("opening_remark")),
+                "closing_remark": safe_text(refreshed.get("closing_remark")),
+                "difficulty": safe_text(refreshed.get("difficulty")),
+                "focus_skills": json.loads(json.dumps(refreshed.get("focus_skills") or [], ensure_ascii=False, default=str)),
+                "total_rounds": int(refreshed.get("total_rounds") or total_rounds),
+                "questions": json.loads(json.dumps(refreshed_questions, ensure_ascii=False, default=str)),
+                "turns": json.loads(json.dumps(refreshed_turns, ensure_ascii=False, default=str)),
+                "status": safe_text(refreshed.get("status")) or "completed",
+                "created_at": safe_text(refreshed.get("created_at")),
+                "updated_at": safe_text(refreshed.get("updated_at")),
+                "saved_report_id": int(refreshed.get("saved_report_id") or 0),
+            }
+            saved_report_id = int(refreshed.get("saved_report_id") or 0)
         else:
             next_question = build_interview_simulator_follow_up_question(
                 role=role,
@@ -8811,8 +8860,6 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             )[:260]
             refreshed_questions.append(next_question)
             refreshed["questions"] = refreshed_questions
-        refreshed["updated_at"] = now_utc_iso()
-        refreshed["expires_at_ts"] = time.time() + INTERVIEW_SIMULATOR_TTL_SECONDS
 
     if next_question:
         queue_interview_simulator_tts_prefetch(
@@ -8820,6 +8867,22 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
             next_question,
             requested_voice=INTERVIEW_SIMULATOR_TTS_PREFETCH_VOICE,
         )
+
+    if completed and report_payload and owner_user_id > 0 and saved_report_id <= 0 and session_snapshot_for_archive:
+        archive_payload = build_interview_simulator_archive_payload(session_snapshot_for_archive, report_payload)
+        persisted_report_id = save_analysis_report(
+            owner_user_id,
+            "interview_simulator",
+            industry,
+            role,
+            archive_payload,
+        )
+        if persisted_report_id:
+            saved_report_id = int(persisted_report_id)
+            with INTERVIEW_SIMULATOR_LOCK:
+                live_session = INTERVIEW_SIMULATOR_SESSIONS.get(session_id)
+                if live_session and int(live_session.get("saved_report_id") or 0) <= 0:
+                    live_session["saved_report_id"] = saved_report_id
 
     if completed and report_payload:
         log_analytics_event(
@@ -8833,6 +8896,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "overall_score": int(report_payload.get("overall_score") or 0),
                 "readiness": safe_text(report_payload.get("readiness_label")),
                 "ai_used": ai_used,
+                "saved_report_id": saved_report_id or None,
                 "guest_mode": owner_user_id <= 0,
             },
         )
@@ -8861,6 +8925,8 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         "turn_feedback": turn_payload,
         "report": report_payload,
         "status": "completed" if completed else "active",
+        "closing_remark": safe_text((session_snapshot_for_archive or {}).get("closing_remark")) if completed else None,
+        "saved_report_id": saved_report_id or None,
     }
 
 
@@ -8893,8 +8959,12 @@ def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, r
 
     return {
         "session_id": session_id,
+        "candidate_name": safe_text(session_payload.get("candidate_name")),
         "role": safe_text(session_payload.get("role")) or "Target role",
         "industry": safe_text(session_payload.get("industry")) or "General",
+        "interviewer_name": safe_text(session_payload.get("interviewer_name")),
+        "opening_remark": safe_text(session_payload.get("opening_remark")),
+        "closing_remark": safe_text(session_payload.get("closing_remark")),
         "difficulty": normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty"))),
         "total_rounds": int(session_payload.get("total_rounds") or 0),
         "status": safe_text(session_payload.get("status")) or "active",
@@ -8902,6 +8972,7 @@ def analysis_interview_simulator_report(data: InterviewSimulatorReportRequest, r
         "questions": [safe_text(item)[:260] for item in questions[:20] if safe_text(item)],
         "turns": turns,
         "report": report_payload,
+        "saved_report_id": int(session_payload.get("saved_report_id") or 0) or None,
     }
 
 
@@ -9337,7 +9408,10 @@ def download_user_analysis_report(report_id: int, request: Request, auth_token: 
         f"{safe_text(row['role']) or 'analysis'}-{safe_text(row['created_at'])[:10] or 'report'}-{report_id}"
     )
     try:
-        pdf_bytes = render_analysis_report_pdf_bytes(parsed_payload, row)
+        if safe_text(row["source"]).lower() == "interview_simulator" or safe_text(parsed_payload.get("report_kind")).lower() == "interview_simulator":
+            pdf_bytes = render_interview_simulator_report_pdf_bytes(parsed_payload, row)
+        else:
+            pdf_bytes = render_analysis_report_pdf_bytes(parsed_payload, row)
     except Exception as exc:
         logger.exception("Failed to render analysis report PDF for report_id=%s user_id=%s", report_id, user_id)
         raise HTTPException(status_code=500, detail="Unable to generate report PDF right now.") from exc
@@ -10770,7 +10844,7 @@ def build_analysis_comparison_payload(connection: AuthDBConnection, user_id: int
         """
         SELECT id, source, industry, role, overall_score, shortlist_prediction, report_json, created_at
         FROM analysis_reports
-        WHERE user_id = ?
+        WHERE user_id = ? AND lower(source) != 'interview_simulator'
         ORDER BY id DESC
         LIMIT 2
         """,
@@ -11812,6 +11886,33 @@ def build_interview_simulator_opening_question(role: str, industry: str, difficu
     return base_prompt
 
 
+def pick_interview_simulator_interviewer_name(role: str, industry: str) -> str:
+    pool = [
+        "Avery Bennett",
+        "Jordan Lee",
+        "Riya Kapoor",
+        "Marcus Hale",
+        "Nina Foster",
+        "Samir Patel",
+    ]
+    seed = f"{normalize_search_text(role)}|{normalize_search_text(industry)}".encode("utf-8")
+    digest = hashlib.sha256(seed).hexdigest()
+    return pool[int(digest[:8], 16) % len(pool)]
+
+
+def build_interview_simulator_opening_remark(candidate_name: str, interviewer_name: str, role: str) -> str:
+    candidate = safe_text(candidate_name).strip() or "there"
+    interviewer = safe_text(interviewer_name).strip() or "Avery"
+    target_role = safe_text(role).strip() or "this role"
+    return f"Hi {candidate}, thanks for joining today. I'm {interviewer}, and I'll be leading this mock interview for the {target_role} role."
+
+
+def build_interview_simulator_closing_remark(candidate_name: str, interviewer_name: str) -> str:
+    candidate = safe_text(candidate_name).strip() or "there"
+    interviewer = safe_text(interviewer_name).strip() or "Avery"
+    return f"Thanks for joining today, {candidate}. I'm {interviewer}. That wraps up the interview, and your report is ready below."
+
+
 def build_interview_turn_heuristics(
     question: str,
     answer_text: str,
@@ -12040,6 +12141,11 @@ def build_interview_simulator_follow_up_question(
 
 def build_interview_simulator_report_payload(session_payload: dict[str, Any]) -> dict[str, Any]:
     turns = session_payload.get("turns") if isinstance(session_payload.get("turns"), list) else []
+    role = safe_text(session_payload.get("role")) or "Target role"
+    industry = safe_text(session_payload.get("industry")) or "General"
+    difficulty = normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty")))
+    candidate_name = safe_text(session_payload.get("candidate_name"))
+    interviewer_name = safe_text(session_payload.get("interviewer_name"))
     if not turns:
         return {
             "overall_score": 0,
@@ -12050,6 +12156,13 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
             "next_steps": ["Start the simulation and answer at least one question to get a report."],
             "turns_completed": 0,
             "total_rounds": int(session_payload.get("total_rounds") or 0),
+            "shortlist_prediction": "Interview readiness: Not Started",
+            "source": "interview_simulator",
+            "role": role,
+            "industry": industry,
+            "difficulty": difficulty,
+            "candidate_name": candidate_name,
+            "interviewer_name": interviewer_name,
         }
 
     communication_values = [safe_float(((turn.get("scores") or {}).get("communication")), 0.0) for turn in turns]
@@ -12079,6 +12192,7 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
         readiness_label = "medium"
     if overall_score < 55:
         readiness_label = "low"
+    readiness_title = readiness_label.replace("_", " ").title()
 
     next_steps = [
         "Build 5 STAR stories with one quantified result each.",
@@ -12095,6 +12209,13 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
     return {
         "overall_score": overall_score,
         "readiness_label": readiness_label,
+        "shortlist_prediction": f"Interview readiness: {readiness_title}",
+        "source": "interview_simulator",
+        "role": role,
+        "industry": industry,
+        "difficulty": difficulty,
+        "candidate_name": candidate_name,
+        "interviewer_name": interviewer_name,
         "score_breakdown": {
             "communication": communication_avg,
             "clarity": clarity_avg,
@@ -12106,6 +12227,51 @@ def build_interview_simulator_report_payload(session_payload: dict[str, Any]) ->
         "next_steps": dedupe_text_list(next_steps, limit=5, max_item_len=220),
         "turns_completed": len(turns),
         "total_rounds": int(session_payload.get("total_rounds") or len(turns)),
+    }
+
+
+def build_interview_simulator_archive_payload(
+    session_payload: dict[str, Any],
+    report_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    report_summary = dict(report_payload or build_interview_simulator_report_payload(session_payload))
+    turns = session_payload.get("turns") if isinstance(session_payload.get("turns"), list) else []
+    questions = session_payload.get("questions") if isinstance(session_payload.get("questions"), list) else []
+    role = safe_text(session_payload.get("role")) or "Target role"
+    industry = safe_text(session_payload.get("industry")) or "General"
+    difficulty = normalize_interview_simulator_difficulty(safe_text(session_payload.get("difficulty")))
+    candidate_name = safe_text(session_payload.get("candidate_name"))
+    interviewer_name = safe_text(session_payload.get("interviewer_name"))
+    opening_remark = safe_text(session_payload.get("opening_remark"))
+    closing_remark = safe_text(session_payload.get("closing_remark"))
+    completed_at = safe_text(session_payload.get("updated_at")) or now_utc_iso()
+
+    return {
+        "report_kind": "interview_simulator",
+        "source": "interview_simulator",
+        "role": role,
+        "industry": industry,
+        "difficulty": difficulty,
+        "candidate_name": candidate_name,
+        "interviewer_name": interviewer_name,
+        "opening_remark": opening_remark,
+        "closing_remark": closing_remark,
+        "focus_skills": dedupe_text_list(session_payload.get("focus_skills") or [], limit=10, max_item_len=80),
+        "questions": [safe_text(item)[:260] for item in questions[:20] if safe_text(item)],
+        "turns": turns,
+        "overall_score": int(clamp_float(float(report_summary.get("overall_score") or 0), 0.0, 100.0)),
+        "shortlist_prediction": safe_text(report_summary.get("shortlist_prediction")) or "Interview readiness: Medium",
+        "readiness_label": safe_text(report_summary.get("readiness_label")) or "medium",
+        "score_breakdown": report_summary.get("score_breakdown") if isinstance(report_summary.get("score_breakdown"), dict) else {},
+        "strength_signals": normalize_string_list(report_summary.get("strength_signals"), limit=8, max_item_len=180),
+        "improvement_signals": normalize_string_list(report_summary.get("improvement_signals"), limit=8, max_item_len=180),
+        "next_steps": normalize_string_list(report_summary.get("next_steps"), limit=8, max_item_len=220),
+        "turns_completed": int(report_summary.get("turns_completed") or len(turns)),
+        "total_rounds": int(report_summary.get("total_rounds") or session_payload.get("total_rounds") or len(turns)),
+        "created_at": safe_text(session_payload.get("created_at")) or completed_at,
+        "completed_at": completed_at,
+        "session_status": safe_text(session_payload.get("status")) or "completed",
+        "report": report_summary,
     }
 
 
@@ -12139,7 +12305,7 @@ def build_role_benchmark_payload(
             """
             SELECT role, industry, overall_score
             FROM analysis_reports
-            WHERE user_id = ?
+            WHERE user_id = ? AND lower(source) != 'interview_simulator'
             ORDER BY id DESC
             LIMIT 1
             """,
@@ -12159,7 +12325,7 @@ def build_role_benchmark_payload(
     if subject_score is None:
         subject_score = 0
 
-    query = "SELECT overall_score FROM analysis_reports WHERE overall_score IS NOT NULL"
+    query = "SELECT overall_score FROM analysis_reports WHERE overall_score IS NOT NULL AND lower(source) != 'interview_simulator'"
     params: list[Any] = []
     if subject_role:
         query += " AND lower(role) = ?"
@@ -12173,7 +12339,7 @@ def build_role_benchmark_payload(
     scores = [int(clamp_float(float(row["overall_score"] or 0), 0.0, 100.0)) for row in rows]
     if not scores:
         rows = connection.execute(
-            "SELECT overall_score FROM analysis_reports WHERE overall_score IS NOT NULL ORDER BY id DESC LIMIT 500"
+            "SELECT overall_score FROM analysis_reports WHERE overall_score IS NOT NULL AND lower(source) != 'interview_simulator' ORDER BY id DESC LIMIT 500"
         ).fetchall()
         scores = [int(clamp_float(float(row["overall_score"] or 0), 0.0, 100.0)) for row in rows]
 
@@ -13632,6 +13798,195 @@ def analysis_action_lines(value: Any, limit: int = 5, max_item_len: int = 180) -
         if len(lines) >= limit:
             break
     return lines[:limit]
+
+
+def render_interview_simulator_report_pdf_bytes(report_payload: dict[str, Any], report_row: Any | None = None) -> bytes:
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=A4,
+        leftMargin=44,
+        rightMargin=44,
+        topMargin=42,
+        bottomMargin=34,
+        title="HireScore Interview Simulator Report",
+        author="HireScore AI",
+    )
+
+    sample = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "simulator_title",
+        parent=sample["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=21,
+        leading=25,
+        textColor=colors.HexColor("#0D2D47"),
+        spaceAfter=3,
+    )
+    subtitle_style = ParagraphStyle(
+        "simulator_subtitle",
+        parent=sample["Normal"],
+        fontName="Helvetica",
+        fontSize=9.6,
+        leading=12.2,
+        textColor=colors.HexColor("#4A6A80"),
+        spaceAfter=12,
+    )
+    section_style = ParagraphStyle(
+        "simulator_section",
+        parent=sample["Heading3"],
+        fontName="Helvetica-Bold",
+        fontSize=11.5,
+        leading=14,
+        textColor=colors.HexColor("#145B87"),
+        spaceBefore=9,
+        spaceAfter=4,
+    )
+    body_style = ParagraphStyle(
+        "simulator_body",
+        parent=sample["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#1E3F56"),
+        spaceAfter=3,
+    )
+    bullet_style = ParagraphStyle(
+        "simulator_bullet",
+        parent=sample["Normal"],
+        fontName="Helvetica",
+        fontSize=9.9,
+        leading=13.2,
+        textColor=colors.HexColor("#1E3F56"),
+        leftIndent=14,
+        bulletIndent=4,
+        spaceAfter=2,
+    )
+    metric_label_style = ParagraphStyle(
+        "simulator_metric_label",
+        parent=sample["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9.3,
+        leading=12,
+        textColor=colors.HexColor("#0E2A43"),
+    )
+    metric_value_style = ParagraphStyle(
+        "simulator_metric_value",
+        parent=sample["Normal"],
+        fontName="Helvetica",
+        fontSize=9.6,
+        leading=12.2,
+        textColor=colors.HexColor("#264B63"),
+    )
+
+    report_summary = report_payload.get("report") if isinstance(report_payload.get("report"), dict) else report_payload
+    role = safe_text(str(report_payload.get("role") or (report_row["role"] if report_row else "")))
+    industry = safe_text(str(report_payload.get("industry") or (report_row["industry"] if report_row else "")))
+    candidate_name = safe_text(str(report_payload.get("candidate_name") or "Candidate"))
+    interviewer_name = safe_text(str(report_payload.get("interviewer_name") or "Avery Bennett"))
+    created_at = safe_text(
+        str((report_payload.get("completed_at") or report_payload.get("created_at") or (report_row["created_at"] if report_row else "") or now_utc_iso()))
+    )
+    overall_score = int(clamp_float(float(report_summary.get("overall_score") or 0), 0.0, 100.0))
+    readiness = safe_text(report_summary.get("readiness_label") or report_payload.get("readiness_label") or "medium").replace("_", " ").title()
+    score_breakdown = report_summary.get("score_breakdown") if isinstance(report_summary.get("score_breakdown"), dict) else {}
+    turns = report_payload.get("turns") if isinstance(report_payload.get("turns"), list) else []
+
+    story: list[Any] = []
+    story.append(Paragraph("HireScore Interview Simulator Report", title_style))
+    subtitle = (
+        f"Candidate: {html.escape(candidate_name or 'Candidate')}  |  "
+        f"Role: {html.escape(role or 'General')}  |  "
+        f"Generated: {html.escape(created_at[:19].replace('T', ' '))}"
+    )
+    story.append(Paragraph(subtitle, subtitle_style))
+
+    metrics_rows = [
+        ("Overall Score", f"{overall_score}%"),
+        ("Readiness", readiness or "Medium"),
+        ("Industry", industry or "General"),
+        ("Interviewer", interviewer_name or "Avery Bennett"),
+        ("Rounds Completed", str(int(report_summary.get("turns_completed") or len(turns)))),
+        ("Total Rounds", str(int(report_summary.get("total_rounds") or len(turns)))),
+    ]
+    metrics_table = Table(
+        [[Paragraph(html.escape(label), metric_label_style), Paragraph(html.escape(value), metric_value_style)] for label, value in metrics_rows],
+        colWidths=[doc.width * 0.34, doc.width * 0.66],
+    )
+    metrics_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5FAFE")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#BFD9EC")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D5E6F3")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(metrics_table)
+    story.append(Spacer(1, 6))
+
+    def add_section(title: str, items: list[str], bullet: bool = True) -> None:
+        filtered = [safe_text(item)[:220] for item in items if safe_text(item)]
+        if not filtered:
+            return
+        story.append(Paragraph(html.escape(title), section_style))
+        story.append(HRFlowable(width="100%", color=colors.HexColor("#D5E6F3"), thickness=0.65, spaceBefore=0.6, spaceAfter=3))
+        for item in filtered:
+            if bullet:
+                story.append(Paragraph(html.escape(item), bullet_style, bulletText="•"))
+            else:
+                story.append(Paragraph(html.escape(item), body_style))
+
+    breakdown_lines = []
+    for label, key in [
+        ("Communication", "communication"),
+        ("Clarity", "clarity"),
+        ("Domain Depth", "domain_depth"),
+        ("Confidence", "confidence"),
+    ]:
+        breakdown_lines.append(f"{label}: {int(clamp_float(float(score_breakdown.get(key) or 0), 0.0, 100.0))}%")
+    add_section("Score Breakdown", breakdown_lines)
+    add_section("Strength Signals", analysis_list_items(report_summary.get("strength_signals"), limit=6, max_item_len=190))
+    add_section("Improvement Signals", analysis_list_items(report_summary.get("improvement_signals"), limit=6, max_item_len=190))
+    add_section("Next Steps", analysis_list_items(report_summary.get("next_steps"), limit=6, max_item_len=200))
+
+    opening_remark = safe_text(report_payload.get("opening_remark"))
+    closing_remark = safe_text(report_payload.get("closing_remark"))
+    if opening_remark:
+        add_section("Opening", [opening_remark], bullet=False)
+    if closing_remark:
+        add_section("Closing", [closing_remark], bullet=False)
+
+    if turns:
+        story.append(Paragraph("Round Feedback", section_style))
+        story.append(HRFlowable(width="100%", color=colors.HexColor("#D5E6F3"), thickness=0.65, spaceBefore=0.6, spaceAfter=4))
+        for turn in turns[:10]:
+            round_number = int(turn.get("round_number") or 0)
+            overall = int(clamp_float(float(((turn.get("scores") or {}).get("overall") or 0)), 0.0, 100.0))
+            answer_time = int(turn.get("response_time_seconds") or 0)
+            question = safe_text(turn.get("question"))[:220]
+            summary = safe_text(turn.get("feedback_summary"))[:220]
+            header = f"Round {round_number} | Score {overall}% | Answer Time {answer_time}s"
+            story.append(Paragraph(html.escape(header), metric_label_style))
+            if question:
+                story.append(Paragraph(html.escape(f"Question: {question}"), body_style))
+            if summary:
+                story.append(Paragraph(html.escape(f"Feedback: {summary}"), body_style))
+            strengths = normalize_string_list(turn.get("strengths"), limit=3, max_item_len=140)
+            improvements = normalize_string_list(turn.get("improvements"), limit=3, max_item_len=140)
+            if strengths:
+                story.append(Paragraph(html.escape(f"Strengths: {', '.join(strengths)}"), body_style))
+            if improvements:
+                story.append(Paragraph(html.escape(f"Improve: {', '.join(improvements)}"), body_style))
+            story.append(Spacer(1, 4))
+
+    doc.build(story)
+    return output.getvalue()
 
 
 def render_analysis_report_pdf_bytes(report_payload: dict[str, Any], report_row: Any | None = None) -> bytes:
