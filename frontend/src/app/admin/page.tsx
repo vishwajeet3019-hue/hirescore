@@ -16,6 +16,20 @@ type AdminAnalytics = {
   stripe_enabled: boolean;
   razorpay_enabled?: boolean;
   payment_gateway?: string;
+  interview_simulator_runs_total?: number;
+  interview_simulator_users_total?: number;
+  interview_simulator_users?: AdminInterviewSimulatorUser[];
+};
+
+type AdminInterviewSimulatorUser = {
+  user_id: number | null;
+  name: string;
+  email: string;
+  guest_mode?: boolean;
+  runs: number;
+  last_run_at: string;
+  role?: string;
+  industry?: string;
 };
 
 type AdminUser = {
@@ -109,6 +123,11 @@ const apiUrl = (path: string) => {
   if (normalizedPath === "/") return "/api/admin-proxy/admin/auth/login";
   return `/api/admin-proxy${normalizedPath}`;
 };
+const userAuthApiUrl = (path: string) => {
+  const normalizedPath = `/${path.replace(/^\/+/, "")}`;
+  const base = (process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in").replace(/\/+$/, "");
+  return `${base}${normalizedPath}`;
+};
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
 const DEFAULT_ADMIN_ANALYTICS: AdminAnalytics = {
   users_total: 0,
@@ -123,6 +142,9 @@ const DEFAULT_ADMIN_ANALYTICS: AdminAnalytics = {
   stripe_enabled: false,
   razorpay_enabled: false,
   payment_gateway: "none",
+  interview_simulator_runs_total: 0,
+  interview_simulator_users_total: 0,
+  interview_simulator_users: [],
 };
 
 const defaultRowEditor = (): RowEditorState => ({
@@ -154,6 +176,11 @@ export default function AdminPage() {
   const [adminToken, setAdminToken] = useState("");
   const [adminApiKey, setAdminApiKey] = useState("");
   const [adminAuthMode, setAdminAuthMode] = useState<AdminAuthMode>("token");
+  const [userLoginEmail, setUserLoginEmail] = useState("");
+  const [userLoginPassword, setUserLoginPassword] = useState("");
+  const [userLoginLoading, setUserLoginLoading] = useState(false);
+  const [userLoginError, setUserLoginError] = useState("");
+  const [userLoginSuccess, setUserLoginSuccess] = useState("");
 
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -517,6 +544,48 @@ export default function AdminPage() {
     }
   };
 
+  const handleUserDashboardLogin = async () => {
+    const email = userLoginEmail.trim().toLowerCase();
+    const password = userLoginPassword;
+    if (!email || !password) {
+      setUserLoginError("Enter email and password to continue.");
+      setUserLoginSuccess("");
+      return;
+    }
+    setUserLoginLoading(true);
+    setUserLoginError("");
+    setUserLoginSuccess("");
+    try {
+      const payload = await fetchJsonWithWakeAndRetry<{ auth_token?: string; user?: { email?: string } }>({
+        apiUrl: userAuthApiUrl,
+        path: "/auth/login",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: async (response) => {
+          const parsed = (await response.json().catch(() => null)) as { detail?: string } | null;
+          return parsed?.detail || "Unable to login right now.";
+        },
+        abortErrorMessage: "Login is taking longer than expected. Please try again.",
+      });
+      if (!payload?.auth_token) {
+        throw new Error("Invalid login response.");
+      }
+      window.localStorage.setItem("hirescore_auth_token", payload.auth_token);
+      setUserLoginSuccess(`Welcome back${payload.user?.email ? `, ${payload.user.email}` : ""}. Redirecting to dashboard...`);
+      window.setTimeout(() => {
+        window.location.href = "/dashboard";
+      }, 250);
+    } catch (err) {
+      setUserLoginError(err instanceof Error ? err.message : "Unable to login.");
+    } finally {
+      setUserLoginLoading(false);
+    }
+  };
+
   const loadChatConversation = async (
     userId: number,
     credentialOverride?: string,
@@ -770,6 +839,8 @@ export default function AdminPage() {
     { label: "Signups", value: analytics.signups_total },
     { label: "Logins", value: analytics.logins_total },
     { label: "Analyses", value: analytics.analyses_total },
+    { label: "Interview Runs", value: analytics.interview_simulator_runs_total || 0 },
+    { label: "Interview Users", value: analytics.interview_simulator_users_total || 0 },
     { label: "Feedback", value: analytics.feedback_total },
     { label: "Avg Rating", value: analytics.feedback_avg_rating },
     { label: "Payments", value: analytics.payments_total },
@@ -854,6 +925,50 @@ export default function AdminPage() {
 
             {error && <p className="mt-3 rounded-xl border border-rose-200/26 bg-rose-300/12 px-3 py-2 text-xs text-rose-100">{error}</p>}
             {success && <p className="mt-3 rounded-xl border border-emerald-200/26 bg-emerald-300/12 px-3 py-2 text-xs text-emerald-100">{success}</p>}
+          </aside>
+
+          <aside className="mt-4 w-full rounded-[2rem] border border-slate-200/14 bg-gradient-to-b from-[#070d1c]/96 via-[#080f20]/90 to-[#111827]/86 p-6 shadow-[0_20px_52px_rgba(8,15,36,0.45)] sm:p-7">
+            <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">User Dashboard Login</p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-50 sm:text-2xl">Dark login for all users</h2>
+            <p className="mt-2 text-sm text-slate-300/78">Users can sign in here and jump directly to their dashboard.</p>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <input
+                type="email"
+                value={userLoginEmail}
+                onChange={(event) => setUserLoginEmail(event.target.value)}
+                placeholder="Email"
+                autoComplete="email"
+                className="rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-cyan-300/60"
+              />
+              <input
+                type="password"
+                value={userLoginPassword}
+                onChange={(event) => setUserLoginPassword(event.target.value)}
+                placeholder="Password"
+                autoComplete="current-password"
+                className="rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-cyan-300/60"
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleUserDashboardLogin()}
+                disabled={userLoginLoading}
+                className="rounded-xl border border-cyan-200/36 bg-cyan-300/14 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/22 disabled:opacity-60"
+              >
+                {userLoginLoading ? "Signing in..." : "Login to Dashboard"}
+              </button>
+              <a
+                href="/upload"
+                className="rounded-xl border border-slate-200/20 bg-slate-700/18 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-700/28"
+              >
+                New User Signup
+              </a>
+            </div>
+
+            {userLoginError ? <p className="mt-3 rounded-xl border border-rose-200/24 bg-rose-300/12 px-3 py-2 text-xs text-rose-100">{userLoginError}</p> : null}
+            {userLoginSuccess ? <p className="mt-3 rounded-xl border border-emerald-200/24 bg-emerald-300/12 px-3 py-2 text-xs text-emerald-100">{userLoginSuccess}</p> : null}
           </aside>
         </section>
       </main>
@@ -1021,6 +1136,38 @@ export default function AdminPage() {
                 </article>
               ))}
             </div>
+
+            <section className="rounded-[1.8rem] border border-slate-200/14 bg-[#0b1120]/94 p-5 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-300/70">Interview Simulator Users</p>
+                  <h3 className="mt-1 text-lg font-semibold text-white sm:text-xl">People who ran the simulator</h3>
+                </div>
+                <span className="rounded-full border border-cyan-200/24 bg-cyan-300/12 px-3 py-1 text-xs font-semibold text-cyan-100">
+                  {analytics.interview_simulator_users_total || 0} unique users
+                </span>
+              </div>
+
+              <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
+                {(analytics.interview_simulator_users || []).map((item, index) => (
+                  <article key={`${item.user_id ?? "guest"}-${item.name}-${index}`} className="rounded-xl border border-slate-200/14 bg-slate-800/36 p-3 text-xs text-slate-200/84">
+                    <p className="font-semibold text-slate-100">
+                      {item.name || "Unknown user"} {item.guest_mode ? "(Guest)" : ""}
+                    </p>
+                    <p className="mt-1 break-all text-slate-300/80">{item.email || "no email recorded"}</p>
+                    <p className="mt-1 text-slate-300/76">
+                      Runs: {item.runs || 0}
+                      {item.role ? ` • Role: ${item.role}` : ""}
+                      {item.industry ? ` • Industry: ${item.industry}` : ""}
+                    </p>
+                    <p className="mt-1 text-slate-400/74">Last run: {formatDateTime(item.last_run_at) || item.last_run_at || "-"}</p>
+                  </article>
+                ))}
+                {!(analytics.interview_simulator_users || []).length ? (
+                  <p className="text-sm text-slate-300/72">No interview simulator runs recorded yet.</p>
+                ) : null}
+              </div>
+            </section>
 
             <section className="rounded-2xl border border-slate-200/14 bg-slate-900/38 p-3 sm:p-4">
               <div className="flex flex-wrap gap-2">

@@ -8927,6 +8927,7 @@ Output JSON schema:
         "interview_simulator_started",
         user_id=owner_user_id or None,
         meta={
+            "candidate_name": candidate_name[:80],
             "role": role,
             "industry": industry,
             "difficulty": difficulty,
@@ -15643,6 +15644,88 @@ def collect_admin_chat_threads(
     return threads
 
 
+def collect_admin_interview_simulator_users(
+    connection: AuthDBConnection,
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    safe_limit = int(clamp_float(float(limit), 1, 50000))
+    try:
+        rows = connection.execute(
+            """
+            SELECT
+                e.user_id,
+                u.full_name,
+                u.email,
+                e.meta_json,
+                e.created_at
+            FROM analytics_events e
+            LEFT JOIN users u ON u.id = e.user_id
+            WHERE e.event_type = 'interview' AND e.event_name = 'interview_simulator_started'
+            ORDER BY e.id DESC
+            LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    except Exception:
+        logger.exception("Admin interview simulator users query failed.")
+        return []
+
+    aggregate: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        meta = parse_meta_json(row["meta_json"])
+        user_id_raw = row["user_id"] if row["user_id"] is not None else None
+        user_id = int(user_id_raw) if user_id_raw is not None else None
+        profile_name = safe_text(row["full_name"]).strip()
+        email = safe_text(row["email"]).strip()
+        candidate_name = safe_text(meta.get("candidate_name")).strip()
+        role = safe_text(meta.get("role")).strip()
+        industry = safe_text(meta.get("industry")).strip()
+        created_at = safe_text(row["created_at"]).strip()
+        guest_mode = bool(meta.get("guest_mode")) or user_id is None
+        display_name = profile_name or candidate_name or (display_name_from_email(email) if email else "Guest user")
+        aggregate_key = (
+            f"user:{user_id}"
+            if user_id is not None
+            else f"guest:{normalize_token(display_name)}:{normalize_token(role)}:{normalize_token(industry)}"
+        )
+
+        existing = aggregate.get(aggregate_key)
+        if not existing:
+            aggregate[aggregate_key] = {
+                "user_id": user_id,
+                "name": display_name,
+                "email": email,
+                "guest_mode": guest_mode,
+                "runs": 1,
+                "last_run_at": created_at,
+                "role": role,
+                "industry": industry,
+            }
+            continue
+
+        existing["runs"] = int(existing.get("runs") or 0) + 1
+        if created_at and created_at > safe_text(existing.get("last_run_at")):
+            existing["last_run_at"] = created_at
+            if role:
+                existing["role"] = role
+            if industry:
+                existing["industry"] = industry
+        if not safe_text(existing.get("name")) and display_name:
+            existing["name"] = display_name
+        if not safe_text(existing.get("email")) and email:
+            existing["email"] = email
+
+    users = list(aggregate.values())
+    users.sort(
+        key=lambda item: (
+            -int(item.get("runs") or 0),
+            safe_text(item.get("last_run_at")),
+            safe_text(item.get("name")).lower(),
+        ),
+    )
+    return users
+
+
 def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str, Any]:
     cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     def scalar_int(query: str, params: tuple[Any, ...] = (), key: str = "count", default: int = 0) -> int:
@@ -15715,6 +15798,10 @@ def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str,
         "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'auth' AND event_name LIKE 'login_failed%' AND created_at >= ?",
         (cutoff_24h,),
     )
+    interview_simulator_runs_total = scalar_int(
+        "SELECT COUNT(*) AS count FROM analytics_events WHERE event_type = 'interview' AND event_name = 'interview_simulator_started'"
+    )
+    interview_simulator_users = collect_admin_interview_simulator_users(connection, limit=5000)
 
     revenue_inr = 0
     for row in payment_rows:
@@ -15754,6 +15841,9 @@ def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str,
         "logins_24h": logins_24h,
         "analyses_24h": analyses_24h,
         "failed_logins_24h": failed_logins_24h,
+        "interview_simulator_runs_total": interview_simulator_runs_total,
+        "interview_simulator_users_total": len(interview_simulator_users),
+        "interview_simulator_users": interview_simulator_users,
         "backend_uptime_minutes": uptime_minutes,
         "async_jobs_queued": async_counts["queued"],
         "async_jobs_running": async_counts["running"],
