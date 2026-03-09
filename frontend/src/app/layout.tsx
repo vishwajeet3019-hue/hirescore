@@ -34,10 +34,15 @@ export const metadata: Metadata = {
   ],
   alternates: {
     canonical: "/",
+    languages: {
+      "en-IN": "/",
+      en: "/",
+    },
   },
   openGraph: {
     type: "website",
     url: SITE_URL,
+    locale: "en_IN",
     title: "HireScore AI | Resume Analyzer and ATS Resume Builder",
     description:
       "Analyze role-fit, find improvement gaps, and build recruiter-ready resumes with HireScore AI.",
@@ -77,7 +82,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-<html lang="en">
+<html lang="en-IN">
       <body className="antialiased overflow-x-hidden">
         {GA_MEASUREMENT_ID ? (
           <>

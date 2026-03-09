@@ -7,16 +7,23 @@ import { addUtmParams } from "@/lib/utm";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
 
 export const metadata: Metadata = {
-  title: "AI Interview Simulator + Resume Analyzer | HireScore",
+  title: "AI Interview Simulator + Resume Analyzer for India | HireScore",
   description:
-    "Run a live interview simulator, get role-fit analysis, shortlist prediction, and actionable improvements to win more interviews.",
+    "Run a live interview simulator, get role-fit analysis, shortlist prediction, and actionable improvements built for job seekers in India.",
+  keywords: [
+    "resume analyzer India",
+    "interview simulator India",
+    "ATS resume checker India",
+    "job switch resume India",
+    "JD matcher India",
+  ],
   alternates: {
     canonical: "/",
   },
 };
 
 const proofStats = [
-  { label: "Interview Simulator", value: "Live + Human-like" },
+  { label: "Interview Practice", value: "Structured Mock Interview" },
   { label: "Prediction Layers", value: "12+" },
   { label: "Jobs We Cover", value: "All Major Domains" },
   { label: "Free Guest Interview", value: "1 Without Login" },
@@ -177,6 +184,10 @@ export default function Home() {
     name: "HireScore AI",
     url: SITE_URL,
     logo: `${SITE_URL}/icon.svg`,
+    areaServed: {
+      "@type": "Country",
+      name: "India",
+    },
     sameAs: [],
   };
 
@@ -187,6 +198,10 @@ export default function Home() {
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     url: SITE_URL,
+    areaServed: {
+      "@type": "Country",
+      name: "India",
+    },
     description:
       "AI-powered resume analyzer and builder with role-fit scoring, shortlist prediction, and template exports.",
     offers: {
