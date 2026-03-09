@@ -164,6 +164,7 @@ AUTH_DB_BACKEND = "postgres" if DATABASE_URL.startswith("postgresql://") else "s
 AUTH_DB_PATH = resolve_auth_db_path()
 AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
 AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
+GUEST_CHAT_TOKEN_TTL_HOURS = max(6, min(24 * 90, int((os.getenv("GUEST_CHAT_TOKEN_TTL_HOURS") or "168").strip())))
 # Testing helper endpoint (/auth/topup) should be disabled by default in production.
 ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", False)
 EMAIL_OTP_REQUIRED = env_flag("EMAIL_OTP_REQUIRED", True)
@@ -176,6 +177,7 @@ ADMIN_LOGIN_ID = (os.getenv("ADMIN_LOGIN_ID") or "").strip()
 ADMIN_PASSWORD = (os.getenv("ADMIN_PASSWORD") or "").strip()
 ADMIN_AUTH_SECRET = ((os.getenv("ADMIN_AUTH_SECRET") or "").strip()) or AUTH_TOKEN_SECRET
 ADMIN_TOKEN_TTL_HOURS = max(1, int((os.getenv("ADMIN_TOKEN_TTL_HOURS") or "72").strip()))
+ADMIN_IMPERSONATION_TOKEN_TTL_MINUTES = max(5, min(720, int((os.getenv("ADMIN_IMPERSONATION_TOKEN_TTL_MINUTES") or "60").strip())))
 if AUTH_TOKEN_SECRET == "replace-this-in-production":
     logger.warning("AUTH_TOKEN_SECRET is using a default value. Set AUTH_TOKEN_SECRET in production.")
 if not ADMIN_API_KEYS and not (ADMIN_LOGIN_ID and ADMIN_PASSWORD):
@@ -431,6 +433,16 @@ class AdminCreditAdjustRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     login_id: str
     password: str
+
+
+class AdminImpersonateRequest(BaseModel):
+    reason: str | None = None
+
+
+class GuestChatSessionRequest(BaseModel):
+    guest_key: str | None = None
+    name: str | None = None
+    email: str | None = None
 
 
 class ChatMessageCreateRequest(BaseModel):
@@ -2073,6 +2085,19 @@ def init_auth_db() -> None:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS guest_chat_profiles (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL UNIQUE REFERENCES users (id),
+                        guest_key TEXT NOT NULL UNIQUE,
+                        contact_name TEXT NOT NULL,
+                        contact_email TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS analysis_reports (
                         id BIGSERIAL PRIMARY KEY,
                         user_id BIGINT NOT NULL REFERENCES users (id),
@@ -2299,6 +2324,20 @@ def init_auth_db() -> None:
                 )
                 cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS guest_chat_profiles (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL UNIQUE,
+                        guest_key TEXT NOT NULL UNIQUE,
+                        contact_name TEXT NOT NULL,
+                        contact_email TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS analysis_reports (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         user_id INTEGER NOT NULL,
@@ -2421,6 +2460,8 @@ def init_auth_db() -> None:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_time ON user_chat_messages (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_admin_unread ON user_chat_messages (read_by_admin, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_user_unread ON user_chat_messages (user_id, read_by_user, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_chat_profiles_key ON guest_chat_profiles (guest_key)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_chat_profiles_contact_email ON guest_chat_profiles (contact_email)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_reports_user_time ON analysis_reports (user_id, created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_interview_usage_last_used ON guest_interview_usage (last_used_at)")
             cursor.execute("DROP INDEX IF EXISTS idx_goal_roadmap_user_unique")
@@ -2815,11 +2856,16 @@ def create_user_with_welcome_credits(email: str, password: str, source: str = "s
     return user
 
 
-def create_auth_token(user_id: int, email: str) -> str:
+def create_auth_token(user_id: int, email: str, ttl_seconds: int | None = None) -> str:
+    effective_ttl_seconds = (
+        max(300, int(ttl_seconds))
+        if ttl_seconds is not None
+        else max(1, AUTH_TOKEN_TTL_HOURS) * 3600
+    )
     payload = {
         "uid": user_id,
         "email": normalize_email(email),
-        "exp": int(time.time()) + max(1, AUTH_TOKEN_TTL_HOURS) * 3600,
+        "exp": int(time.time()) + effective_ttl_seconds,
     }
     payload_b64 = b64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
     signature = hmac.new(AUTH_TOKEN_SECRET.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
@@ -2928,6 +2974,161 @@ def fetch_user_by_id(user_id: int) -> sqlite3.Row | None:
         return cursor.fetchone()
     finally:
         connection.close()
+
+
+def normalize_guest_chat_key(value: str | None) -> str:
+    normalized = re.sub(r"[^a-z0-9_-]", "", safe_text(value).lower())[:72]
+    if len(normalized) >= 8:
+        return normalized
+    return secrets.token_hex(8)
+
+
+def guest_chat_email_for_key(guest_key: str) -> str:
+    fingerprint = hashlib.sha256(f"guest-chat:{guest_key}:{AUTH_TOKEN_SECRET}".encode("utf-8")).hexdigest()[:24]
+    return f"guest-chat-{fingerprint}@guest.hirescore.local"
+
+
+def get_or_create_guest_chat_user(guest_key: str) -> sqlite3.Row:
+    email = guest_chat_email_for_key(guest_key)
+    existing = fetch_user_by_email(email)
+    if existing:
+        return existing
+
+    password_salt = secrets.token_hex(16)
+    password_hash = hash_password(secrets.token_urlsafe(18), password_salt)
+    display_name = f"Guest {email.split('@', 1)[0][-6:]}".strip()
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO users (full_name, email, password_hash, password_salt, plan_tier, credits, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        display_name or "Guest User",
+                        email,
+                        password_hash,
+                        password_salt,
+                        "free",
+                        0,
+                        now_utc_iso(),
+                    ),
+                )
+                connection.commit()
+            except DB_INTEGRITY_ERRORS:
+                connection.rollback()
+        finally:
+            connection.close()
+
+    user = fetch_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=500, detail="Unable to create guest chat session.")
+    return user
+
+
+def normalize_guest_contact_name(value: str | None) -> str:
+    normalized = re.sub(r"\s+", " ", safe_text(value)).strip()
+    if len(normalized) < 2:
+        raise HTTPException(status_code=400, detail="Enter your name to start chat.")
+    return normalized[:80]
+
+
+def normalize_guest_contact_email(value: str | None) -> str:
+    normalized = normalize_email(safe_text(value))
+    if not normalized or "@" not in normalized or " " in normalized:
+        raise HTTPException(status_code=400, detail="Enter a valid email to start chat.")
+    local, _, domain = normalized.partition("@")
+    if not local or not domain or "." not in domain:
+        raise HTTPException(status_code=400, detail="Enter a valid email to start chat.")
+    return normalized[:180]
+
+
+def upsert_guest_chat_profile(
+    guest_key: str,
+    user_id: int,
+    contact_name: str,
+    contact_email: str,
+) -> dict[str, str]:
+    now = now_utc_iso()
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            existing_by_key = cursor.execute(
+                """
+                SELECT id, user_id, guest_key, contact_name, contact_email
+                FROM guest_chat_profiles
+                WHERE guest_key = ?
+                LIMIT 1
+                """,
+                (guest_key,),
+            ).fetchone()
+            if existing_by_key:
+                cursor.execute(
+                    """
+                    UPDATE guest_chat_profiles
+                    SET user_id = ?, contact_name = ?, contact_email = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        int(user_id),
+                        contact_name,
+                        contact_email,
+                        now,
+                        int(existing_by_key["id"]),
+                    ),
+                )
+            else:
+                existing_by_user = cursor.execute(
+                    """
+                    SELECT id FROM guest_chat_profiles
+                    WHERE user_id = ?
+                    LIMIT 1
+                    """,
+                    (int(user_id),),
+                ).fetchone()
+                if existing_by_user:
+                    cursor.execute(
+                        """
+                        UPDATE guest_chat_profiles
+                        SET guest_key = ?, contact_name = ?, contact_email = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            guest_key,
+                            contact_name,
+                            contact_email,
+                            now,
+                            int(existing_by_user["id"]),
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO guest_chat_profiles (
+                            user_id, guest_key, contact_name, contact_email, created_at, updated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            int(user_id),
+                            guest_key,
+                            contact_name,
+                            contact_email,
+                            now,
+                            now,
+                        ),
+                    )
+            connection.commit()
+        finally:
+            connection.close()
+
+    return {"name": contact_name, "email": contact_email}
 
 
 def is_email_verified(user_row: sqlite3.Row | None) -> bool:
@@ -3285,6 +3486,24 @@ def require_feedback_completion(user_id: int) -> None:
                 "feedback_required": True,
             },
         )
+
+
+def admin_actor_from_request(request: Request) -> dict[str, str]:
+    bearer = safe_text(extract_bearer_token(request))
+    if bearer:
+        try:
+            payload = decode_admin_token(bearer)
+            login_id = safe_text(str(payload.get("login_id") or "")) or "admin"
+            return {"auth_mode": "token", "identifier": login_id}
+        except HTTPException:
+            pass
+
+    api_key = safe_text(request.headers.get("x-admin-key"))
+    if api_key:
+        key_fingerprint = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12]
+        return {"auth_mode": "api_key", "identifier": f"api_key:{key_fingerprint}"}
+
+    return {"auth_mode": "unknown", "identifier": "unknown"}
 
 
 def require_admin_access(request: Request) -> None:
@@ -10215,6 +10434,38 @@ def submit_feedback(data: FeedbackSubmitRequest, request: Request) -> dict[str, 
     return payload
 
 
+@app.post("/chat/guest-session")
+def chat_guest_session(data: GuestChatSessionRequest | None = None) -> dict[str, Any]:
+    guest_key = normalize_guest_chat_key(data.guest_key if data else None)
+    contact_name = normalize_guest_contact_name(data.name if data else None)
+    contact_email = normalize_guest_contact_email(data.email if data else None)
+    user = get_or_create_guest_chat_user(guest_key)
+    guest_profile = upsert_guest_chat_profile(
+        guest_key=guest_key,
+        user_id=int(user["id"]),
+        contact_name=contact_name,
+        contact_email=contact_email,
+    )
+    auth_token = create_auth_token(
+        int(user["id"]),
+        str(user["email"]),
+        ttl_seconds=GUEST_CHAT_TOKEN_TTL_HOURS * 3600,
+    )
+    key_fingerprint = hashlib.sha256(guest_key.encode("utf-8")).hexdigest()[:12]
+    log_analytics_event(
+        "chat",
+        "guest_session_started",
+        user_id=int(user["id"]),
+        meta={"guest_key_fingerprint": key_fingerprint},
+    )
+    payload = auth_response_payload(user, auth_token)
+    payload["guest_mode"] = True
+    payload["guest_key"] = guest_key
+    payload["guest_profile"] = guest_profile
+    payload["token_expires_hours"] = GUEST_CHAT_TOKEN_TTL_HOURS
+    return payload
+
+
 @app.get("/chat/messages")
 def user_chat_messages(request: Request, auth_token: str | None = None, limit: int = 200) -> dict[str, Any]:
     user = require_authenticated_user(request, auth_token)
@@ -15672,15 +15923,17 @@ def collect_admin_chat_threads(
     filters: list[str] = []
     values: list[Any] = []
     if search:
-        filters.append("(lower(u.email) LIKE ? OR lower(u.full_name) LIKE ?)")
-        values.extend([f"%{search}%", f"%{search}%"])
+        filters.append(
+            "(lower(u.email) LIKE ? OR lower(u.full_name) LIKE ? OR lower(COALESCE(g.contact_email, '')) LIKE ? OR lower(COALESCE(g.contact_name, '')) LIKE ?)"
+        )
+        values.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
     where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
 
     query = f"""
         SELECT
             u.id AS user_id,
-            u.full_name,
-            u.email,
+            COALESCE(NULLIF(g.contact_name, ''), u.full_name) AS display_name,
+            COALESCE(NULLIF(g.contact_email, ''), u.email) AS display_email,
             u.plan_tier,
             u.credits,
             stats.total_messages,
@@ -15690,6 +15943,7 @@ def collect_admin_chat_threads(
             COALESCE(last_msg.message, '') AS last_message,
             COALESCE(last_msg.created_at, '') AS last_created_at
         FROM users u
+        LEFT JOIN guest_chat_profiles g ON g.user_id = u.id
         INNER JOIN (
             SELECT
                 m.user_id,
@@ -15713,8 +15967,8 @@ def collect_admin_chat_threads(
         threads.append(
             {
                 "user_id": int(row["user_id"]),
-                "name": safe_text(row["full_name"]) or display_name_from_email(str(row["email"])),
-                "email": safe_text(row["email"]),
+                "name": safe_text(row["display_name"]) or display_name_from_email(str(row["display_email"])),
+                "email": safe_text(row["display_email"]),
                 "plan": normalize_plan_tier(safe_text(row["plan_tier"])),
                 "credits": int(row["credits"] or 0),
                 "total_messages": int(row["total_messages"] or 0),
@@ -16730,6 +16984,49 @@ def admin_users(
     return {"users": users, "limit": safe_limit, "offset": safe_offset, "plan_filter": plan_filter or None}
 
 
+@app.post("/admin/users/{user_id}/impersonate")
+def admin_impersonate_user(user_id: int, request: Request, data: AdminImpersonateRequest | None = None) -> dict[str, Any]:
+    require_admin_access(request)
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid user id.")
+
+    user = fetch_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    reason = safe_text(data.reason) if data else ""
+    admin_actor = admin_actor_from_request(request)
+    ttl_minutes = ADMIN_IMPERSONATION_TOKEN_TTL_MINUTES
+    auth_token = create_auth_token(
+        int(user["id"]),
+        str(user["email"]),
+        ttl_seconds=ttl_minutes * 60,
+    )
+
+    log_analytics_event(
+        "admin",
+        "user_impersonation_started",
+        user_id=int(user["id"]),
+        meta={
+            "admin_identifier": admin_actor["identifier"],
+            "admin_auth_mode": admin_actor["auth_mode"],
+            "reason": reason or "admin_support",
+            "token_ttl_minutes": ttl_minutes,
+        },
+    )
+
+    return {
+        "auth_token": auth_token,
+        "expires_in_minutes": ttl_minutes,
+        "user": {
+            "id": int(user["id"]),
+            "name": safe_text(user["full_name"]) or display_name_from_email(str(user["email"])),
+            "email": str(user["email"]),
+            "plan": normalize_plan_tier(str(user["plan_tier"])),
+        },
+    }
+
+
 @app.get("/admin/chats")
 def admin_chats(request: Request, q: str | None = None, limit: int = 120) -> dict[str, Any]:
     require_admin_access(request)
@@ -16755,7 +17052,18 @@ def admin_chat_messages(request: Request, user_id: int, limit: int = 200) -> dic
             cursor = connection.cursor()
             begin_write_transaction(cursor)
             user = cursor.execute(
-                "SELECT id, full_name, email, plan_tier, credits FROM users WHERE id = ? LIMIT 1",
+                """
+                SELECT
+                    u.id,
+                    COALESCE(NULLIF(g.contact_name, ''), u.full_name) AS full_name,
+                    COALESCE(NULLIF(g.contact_email, ''), u.email) AS email,
+                    u.plan_tier,
+                    u.credits
+                FROM users u
+                LEFT JOIN guest_chat_profiles g ON g.user_id = u.id
+                WHERE u.id = ?
+                LIMIT 1
+                """,
                 (user_id,),
             ).fetchone()
             if not user:
