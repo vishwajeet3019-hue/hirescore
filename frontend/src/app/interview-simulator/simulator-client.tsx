@@ -555,8 +555,20 @@ export default function InterviewSimulatorClient() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const queryMode = normalizeSimulatorMode(new URLSearchParams(window.location.search).get("mode"));
+    const params = new URLSearchParams(window.location.search);
+    const queryMode = normalizeSimulatorMode(params.get("mode"));
+    const rolePrefill = (params.get("role") || "").trim().slice(0, 120);
+    const industryPrefill = (params.get("industry") || "").trim().slice(0, 80);
+    const candidateNamePrefill = (params.get("candidate_name") || "").trim().slice(0, 80);
+    const resumePrefill = (params.get("resume_text") || "").trim().slice(0, 14000);
+    const jdPrefill = (params.get("job_description") || "").trim().slice(0, 14000);
+
     setSimulatorMode(queryMode);
+    if (rolePrefill) setRole(rolePrefill);
+    if (industryPrefill) setIndustry(industryPrefill);
+    if (candidateNamePrefill) setCandidateName(candidateNamePrefill);
+    if (resumePrefill) setResumeText(resumePrefill);
+    if (jdPrefill) setJobDescription(jdPrefill);
   }, []);
 
   useEffect(() => {

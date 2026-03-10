@@ -1336,6 +1336,38 @@ export default function UploadPage() {
       .trim();
   };
 
+  const applicationCopilotPrefillHref = useMemo(() => {
+    const params = new URLSearchParams();
+    const targetRole = role.trim() || result?.positioning_strategy?.target_role || "";
+    const targetIndustry = industry.trim() || result?.salary_insight?.target_industry || "";
+    const resumeSource = buildActionResumeSource(result);
+    const jobDescription = jdInput.trim();
+
+    if (targetRole) params.set("role", targetRole);
+    if (targetIndustry) params.set("industry", targetIndustry);
+    if (resumeSource) params.set("resume_text", resumeSource.slice(0, 4000));
+    if (jobDescription) params.set("job_description", jobDescription.slice(0, 4000));
+
+    const query = params.toString();
+    return query ? `/application-copilot?${query}` : "/application-copilot";
+  }, [analysisSkills, industry, jdInput, result, role]);
+
+  const interviewSimulatorPrefillHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("mode", "full");
+    const targetRole = role.trim() || result?.positioning_strategy?.target_role || "";
+    const targetIndustry = industry.trim() || result?.salary_insight?.target_industry || "";
+    const resumeSource = buildActionResumeSource(result);
+    const jobDescription = jdInput.trim();
+
+    if (targetRole) params.set("role", targetRole);
+    if (targetIndustry) params.set("industry", targetIndustry);
+    if (resumeSource) params.set("resume_text", resumeSource.slice(0, 4000));
+    if (jobDescription) params.set("job_description", jobDescription.slice(0, 4000));
+
+    return `/interview-simulator?${params.toString()}`;
+  }, [analysisSkills, industry, jdInput, result, role]);
+
   const executeManualAnalyze = async (tokenOverride?: string) => {
     const effectiveToken = tokenOverride || authToken;
     if (!effectiveToken) {
@@ -3389,6 +3421,21 @@ export default function UploadPage() {
                             {jobTrackSaving ? "Saving..." : "Save As Job Track"}
                           </button>
                         </div>
+                      </div>
+
+                      <div className="mt-3 flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        <Link
+                          href={applicationCopilotPrefillHref}
+                          className="w-full rounded-xl border border-cyan-100/28 bg-cyan-100/8 px-3 py-1.5 text-center text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 sm:w-auto"
+                        >
+                          Open Copilot Workspace
+                        </Link>
+                        <Link
+                          href={interviewSimulatorPrefillHref}
+                          className="w-full rounded-xl border border-cyan-100/28 bg-cyan-100/8 px-3 py-1.5 text-center text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 sm:w-auto"
+                        >
+                          Open Interview Simulator
+                        </Link>
                       </div>
 
                       {prepPackError && <p className="mt-3 text-xs text-amber-100">{prepPackError}</p>}

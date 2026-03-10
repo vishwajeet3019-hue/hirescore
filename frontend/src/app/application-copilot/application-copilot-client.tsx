@@ -190,6 +190,22 @@ export default function ApplicationCopilotClient() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const rolePrefill = safeTrim(params.get("role")).slice(0, 120);
+    const industryPrefill = safeTrim(params.get("industry")).slice(0, 80);
+    const companyPrefill = safeTrim(params.get("company")).slice(0, 120);
+    const resumePrefill = safeTrim(params.get("resume_text")).slice(0, 14000);
+    const jdPrefill = safeTrim(params.get("job_description")).slice(0, 14000);
+
+    if (rolePrefill) setRole(rolePrefill);
+    if (industryPrefill) setIndustry(industryPrefill);
+    if (companyPrefill) setCompany(companyPrefill);
+    if (resumePrefill) setResumeText(resumePrefill);
+    if (jdPrefill) setJdInput(jdPrefill);
+  }, []);
+
+  useEffect(() => {
     const syncAuth = async () => {
       const token = window.localStorage.getItem("hirescore_auth_token") || "";
       if (!token) {
