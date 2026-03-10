@@ -2206,17 +2206,6 @@ export default function InterviewSimulatorClient() {
     isDemoMode ? "Mode: 90-second demo" : "Mode: Full simulation",
     isDemoMode ? "Screening preview flow" : "Adaptive 4-round flow",
   ].filter(Boolean);
-  const screeningDecisionLabel =
-    screeningDecision === "shortlisted"
-      ? "Shortlisted for Round 2"
-      : screeningDecision === "rejected"
-        ? "Rejected After Screening"
-        : "";
-  const screeningDecisionCardClass =
-    screeningDecision === "shortlisted"
-      ? "border-emerald-200/24 bg-emerald-200/10"
-      : "border-rose-200/24 bg-rose-200/10";
-  const latestRoundDecision = (latestTurnFeedback?.round_decision || "").trim().toLowerCase();
   const pendingRoundStartCtaLabel = pendingRoundStart
     ? pendingRoundStart.completedStageDecision === "shortlisted"
       ? /hr/i.test(pendingRoundStart.nextStageLabel || "")

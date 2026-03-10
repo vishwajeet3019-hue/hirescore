@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { addUtmParams } from "@/lib/utm";
 import TrackedLink from "../components/tracked-link";
@@ -140,7 +140,7 @@ export default function ApplicationCopilotClient() {
     campaign: "application_copilot",
   });
 
-  const parseApiError = async (response: Response) => {
+  const parseApiError = useCallback(async (response: Response) => {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
     if (payload?.wallet) {
       setWallet(payload.wallet);
@@ -155,9 +155,9 @@ export default function ApplicationCopilotClient() {
       return payload.detail;
     }
     return `Request failed (${response.status})`;
-  };
+  }, []);
 
-  const loadJobTracks = async (token: string) => {
+  const loadJobTracks = useCallback(async (token: string) => {
     if (!token) return;
     setTracksLoading(true);
     try {
@@ -183,7 +183,7 @@ export default function ApplicationCopilotClient() {
     } finally {
       setTracksLoading(false);
     }
-  };
+  }, [parseApiError]);
 
   useEffect(() => {
     void warmBackend(apiUrl);
@@ -241,7 +241,7 @@ export default function ApplicationCopilotClient() {
       }
     };
     void syncAuth();
-  }, []);
+  }, [loadJobTracks]);
 
   const extractTextFromUpload = async (file: File, context: "resume" | "jd") => {
     if (!authToken || !authHeader) {

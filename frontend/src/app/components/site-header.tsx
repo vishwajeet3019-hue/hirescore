@@ -39,9 +39,8 @@ const baseNavLinks: NavLink[] = [
       { href: "/application-copilot", label: "Application Copilot" },
       { href: "/analysis", label: "Analysis" },
       { href: "/ai-resume-studio", label: "AI Resume Studio" },
-      { href: "/jd-matcher", label: "JD Matcher" },
       { href: "/interview-simulator", label: "Interview Simulator" },
-      { href: "/interview-copilot", label: "Interview Copilot" },
+      { href: "/interview-prep", label: "Interview Prep" },
     ],
   },
   { href: "/case-studies", label: "Success Stories" },
@@ -71,6 +70,7 @@ export default function SiteHeader() {
   const [studioUnlocked, setStudioUnlocked] = useState(false);
   const [showStudioLockModal, setShowStudioLockModal] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileToolsPanelRef = useRef<HTMLDivElement | null>(null);
   const portalReady = typeof window !== "undefined";
@@ -83,11 +83,20 @@ export default function SiteHeader() {
     medium: "internal",
     campaign: "nav_instant_fit",
   });
+  const headerAuthHref = addUtmParams("/upload?auth=login", {
+    source: "header_nav",
+    medium: "internal",
+    campaign: "nav_auth_entry",
+  });
   const isToolsActive = (link: NavLink) =>
     link.children?.some((child) => isLinkActive(pathname, hash, child)) || false;
   const isStudioNav = (href: string) => href === "/studio" || href === "/ai-resume-studio";
   const toolsNavLinks = navLinks.find((link) => link.children?.length)?.children || [];
   const isToolsDropdownOpen = (link: NavLink) => (link.children ? showToolsMenu : false);
+  const closeNavigationMenus = () => {
+    setMobileMenuOpen(false);
+    setShowToolsMenu(false);
+  };
 
   const closeToolsDropdown = () => setShowToolsMenu(false);
 
@@ -190,7 +199,15 @@ export default function SiteHeader() {
   };
 
   const handleToolsLinkClick = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    closeNavigationMenus();
     closeToolsDropdown();
+    if (isStudioNav(href)) {
+      handleStudioNavClick(event);
+    }
+  };
+
+  const handleNavLinkClick = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    closeNavigationMenus();
     if (isStudioNav(href)) {
       handleStudioNavClick(event);
     }
@@ -223,7 +240,7 @@ export default function SiteHeader() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  onClick={isStudioNav(link.href) ? handleStudioNavClick : undefined}
+                  onClick={handleNavLinkClick(link.href)}
                   className={`rounded-full border px-3 py-1.5 transition ${
                     active
                       ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
@@ -292,6 +309,7 @@ export default function SiteHeader() {
                   setWallet(null);
                   setAnalysisCount(0);
                   setStudioUnlocked(false);
+                  setMobileMenuOpen(false);
                   window.localStorage.removeItem("hirescore_auth_token");
                 }}
                 className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 sm:inline"
@@ -300,25 +318,51 @@ export default function SiteHeader() {
               </button>
             </>
           ) : (
-            <Link
-              href={headerAnalyzeHref}
-              onClick={() => {
-                trackEvent("cta_instant_fit_click", {
-                  cta_location: "header",
-                  cta_label: "Instant Fit Check (Free)",
-                });
-              }}
-              className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
-            >
-              <span className="sm:hidden">Instant Fit</span>
-              <span className="hidden sm:inline">Instant Fit Check (Free)</span>
-            </Link>
+            <>
+              <Link
+                href={headerAuthHref}
+                onClick={() => {
+                  trackEvent("cta_auth_entry_click", {
+                    cta_location: "header",
+                    cta_label: "Sign Up / Login",
+                  });
+                }}
+                className="hidden rounded-xl border border-emerald-200/34 bg-emerald-200/14 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-200/24 md:inline-flex"
+              >
+                Sign Up / Login
+              </Link>
+              <Link
+                href={headerAnalyzeHref}
+                onClick={() => {
+                  trackEvent("cta_instant_fit_click", {
+                    cta_location: "header",
+                    cta_label: "Instant Fit Check (Free)",
+                  });
+                }}
+                className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
+              >
+                <span className="sm:hidden">Instant Fit</span>
+                <span className="hidden sm:inline">Instant Fit Check (Free)</span>
+              </Link>
+            </>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              setMobileMenuOpen((prev) => !prev);
+              setShowToolsMenu(false);
+            }}
+            aria-expanded={mobileMenuOpen}
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-cyan-100/28 bg-cyan-100/8 px-3 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 md:hidden"
+          >
+            {mobileMenuOpen ? "Close" : "Menu"}
+          </button>
         </div>
       </div>
 
-      <div className="border-t border-cyan-100/8 px-3 py-2 md:hidden">
-        <nav className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-1.5 text-xs text-cyan-50/80">
+      <div className={`border-t border-cyan-100/8 px-3 py-2 md:hidden ${mobileMenuOpen ? "block" : "hidden"}`}>
+        <nav className="mx-auto grid w-full max-w-7xl grid-cols-2 gap-1.5 text-xs text-cyan-50/80">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
             if (!link.children) {
@@ -326,8 +370,8 @@ export default function SiteHeader() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  onClick={isStudioNav(link.href) ? handleStudioNavClick : undefined}
-                  className={`rounded-lg border px-3 py-1.5 transition ${
+                  onClick={handleNavLinkClick(link.href)}
+                  className={`inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-1.5 text-center transition ${
                     active
                       ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
                       : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
@@ -343,7 +387,7 @@ export default function SiteHeader() {
                 type="button"
                 onClick={() => setShowToolsMenu((prev) => !prev)}
                 aria-expanded={isToolsDropdownOpen(link)}
-                className={`rounded-lg border px-3 py-1.5 shrink-0 transition ${
+                className={`col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-1.5 transition ${
                   active
                     ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
                     : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
@@ -353,10 +397,42 @@ export default function SiteHeader() {
               </button>
             );
           })}
+          {!authToken && (
+            <Link
+              href={headerAuthHref}
+              onClick={() => {
+                setMobileMenuOpen(false);
+                trackEvent("cta_auth_entry_click", {
+                  cta_location: "header_mobile_menu",
+                  cta_label: "Sign Up / Login",
+                });
+              }}
+              className="col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 text-center font-semibold text-emerald-100 transition hover:bg-emerald-200/24"
+            >
+              Sign Up / Login
+            </Link>
+          )}
+          {authToken && (
+            <button
+              type="button"
+              onClick={() => {
+                setAuthToken("");
+                setWallet(null);
+                setAnalysisCount(0);
+                setStudioUnlocked(false);
+                setMobileMenuOpen(false);
+                window.localStorage.removeItem("hirescore_auth_token");
+              }}
+              className="col-span-1 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-cyan-100/20 bg-transparent px-3 py-1.5 text-center font-semibold text-cyan-100/90 transition hover:bg-cyan-100/12"
+            >
+              Sign Out
+            </button>
+          )}
           {authToken && (
             <Link
               href="/dashboard"
-              className="rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 font-semibold text-emerald-100"
+              onClick={() => setMobileMenuOpen(false)}
+              className="col-span-1 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 text-center font-semibold text-emerald-100"
             >
               Wallet {wallet?.credits ?? 0}
             </Link>
@@ -370,8 +446,11 @@ export default function SiteHeader() {
                 <Link
                   key={`mobile-tool-${child.label}`}
                   href={child.href}
-                  onClick={handleToolsLinkClick(child.href)}
-                  className={`rounded-lg border px-3 py-2 transition ${
+                  onClick={(event) => {
+                    handleToolsLinkClick(child.href)(event);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-2 text-center transition ${
                     childActive
                       ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
                       : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"

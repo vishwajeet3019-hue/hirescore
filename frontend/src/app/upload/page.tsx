@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { addUtmParams } from "@/lib/utm";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
@@ -1335,7 +1335,7 @@ export default function UploadPage() {
     return Number.isFinite(parsed) ? parsed : undefined;
   };
 
-  const buildActionResumeSource = (analysisResult: AnalysisResult | null) => {
+  const buildActionResumeSource = useCallback((analysisResult: AnalysisResult | null) => {
     if (!analysisResult) return "";
     return [
       analysisSkills.trim(),
@@ -1345,7 +1345,7 @@ export default function UploadPage() {
       .filter(Boolean)
       .join("\n")
       .trim();
-  };
+  }, [analysisSkills]);
 
   const applicationCopilotPrefillHref = useMemo(() => {
     const params = new URLSearchParams();
@@ -1361,7 +1361,7 @@ export default function UploadPage() {
 
     const query = params.toString();
     return query ? `/application-copilot?${query}` : "/application-copilot";
-  }, [analysisSkills, industry, jdInput, result, role]);
+  }, [buildActionResumeSource, industry, jdInput, result, role]);
 
   const interviewSimulatorPrefillHref = useMemo(() => {
     const params = new URLSearchParams();
@@ -1377,7 +1377,7 @@ export default function UploadPage() {
     if (jobDescription) params.set("job_description", jobDescription.slice(0, 4000));
 
     return `/interview-simulator?${params.toString()}`;
-  }, [analysisSkills, industry, jdInput, result, role]);
+  }, [buildActionResumeSource, industry, jdInput, result, role]);
 
   const executeManualAnalyze = async (tokenOverride?: string) => {
     const effectiveToken = tokenOverride || authToken;
