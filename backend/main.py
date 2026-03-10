@@ -17547,7 +17547,6 @@ def admin_export_credit_transactions_csv(request: Request) -> StreamingResponse:
 @app.post("/analyze")
 def analyze_resume(data: ResumeRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
-    require_feedback_completion(int(user["id"]))
     debit = debit_credits(
         int(user["id"]),
         "analyze",
@@ -17617,7 +17616,6 @@ async def analyze_resume_file(
     auth_token: str | None = Form(None),
 ) -> dict[str, Any]:
     user = require_authenticated_user(request, auth_token)
-    require_feedback_completion(int(user["id"]))
     debit = debit_credits(
         int(user["id"]),
         "analyze",
@@ -17687,7 +17685,6 @@ async def analyze_resume_file(
 @app.post("/suggest")
 def suggest_actions(data: ResumeRequest, request: Request) -> dict[str, Any]:
     user = require_authenticated_user(request, data.auth_token)
-    require_feedback_completion(int(user["id"]))
     debit = debit_credits(
         int(user["id"]),
         "analyze",

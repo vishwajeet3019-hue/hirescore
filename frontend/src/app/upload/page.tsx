@@ -3749,10 +3749,10 @@ export default function UploadPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               className="w-full max-w-xl rounded-[1.7rem] border border-cyan-100/26 bg-[#04172e]/96 p-6 shadow-[0_35px_100px_rgba(0,0,0,0.6)]"
             >
-              <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Mandatory Feedback</p>
-              <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Rate Your First Analysis</h3>
+              <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Quick Feedback (Optional)</p>
+              <h3 className="mt-2 text-2xl font-semibold text-cyan-50">Rate This Analysis</h3>
               <p className="mt-2 text-sm text-cyan-50/72">
-                Please share feedback once to unlock your next analysis attempt.
+                Share a quick rating to help improve future analysis quality.
               </p>
 
               <div className="mt-5 rounded-2xl border border-cyan-100/20 bg-[#06233f]/72 p-4">
@@ -3801,15 +3801,13 @@ export default function UploadPage() {
                 >
                   {feedbackSubmitting ? "Submitting..." : "Submit Feedback"}
                 </button>
-                {!feedbackRequired && (
-                  <button
-                    type="button"
-                    onClick={() => setShowFeedbackModal(false)}
-                    className="rounded-xl border border-cyan-100/24 bg-transparent px-4 py-2 text-sm font-semibold text-cyan-50/84 transition hover:bg-cyan-100/10"
-                  >
-                    Close
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setShowFeedbackModal(false)}
+                  className="rounded-xl border border-cyan-100/24 bg-transparent px-4 py-2 text-sm font-semibold text-cyan-50/84 transition hover:bg-cyan-100/10"
+                >
+                  Not Now
+                </button>
               </div>
             </motion.section>
           </motion.div>
