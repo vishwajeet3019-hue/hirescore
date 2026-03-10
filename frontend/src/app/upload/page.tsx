@@ -189,6 +189,46 @@ type AnalysisResult = {
   wallet?: CreditWallet;
   credit_transaction_id?: number;
   feedback_required?: boolean;
+  report_id?: number;
+};
+
+type AnalysisSnapshot = {
+  id: number;
+  created_at: string;
+  source: string;
+  industry: string;
+  role: string;
+  overall_score: number;
+  confidence: number;
+  critical_missing_count: number;
+  estimated_callback_rate: number;
+  shortlist_prediction: string;
+};
+
+type AnalysisComparison = {
+  latest?: AnalysisSnapshot | null;
+  previous?: AnalysisSnapshot | null;
+  delta?: {
+    overall_score: number;
+    confidence: number;
+    critical_missing_count: number;
+    estimated_callback_rate: number;
+  } | null;
+};
+
+type RoleBenchmark = {
+  role: string;
+  industry: string;
+  score: number;
+  peer_count: number;
+  percentile: number;
+  band_label: string;
+  benchmarks?: {
+    p25: number;
+    p50: number;
+    p75: number;
+    p90: number;
+  };
 };
 
 type GoalRoadmapMilestone = {
@@ -417,6 +457,11 @@ const validateResumeUploadFile = (file: File | null) => {
 };
 
 const rounded = (value: number) => Math.round(value * 10) / 10;
+const formatDeltaValue = (value: number, suffix = "") => {
+  const normalized = Number.isFinite(value) ? rounded(value) : 0;
+  const sign = normalized > 0 ? "+" : "";
+  return `${sign}${normalized}${suffix}`;
+};
 const ANALYSIS_LOADING_STEPS = [
   "Parsing profile and role intent",
   "Calibrating shortlist probability model",
@@ -462,6 +507,10 @@ export default function UploadPage() {
   const [isDragging, setIsDragging] = useState(false);
 
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [analysisComparison, setAnalysisComparison] = useState<AnalysisComparison | null>(null);
+  const [roleBenchmark, setRoleBenchmark] = useState<RoleBenchmark | null>(null);
+  const [analysisTrendLoading, setAnalysisTrendLoading] = useState(false);
+  const [analysisTrendError, setAnalysisTrendError] = useState("");
   const [analysisError, setAnalysisError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
@@ -953,7 +1002,61 @@ export default function UploadPage() {
     };
   }, [showAuthModal, authToken, signupOtpRequired, forgotPasswordMode, authMode, authLiveLoading, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleAnalyzeSuccess = (data: AnalysisResult) => {
+  const loadPostAnalysisInsights = async (analysisResult: AnalysisResult, tokenOverride?: string) => {
+    const headers = tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : authHeader;
+    if (!headers) return;
+
+    setAnalysisTrendLoading(true);
+    setAnalysisTrendError("");
+    try {
+      const reportIdQuery = typeof analysisResult.report_id === "number" ? `?report_id=${analysisResult.report_id}` : "";
+      const fallbackRole = role.trim() || analysisResult.positioning_strategy?.target_role || "";
+      const fallbackIndustry = industry.trim() || analysisResult.salary_insight?.target_industry || "";
+      const benchmarkParams = new URLSearchParams();
+      if (fallbackRole) benchmarkParams.set("role", fallbackRole);
+      if (fallbackIndustry) benchmarkParams.set("industry", fallbackIndustry);
+      if (Number.isFinite(analysisResult.overall_score)) benchmarkParams.set("score", String(analysisResult.overall_score));
+      const benchmarkQuery = reportIdQuery || (benchmarkParams.toString() ? `?${benchmarkParams.toString()}` : "");
+
+      const [comparisonPayload, benchmarkPayload] = await Promise.all([
+        fetchJsonWithWakeAndRetry<AnalysisComparison>({
+          apiUrl,
+          path: "/analysis/reports/compare",
+          init: {
+            headers: {
+              ...headers,
+            },
+          },
+          timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+          parseError: parseApiError,
+          abortErrorMessage: "Trend insights are taking longer than expected. Please try again.",
+        }),
+        fetchJsonWithWakeAndRetry<RoleBenchmark>({
+          apiUrl,
+          path: `/analysis/role-benchmark${benchmarkQuery}`,
+          init: {
+            headers: {
+              ...headers,
+            },
+          },
+          timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+          parseError: parseApiError,
+          abortErrorMessage: "Role benchmark is taking longer than expected. Please try again.",
+        }),
+      ]);
+
+      setAnalysisComparison(comparisonPayload || null);
+      setRoleBenchmark(benchmarkPayload || null);
+    } catch (error) {
+      setAnalysisComparison(null);
+      setRoleBenchmark(null);
+      setAnalysisTrendError(error instanceof Error ? error.message : "Unable to load comparison insights right now.");
+    } finally {
+      setAnalysisTrendLoading(false);
+    }
+  };
+
+  const handleAnalyzeSuccess = (data: AnalysisResult, tokenOverride?: string) => {
     if (data.wallet) {
       setWallet(data.wallet);
     }
@@ -987,10 +1090,16 @@ export default function UploadPage() {
     setJobTrackSaveMessage("");
     setJobTrackSaving(false);
     setPrepPackError("");
+    setAnalysisComparison(null);
+    setRoleBenchmark(null);
+    setAnalysisTrendLoading(false);
+    setAnalysisTrendError("");
     setSelectedSalaryBoosters(data.salary_insight?.selected_boosters || []);
     if (data.callback_forecast?.applications_input) {
       setCallbackSimulationApps(String(data.callback_forecast.applications_input));
     }
+
+    void loadPostAnalysisInsights(data, tokenOverride);
 
     trackAnalyzeComplete({
       score: data.overall_score,
@@ -1195,6 +1304,10 @@ export default function UploadPage() {
     setApplicationCopilotError("");
     setJobTrackSaveMessage("");
     setJobTrackSaving(false);
+    setAnalysisComparison(null);
+    setRoleBenchmark(null);
+    setAnalysisTrendLoading(false);
+    setAnalysisTrendError("");
     setSignupOtpRequired(false);
     setSignupOtp("");
     setForgotPasswordMode(false);
@@ -1288,7 +1401,7 @@ export default function UploadPage() {
         }
         return payload;
       });
-      handleAnalyzeSuccess(data);
+      handleAnalyzeSuccess(data, effectiveToken);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "Unable to analyze right now.");
     }
@@ -1353,7 +1466,7 @@ export default function UploadPage() {
         }
         return payload;
       });
-      handleAnalyzeSuccess(data);
+      handleAnalyzeSuccess(data, effectiveToken);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "Unable to analyze uploaded resume right now.");
     }
@@ -2880,6 +2993,34 @@ export default function UploadPage() {
                             </ul>
                           </div>
                         )}
+
+                        <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
+                          <p className="text-sm font-semibold text-cyan-100">Trend vs Previous Run</p>
+                          {analysisTrendLoading && (
+                            <p className="mt-2 text-xs text-cyan-50/74">Calculating score delta and role benchmark...</p>
+                          )}
+                          {!analysisTrendLoading && analysisTrendError && (
+                            <p className="mt-2 text-xs text-amber-100">{analysisTrendError}</p>
+                          )}
+                          {!analysisTrendLoading && !analysisTrendError && analysisComparison?.delta && (
+                            <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                              <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-2 text-cyan-100/86">
+                                Score delta: {formatDeltaValue(analysisComparison.delta.overall_score)}
+                              </div>
+                              <div className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-2 text-cyan-100/86">
+                                Callback delta: {formatDeltaValue(analysisComparison.delta.estimated_callback_rate, "%")}
+                              </div>
+                            </div>
+                          )}
+                          {!analysisTrendLoading && !analysisTrendError && !analysisComparison?.delta && (
+                            <p className="mt-2 text-xs text-cyan-50/74">No previous run found yet. Your next analysis will show progression delta.</p>
+                          )}
+                          {!analysisTrendLoading && roleBenchmark && (
+                            <p className="mt-2 text-xs text-cyan-100/84">
+                              Benchmark: {roleBenchmark.band_label} band | Percentile {roleBenchmark.percentile}% among {roleBenchmark.peer_count} peers
+                            </p>
+                          )}
+                        </div>
 
                         <div className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-3 sm:p-4">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
