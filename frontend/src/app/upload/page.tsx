@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { addUtmParams } from "@/lib/utm";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
-import { trackAnalyzeComplete, trackAnalyzeStart, trackSignup } from "@/lib/analytics";
+import { trackAnalyzeComplete, trackAnalyzeStart, trackEvent, trackSignup } from "@/lib/analytics";
 import TrackedLink from "@/app/components/tracked-link";
 
 type ImprovementArea = {
@@ -454,6 +454,13 @@ const validateResumeUploadFile = (file: File | null) => {
     return "Resume file is too large. Keep it under 12 MB.";
   }
   return "";
+};
+
+const fileExtension = (fileName: string) => {
+  const normalized = fileName.toLowerCase();
+  const dotIndex = normalized.lastIndexOf(".");
+  if (dotIndex < 0) return "unknown";
+  return normalized.slice(dotIndex + 1) || "unknown";
 };
 
 const rounded = (value: number) => Math.round(value * 10) / 10;
@@ -1158,6 +1165,10 @@ export default function UploadPage() {
     setQueuedAnalyzeMode(mode);
     setAuthInfo("Login or signup to view your report.");
     setShowAuthModal(true);
+    trackEvent("auth_modal_opened_before_analyze", {
+      mode,
+      location: "upload_page",
+    });
   };
 
   const runQueuedAnalyzeAfterAuth = async (tokenOverride?: string) => {
@@ -1387,12 +1398,22 @@ export default function UploadPage() {
     if (!normalizedIndustry || !normalizedRole) {
       setAnalysisError("Enter both target industry and target role.");
       setResult(null);
+      trackEvent("analyze_validation_error", {
+        mode: "manual",
+        reason: "missing_role_or_industry",
+        location: "upload_page",
+      });
       return;
     }
 
     if (!isFresherFlow && skillTokens.length < 3) {
       setAnalysisError("Add at least 3 concrete skills/tools for meaningful prediction. If you are a fresher, keep experience at 0-1 years.");
       setResult(null);
+      trackEvent("analyze_validation_error", {
+        mode: "manual",
+        reason: "insufficient_skills",
+        location: "upload_page",
+      });
       return;
     }
 
@@ -1436,6 +1457,10 @@ export default function UploadPage() {
       handleAnalyzeSuccess(data, effectiveToken);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "Unable to analyze right now.");
+      trackEvent("analyze_error", {
+        mode: "manual",
+        location: "upload_page",
+      });
     }
   };
 
@@ -1451,6 +1476,11 @@ export default function UploadPage() {
     if (!normalizedIndustry || !normalizedRole) {
       setAnalysisError("Enter both target industry and target role.");
       setResult(null);
+      trackEvent("analyze_validation_error", {
+        mode: "upload",
+        reason: "missing_role_or_industry",
+        location: "upload_page",
+      });
       return;
     }
 
@@ -1461,6 +1491,11 @@ export default function UploadPage() {
     if (uploadValidationError || !fileToUpload) {
       setAnalysisError(uploadValidationError);
       setResult(null);
+      trackEvent("analyze_validation_error", {
+        mode: "upload",
+        reason: "invalid_resume_file",
+        location: "upload_page",
+      });
       return;
     }
 
@@ -1501,6 +1536,10 @@ export default function UploadPage() {
       handleAnalyzeSuccess(data, effectiveToken);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "Unable to analyze uploaded resume right now.");
+      trackEvent("analyze_error", {
+        mode: "upload",
+        location: "upload_page",
+      });
     }
   };
 
@@ -1961,6 +2000,7 @@ export default function UploadPage() {
     }
 
     setJdMatchError("");
+    trackEvent("jd_match_started", { location: "upload_page" });
     setJdMatchLoading(true);
     try {
       const payload = await fetchJsonWithWakeAndRetry<JdMatchPayload>({
@@ -1988,6 +2028,10 @@ export default function UploadPage() {
         setWallet(payload.wallet);
       }
       setJdMatch(payload);
+      trackEvent("jd_match_completed", {
+        location: "upload_page",
+        match_score: payload.match_percentage ?? payload.match_score ?? 0,
+      });
     } catch (error) {
       setJdMatch(null);
       setJdMatchError(error instanceof Error ? error.message : "Unable to run JD match right now.");
@@ -2003,6 +2047,7 @@ export default function UploadPage() {
       return;
     }
     setPrepPackError("");
+    trackEvent("interview_prep_started", { location: "upload_page" });
     setInterviewPrepLoading(true);
     try {
       const payload = await fetchJsonWithWakeAndRetry<InterviewPrepPayload>({
@@ -2029,6 +2074,7 @@ export default function UploadPage() {
         abortErrorMessage: "Interview prep generation is taking longer than expected. Please try again.",
       });
       setInterviewPrep(payload);
+      trackEvent("interview_prep_generated", { location: "upload_page" });
     } catch (error) {
       setPrepPackError(error instanceof Error ? error.message : "Unable to generate interview prep right now.");
     } finally {
@@ -2049,6 +2095,7 @@ export default function UploadPage() {
     }
 
     setPrepPackError("");
+    trackEvent("application_pack_started", { location: "upload_page" });
     setApplicationPackLoading(true);
     try {
       const payload = await fetchJsonWithWakeAndRetry<ApplicationPackPayload>({
@@ -2073,6 +2120,7 @@ export default function UploadPage() {
         abortErrorMessage: "Application pack generation is taking longer than expected. Please try again.",
       });
       setApplicationPack(payload);
+      trackEvent("application_pack_generated", { location: "upload_page" });
     } catch (error) {
       setPrepPackError(error instanceof Error ? error.message : "Unable to create your job apply kit right now.");
     } finally {
@@ -2100,6 +2148,7 @@ export default function UploadPage() {
 
     setApplicationCopilotError("");
     setJobTrackSaveMessage("");
+    trackEvent("application_copilot_started", { location: "upload_page" });
     setApplicationCopilotLoading(true);
     try {
       const payload = await fetchJsonWithWakeAndRetry<ApplicationCopilotPayload>({
@@ -2127,6 +2176,10 @@ export default function UploadPage() {
         setWallet(payload.wallet);
       }
       setApplicationCopilot(payload);
+      trackEvent("application_copilot_generated", {
+        location: "upload_page",
+        match_percentage: payload.match_percentage || 0,
+      });
     } catch (error) {
       setApplicationCopilot(null);
       setApplicationCopilotError(error instanceof Error ? error.message : "Unable to run Application Copilot right now.");
@@ -2173,6 +2226,10 @@ export default function UploadPage() {
       });
       const trackId = payload.job_track?.id || 0;
       setJobTrackSaveMessage(trackId > 0 ? `Saved to Job Track #${trackId}.` : "Saved to Job Track.");
+      trackEvent("job_track_saved_from_upload", {
+        location: "upload_page",
+        track_id: trackId,
+      });
     } catch (error) {
       setApplicationCopilotError(error instanceof Error ? error.message : "Unable to save this Job Track right now.");
     } finally {
@@ -2484,10 +2541,20 @@ export default function UploadPage() {
                           if (validationError) {
                             setAnalysisError(validationError);
                             setUploadedFile(null);
+                            trackEvent("resume_file_rejected", {
+                              source: "drag_drop",
+                              extension: fileExtension(file.name),
+                              location: "upload_page",
+                            });
                             return;
                           }
                           setUploadedFile(file);
                           setAnalysisError("");
+                          trackEvent("resume_file_selected", {
+                            source: "drag_drop",
+                            extension: fileExtension(file.name),
+                            location: "upload_page",
+                          });
                         }
                       }}
                       className={`rounded-2xl border-2 border-dashed p-7 text-center transition ${
@@ -2511,10 +2578,20 @@ export default function UploadPage() {
                                 if (validationError) {
                                   setAnalysisError(validationError);
                                   setUploadedFile(null);
+                                  trackEvent("resume_file_rejected", {
+                                    source: "file_picker",
+                                    extension: fileExtension(file.name),
+                                    location: "upload_page",
+                                  });
                                   return;
                                 }
                                 setUploadedFile(file);
                                 setAnalysisError("");
+                                trackEvent("resume_file_selected", {
+                                  source: "file_picker",
+                                  extension: fileExtension(file.name),
+                                  location: "upload_page",
+                                });
                               }}
                             />
                           </label>
