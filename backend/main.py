@@ -16,6 +16,7 @@ import hmac
 import base64
 import secrets
 import uuid
+import zipfile
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -24,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import Any
+import xml.etree.ElementTree as ET
 
 import PyPDF2
 from dotenv import load_dotenv
@@ -3827,12 +3829,40 @@ def normalize_toggle_ids(values: list[str] | None) -> list[str]:
     return dedupe_preserve_order(normalized)
 
 
+def extract_text_from_docx_upload(contents: bytes) -> str:
+    try:
+        with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            document_xml = archive.read("word/document.xml")
+    except (zipfile.BadZipFile, KeyError, RuntimeError, ValueError):
+        return ""
+
+    try:
+        root = ET.fromstring(document_xml)
+    except ET.ParseError:
+        return ""
+
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    lines: list[str] = []
+    for paragraph in root.findall(".//w:p", namespace):
+        chunks: list[str] = []
+        for text_node in paragraph.findall(".//w:t", namespace):
+            value = safe_text(text_node.text)
+            if value:
+                chunks.append(value)
+        merged = "".join(chunks).strip()
+        if merged:
+            lines.append(merged)
+    return "\n".join(lines).strip()
+
+
 def extract_resume_text_for_analysis(file_name: str, content_type: str | None, contents: bytes) -> str:
     normalized_name = safe_text(file_name).lower()
     normalized_type = safe_text(content_type).lower()
 
     is_pdf = normalized_name.endswith(".pdf") or normalized_type == "application/pdf"
     is_txt = normalized_name.endswith(".txt") or normalized_type.startswith("text/")
+    is_docx = normalized_name.endswith(".docx") or normalized_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    is_image = normalized_type.startswith("image/") or bool(re.search(r"\.(png|jpe?g|webp|gif|bmp|tiff?)$", normalized_name))
 
     if is_pdf:
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(contents))
@@ -3844,18 +3874,42 @@ def extract_resume_text_for_analysis(file_name: str, content_type: str | None, c
     if is_txt:
         return contents.decode("utf-8", errors="ignore").strip()
 
+    if is_docx:
+        extracted_docx = extract_text_from_docx_upload(contents)
+        if extracted_docx:
+            return extracted_docx
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read enough text from this DOCX file. Export as PDF/TXT and try again.",
+        )
+
+    if is_image:
+        return extract_text_from_uploaded_image_with_openai(contents, normalized_type, document_kind="resume")
+
     raise HTTPException(
         status_code=400,
-        detail="Unsupported file type for analysis. Upload a PDF or TXT file.",
+        detail="Unsupported file type for analysis. Upload PDF, DOCX, TXT, or image.",
     )
 
 
-def extract_text_from_uploaded_image_with_openai(contents: bytes, content_type: str | None = None) -> str:
+def extract_text_from_uploaded_image_with_openai(
+    contents: bytes,
+    content_type: str | None = None,
+    document_kind: str = "job description",
+) -> str:
     if client is None:
         raise HTTPException(
             status_code=503,
             detail="Image text extraction is unavailable right now. Upload a PDF or paste text instead.",
         )
+
+    normalized_kind = safe_text(document_kind).strip().lower() or "document"
+    if "resume" in normalized_kind:
+        normalized_kind = "resume"
+    elif "job" in normalized_kind or "jd" in normalized_kind:
+        normalized_kind = "job description"
+    else:
+        normalized_kind = "document"
 
     encoded_image = base64.b64encode(contents).decode("ascii")
     mime_type = safe_text(content_type).lower()
@@ -3864,7 +3918,7 @@ def extract_text_from_uploaded_image_with_openai(contents: bytes, content_type: 
     image_data_url = f"data:{mime_type};base64,{encoded_image}"
 
     prompt = (
-        "Extract only the visible job description text from this image.\n"
+        f"Extract only the visible {normalized_kind} text from this image.\n"
         "Return plain text only, no markdown, no code fences."
     )
 
@@ -3905,10 +3959,10 @@ def extract_text_from_uploaded_image_with_openai(contents: bytes, content_type: 
                     continue
                 break
 
-    logger.warning("Image JD extraction failed: %s", last_error)
+    logger.warning("Image text extraction failed (%s): %s", normalized_kind, last_error)
     raise HTTPException(
         status_code=400,
-        detail="Could not read enough job description text from this image. Try a clearer image or upload a PDF.",
+        detail=f"Could not read enough {normalized_kind} text from this image. Try a clearer image or upload a PDF.",
     )
 
 
@@ -3931,7 +3985,7 @@ def extract_job_description_text_from_upload(file_name: str, content_type: str |
         return contents.decode("utf-8", errors="ignore").strip()
 
     if is_image:
-        return extract_text_from_uploaded_image_with_openai(contents, normalized_type)
+        return extract_text_from_uploaded_image_with_openai(contents, normalized_type, document_kind="job description")
 
     raise HTTPException(
         status_code=400,
@@ -17573,6 +17627,10 @@ async def analyze_resume_file(
 
     try:
         contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        if len(contents) > 12 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Resume file is too large. Upload a file smaller than 12 MB.")
         extracted_text = extract_resume_text_for_analysis(file.filename or "", file.content_type, contents)
         if not extracted_text:
             raise HTTPException(status_code=400, detail="No readable text found in the uploaded file.")

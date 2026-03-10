@@ -363,6 +363,27 @@ const parseSkillTokens = (value: string) => {
     .filter(Boolean);
 };
 
+const MAX_RESUME_UPLOAD_BYTES = 12 * 1024 * 1024;
+
+const validateResumeUploadFile = (file: File | null) => {
+  if (!file) return "Upload your resume file first.";
+  const normalizedName = file.name.toLowerCase();
+  const fileType = (file.type || "").toLowerCase();
+  const isPdf = fileType === "application/pdf" || normalizedName.endsWith(".pdf");
+  const isText = fileType.startsWith("text/") || normalizedName.endsWith(".txt");
+  const isDocx =
+    fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || normalizedName.endsWith(".docx");
+  const isImage = fileType.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/.test(normalizedName);
+
+  if (!isPdf && !isText && !isDocx && !isImage) {
+    return "Upload resume as PDF, DOCX, TXT, or image (JPG/PNG/WebP).";
+  }
+  if (file.size > MAX_RESUME_UPLOAD_BYTES) {
+    return "Resume file is too large. Keep it under 12 MB.";
+  }
+  return "";
+};
+
 const rounded = (value: number) => Math.round(value * 10) / 10;
 const ANALYSIS_LOADING_STEPS = [
   "Parsing profile and role intent",
@@ -473,6 +494,7 @@ export default function UploadPage() {
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const jdFileInputRef = useRef<HTMLInputElement | null>(null);
   const closeResultModalRef = useRef<() => void>(() => {});
+  const authIntentHandledRef = useRef(false);
 
   const authHeader = useMemo(
     () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
@@ -547,6 +569,23 @@ export default function UploadPage() {
   useEffect(() => {
     void warmBackend(apiUrl);
   }, []);
+
+  useEffect(() => {
+    if (authIntentHandledRef.current) return;
+    if (typeof window === "undefined") return;
+    const authIntent = (new URLSearchParams(window.location.search).get("auth") || "").trim().toLowerCase();
+    if (!authIntent) return;
+    authIntentHandledRef.current = true;
+    if (authToken) return;
+    if (authIntent === "signup") {
+      setAuthMode("signup");
+    } else {
+      setAuthMode("login");
+    }
+    setAuthError("");
+    setAuthInfo("");
+    setShowAuthModal(true);
+  }, [authToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1215,8 +1254,10 @@ export default function UploadPage() {
 
     trackAnalyzeStart("upload", "upload_page");
 
-    if (!uploadedFile) {
-      setAnalysisError("Upload your resume file first.");
+    const fileToUpload = uploadedFile;
+    const uploadValidationError = validateResumeUploadFile(uploadedFile);
+    if (uploadValidationError || !fileToUpload) {
+      setAnalysisError(uploadValidationError);
       setResult(null);
       return;
     }
@@ -1229,7 +1270,7 @@ export default function UploadPage() {
       const authHeaders = tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : (authHeader || {});
       const data = await runWithMinimumLoading(async () => {
         const formData = new FormData();
-        formData.append("file", uploadedFile);
+        formData.append("file", fileToUpload);
         formData.append("industry", normalizedIndustry);
         formData.append("role", normalizedRole);
         if (experienceYears.trim()) formData.append("experience_years", experienceYears.trim());
@@ -2137,7 +2178,9 @@ export default function UploadPage() {
                 ) : (
                   <div className="mt-4 rounded-2xl border border-amber-100/20 bg-amber-100/[0.05] p-4">
                     <p className="text-xs uppercase tracking-[0.12em] text-amber-100/78">Resume Upload</p>
-                    <label className="mb-2 mt-3 block text-sm font-medium text-amber-50/90">Resume File (PDF or TXT)</label>
+                    <label className="mb-2 mt-3 block text-sm font-medium text-amber-50/90">
+                      Resume File (PDF, DOCX, TXT, or image)
+                    </label>
                     <div
                       onDragOver={(event) => {
                         event.preventDefault();
@@ -2149,6 +2192,12 @@ export default function UploadPage() {
                         setIsDragging(false);
                         const file = event.dataTransfer.files?.[0];
                         if (file) {
+                          const validationError = validateResumeUploadFile(file);
+                          if (validationError) {
+                            setAnalysisError(validationError);
+                            setUploadedFile(null);
+                            return;
+                          }
                           setUploadedFile(file);
                           setAnalysisError("");
                         }
@@ -2165,9 +2214,20 @@ export default function UploadPage() {
                             Browse File
                             <input
                               type="file"
-                              accept=".pdf,.txt"
+                              accept=".pdf,.txt,.docx,image/*"
                               className="hidden"
-                              onChange={(event) => setUploadedFile(event.target.files?.[0] || null)}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0] || null;
+                                if (!file) return;
+                                const validationError = validateResumeUploadFile(file);
+                                if (validationError) {
+                                  setAnalysisError(validationError);
+                                  setUploadedFile(null);
+                                  return;
+                                }
+                                setUploadedFile(file);
+                                setAnalysisError("");
+                              }}
                             />
                           </label>
                         </>
@@ -2184,6 +2244,7 @@ export default function UploadPage() {
                         </div>
                       )}
                     </div>
+                    <p className="mt-2 text-xs text-amber-50/70">Max file size: 12 MB.</p>
                   </div>
                 )}
 
