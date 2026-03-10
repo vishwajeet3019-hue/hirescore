@@ -319,6 +319,38 @@ type ApplicationPackPayload = {
   };
 };
 
+type ApplicationCopilotPayload = {
+  role: string;
+  industry: string;
+  company?: string;
+  match_percentage: number;
+  matched_skills: string[];
+  missing_skills: string[];
+  feedback: string[];
+  resume_improvements: string[];
+  next_steps_7_day: string[];
+  interview_questions: string[];
+  jd_focus_keywords: string[];
+  application_checklist: string[];
+  application_pack?: {
+    subject_line?: string;
+    linkedin_message?: string;
+    cover_letter_opening?: string;
+  };
+  wallet?: CreditWallet;
+  credit_transaction_id?: number;
+};
+
+type JobTrackUpsertPayload = {
+  job_track: {
+    id: number;
+    role: string;
+    industry: string;
+    status: string;
+    updated_at: string;
+  };
+};
+
 type ApiErrorDetail = {
   message?: string;
   wallet?: CreditWallet;
@@ -458,6 +490,11 @@ export default function UploadPage() {
   const [interviewPrepLoading, setInterviewPrepLoading] = useState(false);
   const [applicationPack, setApplicationPack] = useState<ApplicationPackPayload | null>(null);
   const [applicationPackLoading, setApplicationPackLoading] = useState(false);
+  const [applicationCopilot, setApplicationCopilot] = useState<ApplicationCopilotPayload | null>(null);
+  const [applicationCopilotLoading, setApplicationCopilotLoading] = useState(false);
+  const [jobTrackSaving, setJobTrackSaving] = useState(false);
+  const [jobTrackSaveMessage, setJobTrackSaveMessage] = useState("");
+  const [applicationCopilotError, setApplicationCopilotError] = useState("");
   const [prepPackError, setPrepPackError] = useState("");
 
   const [selectedSalaryBoosters, setSelectedSalaryBoosters] = useState<string[]>([]);
@@ -945,6 +982,10 @@ export default function UploadPage() {
     setJdMatchError("");
     setInterviewPrep(null);
     setApplicationPack(null);
+    setApplicationCopilot(null);
+    setApplicationCopilotError("");
+    setJobTrackSaveMessage("");
+    setJobTrackSaving(false);
     setPrepPackError("");
     setSelectedSalaryBoosters(data.salary_insight?.selected_boosters || []);
     if (data.callback_forecast?.applications_input) {
@@ -1150,6 +1191,10 @@ export default function UploadPage() {
     setFeedbackComment("");
     setFeedbackError("");
     setAuthInfo("");
+    setApplicationCopilot(null);
+    setApplicationCopilotError("");
+    setJobTrackSaveMessage("");
+    setJobTrackSaving(false);
     setSignupOtpRequired(false);
     setSignupOtp("");
     setForgotPasswordMode(false);
@@ -1164,6 +1209,18 @@ export default function UploadPage() {
     if (!normalized) return undefined;
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  const buildActionResumeSource = (analysisResult: AnalysisResult | null) => {
+    if (!analysisResult) return "";
+    return [
+      analysisSkills.trim(),
+      ...(analysisResult.quick_wins || []),
+      ...(analysisResult.areas_to_improve || []).flatMap((item) => item.details || []),
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
   };
 
   const executeManualAnalyze = async (tokenOverride?: string) => {
@@ -1752,14 +1809,7 @@ export default function UploadPage() {
       return;
     }
 
-    const resumeSource = [
-      analysisSkills.trim(),
-      ...(result.quick_wins || []),
-      ...(result.areas_to_improve || []).flatMap((item) => item.details || []),
-    ]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
+    const resumeSource = buildActionResumeSource(result);
     if (resumeSource.length < 24) {
       setJdMatchError("Add your current skills first so JD match can evaluate role alignment.");
       return;
@@ -1847,14 +1897,7 @@ export default function UploadPage() {
       setPrepPackError("Login required to create your job apply kit.");
       return;
     }
-    const resumeSource = [
-      analysisSkills.trim(),
-      ...(result.quick_wins || []),
-      ...(result.areas_to_improve || []).flatMap((item) => item.details || []),
-    ]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
+    const resumeSource = buildActionResumeSource(result);
     if (resumeSource.length < 24) {
       setPrepPackError("Add your current skills first to create a personalized job apply kit.");
       return;
@@ -1889,6 +1932,106 @@ export default function UploadPage() {
       setPrepPackError(error instanceof Error ? error.message : "Unable to create your job apply kit right now.");
     } finally {
       setApplicationPackLoading(false);
+    }
+  };
+
+  const handleRunApplicationCopilot = async () => {
+    if (!result) return;
+    if (!authToken || !authHeader) {
+      setApplicationCopilotError("Login required to run Application Copilot.");
+      return;
+    }
+
+    const resumeSource = buildActionResumeSource(result);
+    if (resumeSource.length < 24) {
+      setApplicationCopilotError("Add your current skills first so Copilot can produce personalized outputs.");
+      return;
+    }
+    const jobDescription = jdInput.trim();
+    if (jobDescription.length < 24) {
+      setApplicationCopilotError("Paste or upload a fuller JD first, then run Full Application Copilot.");
+      return;
+    }
+
+    setApplicationCopilotError("");
+    setJobTrackSaveMessage("");
+    setApplicationCopilotLoading(true);
+    try {
+      const payload = await fetchJsonWithWakeAndRetry<ApplicationCopilotPayload>({
+        apiUrl,
+        path: "/analysis/application-copilot",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            industry: industry.trim() || result.salary_insight?.target_industry || "General",
+            role: role.trim() || result.positioning_strategy?.target_role || "Target role",
+            resume_text: resumeSource,
+            job_description: jobDescription,
+            auth_token: authToken,
+          }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Application Copilot is taking longer than expected. Please try again.",
+      });
+      if (payload.wallet) {
+        setWallet(payload.wallet);
+      }
+      setApplicationCopilot(payload);
+    } catch (error) {
+      setApplicationCopilot(null);
+      setApplicationCopilotError(error instanceof Error ? error.message : "Unable to run Application Copilot right now.");
+    } finally {
+      setApplicationCopilotLoading(false);
+    }
+  };
+
+  const handleSaveAsJobTrack = async () => {
+    if (!authToken || !authHeader) {
+      setApplicationCopilotError("Login required to save a Job Track.");
+      return;
+    }
+    if (!applicationCopilot) {
+      setApplicationCopilotError("Run Full Application Copilot first, then save as Job Track.");
+      return;
+    }
+
+    setApplicationCopilotError("");
+    setJobTrackSaveMessage("");
+    setJobTrackSaving(true);
+    try {
+      const payload = await fetchJsonWithWakeAndRetry<JobTrackUpsertPayload>({
+        apiUrl,
+        path: "/application-copilot/job-tracks",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            role: role.trim() || applicationCopilot.role || "Target role",
+            industry: industry.trim() || applicationCopilot.industry || "General",
+            company: applicationCopilot.company || "",
+            status: "saved",
+            copilot_payload: applicationCopilot,
+            auth_token: authToken,
+          }),
+        },
+        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Saving Job Track is taking longer than expected. Please try again.",
+      });
+      const trackId = payload.job_track?.id || 0;
+      setJobTrackSaveMessage(trackId > 0 ? `Saved to Job Track #${trackId}.` : "Saved to Job Track.");
+    } catch (error) {
+      setApplicationCopilotError(error instanceof Error ? error.message : "Unable to save this Job Track right now.");
+    } finally {
+      setJobTrackSaving(false);
     }
   };
 
@@ -3066,9 +3209,9 @@ export default function UploadPage() {
                     <div className="mt-5 rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4 sm:p-5">
                       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                         <div>
-                          <p className="text-sm font-semibold text-cyan-100">Interview Prep + Job Apply Kit</p>
+                          <p className="text-sm font-semibold text-cyan-100">Interview Prep + Job Apply Kit + Copilot</p>
                           <p className="mt-1 text-xs text-cyan-50/72">
-                            Generate role-targeted mock questions and outreach assets from this analysis.
+                            Generate role-targeted prep assets, run full application copilot, and save this as a Job Track.
                           </p>
                         </div>
                         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
@@ -3088,10 +3231,28 @@ export default function UploadPage() {
                           >
                             {applicationPackLoading ? "Generating..." : "Create Job Apply Kit"}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleRunApplicationCopilot()}
+                            disabled={applicationCopilotLoading}
+                            className="w-full rounded-xl border border-emerald-200/34 bg-emerald-200/12 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-200/20 disabled:opacity-60 sm:w-auto"
+                          >
+                            {applicationCopilotLoading ? "Running..." : "Run Full Application Copilot"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveAsJobTrack()}
+                            disabled={jobTrackSaving || !applicationCopilot}
+                            className="w-full rounded-xl border border-emerald-200/30 bg-transparent px-3 py-1.5 text-xs font-semibold text-emerald-100/92 transition hover:bg-emerald-200/12 disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto"
+                          >
+                            {jobTrackSaving ? "Saving..." : "Save As Job Track"}
+                          </button>
                         </div>
                       </div>
 
                       {prepPackError && <p className="mt-3 text-xs text-amber-100">{prepPackError}</p>}
+                      {applicationCopilotError && <p className="mt-2 text-xs text-amber-100">{applicationCopilotError}</p>}
+                      {jobTrackSaveMessage && <p className="mt-2 text-xs text-emerald-100">{jobTrackSaveMessage}</p>}
 
                       {interviewPrep && (
                         <div className="mt-4 rounded-xl border border-cyan-100/20 bg-cyan-100/8 p-3">
@@ -3115,6 +3276,29 @@ export default function UploadPage() {
                           )}
                           {applicationPack.ai?.used && (
                             <p className="mt-1 text-[11px] text-cyan-100/70">AI model: {applicationPack.ai.model || "hybrid"}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {applicationCopilot && (
+                        <div className="mt-4 rounded-xl border border-emerald-100/22 bg-emerald-200/10 p-3">
+                          <p className="text-xs uppercase tracking-[0.12em] text-emerald-100/82">Application Copilot Snapshot</p>
+                          <p className="mt-2 text-xs text-emerald-100/90">
+                            Match: {applicationCopilot.match_percentage}% | Missing skills: {(applicationCopilot.missing_skills || []).length}
+                          </p>
+                          {(applicationCopilot.feedback || []).length > 0 && (
+                            <ul className="mt-2 space-y-1 text-xs text-cyan-50/80">
+                              {(applicationCopilot.feedback || []).slice(0, 3).map((line, idx) => (
+                                <li key={`copilot-feedback-${idx}`}>- {line}</li>
+                              ))}
+                            </ul>
+                          )}
+                          {(applicationCopilot.next_steps_7_day || []).length > 0 && (
+                            <ul className="mt-2 space-y-1 text-xs text-cyan-50/78">
+                              {(applicationCopilot.next_steps_7_day || []).slice(0, 3).map((line, idx) => (
+                                <li key={`copilot-next-${idx}`}>- {line}</li>
+                              ))}
+                            </ul>
                           )}
                         </div>
                       )}
