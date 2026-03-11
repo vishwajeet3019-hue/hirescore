@@ -2077,6 +2077,129 @@ export const seoLandingPages: SeoLandingPage[] = [
       },
     ],
   },
+  {
+    slug: "resume-vs-job-description-match-score-guide",
+    keyword: "resume vs job description match score guide",
+    title: "Resume vs Job Description Match Score Guide",
+    metaDescription:
+      "Learn how resume-JD match scoring works and fix the highest-impact gaps to improve shortlist probability quickly.",
+    h1: "Resume vs Job Description Match Score Guide",
+    intro:
+      "Most resumes get rejected because they are generic. This guide helps you map your resume to one job description and improve match score with targeted edits.",
+    roleFocus: "All Roles",
+    searchIntent: "Understand and improve resume-to-JD fit before applying.",
+    painPoints: [
+      "Resume bullets do not align with job description responsibilities.",
+      "Critical skills are missing or buried under low-value content.",
+      "Candidates apply to many roles with one generic resume version.",
+    ],
+    whatYouGet: [
+      "A practical way to read and prioritize JD keywords by impact.",
+      "A gap-fix workflow for skills, experience bullets, and summary.",
+      "A repeatable checklist to improve score before every application batch.",
+    ],
+    actionPlan: [
+      "Pick one target JD and highlight must-have skills and outcomes.",
+      "Rewrite top 6 bullets using the JD language with real metrics.",
+      "Re-check match score and submit only after critical gaps are closed.",
+    ],
+    faqs: [
+      {
+        question: "What is a good resume-JD match score to target?",
+        answer: "Aim for strong alignment on must-have skills and role outcomes first; higher match typically improves shortlist quality.",
+      },
+      {
+        question: "Should I include every keyword from the JD?",
+        answer: "No. Include only keywords you can support with real experience and impact.",
+      },
+      {
+        question: "How often should I tailor my resume?",
+        answer: "Tailor for each role family and every high-priority application where competition is strong.",
+      },
+    ],
+  },
+  {
+    slug: "ats-resume-mistakes-indian-jobseekers",
+    keyword: "ats resume mistakes indian jobseekers",
+    title: "ATS Resume Mistakes Indian Jobseekers Make",
+    metaDescription:
+      "Avoid the most common ATS resume mistakes in India and fix formatting, keyword alignment, and impact storytelling.",
+    h1: "ATS Resume Mistakes Indian Jobseekers Make",
+    intro:
+      "Good candidates get filtered out because resumes are hard to parse or too generic. This guide covers the most common ATS mistakes and how to fix them fast.",
+    roleFocus: "Indian Jobseekers",
+    searchIntent: "Identify ATS blocking mistakes and improve resume parsing + relevance.",
+    painPoints: [
+      "Complex formatting (tables, columns, icons) breaks ATS readability.",
+      "Skills are listed broadly without role-specific keyword mapping.",
+      "Experience bullets describe tasks but miss measurable outcomes.",
+    ],
+    whatYouGet: [
+      "A clear do-not-do list for ATS-unfriendly resume structure.",
+      "Guidance to prioritize role-relevant skills and keyword depth.",
+      "Examples to convert weak task bullets into impact-led statements.",
+    ],
+    actionPlan: [
+      "Move to a clean single-column layout with standard section names.",
+      "Map your top skills directly to target role requirements.",
+      "Rewrite weak bullets with problem, action, and measurable result.",
+    ],
+    faqs: [
+      {
+        question: "Do ATS systems reject resumes with colors and icons?",
+        answer: "Not always, but heavy design can reduce parse quality. Simpler formatting is usually safer.",
+      },
+      {
+        question: "Is one resume enough for all job applications?",
+        answer: "No. Use a master resume and create role-specific variants for better match quality.",
+      },
+      {
+        question: "Should freshers care about ATS optimization?",
+        answer: "Yes. ATS clarity is critical for freshers because every signal on the resume matters.",
+      },
+    ],
+  },
+  {
+    slug: "how-to-tailor-resume-for-each-job-application",
+    keyword: "how to tailor resume for each job application",
+    title: "How to Tailor Resume for Each Job Application",
+    metaDescription:
+      "Use a fast 20-minute workflow to tailor your resume per job application without rewriting everything from scratch.",
+    h1: "How to Tailor Resume for Each Job Application",
+    intro:
+      "Tailoring your resume does not mean rebuilding it every time. This guide gives you a fast method to customize the highest-impact sections per job.",
+    roleFocus: "All Roles",
+    searchIntent: "Find a scalable process to tailor resumes per job and improve interview callbacks.",
+    painPoints: [
+      "Candidates spend too much time rewriting low-impact sections.",
+      "Resume summary and skills remain generic across applications.",
+      "Achievements are not prioritized for the specific role target.",
+    ],
+    whatYouGet: [
+      "A 20-minute tailoring framework for each role application.",
+      "Section-by-section prioritization to maximize recruiter relevance.",
+      "A repeatable process that improves quality without slowing application velocity.",
+    ],
+    actionPlan: [
+      "Update headline + summary to match role, domain, and scope.",
+      "Move the most relevant 5-7 achievements to top visibility.",
+      "Run final ATS/JD match check before submitting the application.",
+    ],
+    faqs: [
+      {
+        question: "Which sections should I tailor first?",
+        answer: "Start with headline, summary, skills, and top experience bullets because they drive first-pass screening.",
+      },
+      {
+        question: "Can I keep one base resume and still tailor fast?",
+        answer: "Yes. Keep a master version and adapt only high-impact sections per role.",
+      },
+      {
+        question: "How many resume versions should I maintain?",
+        answer: "Maintain 2-4 versions by role family (for example backend, full stack, product) and tailor each before applying.",
+      },
+    ],
+  },
 ];
 
 export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
@@ -2659,6 +2782,36 @@ const keywordVariantsBySlug: Record<string, string[]> = {
     "enterprise jobs pune resume",
     "resume for pmp jobs pune",
     "pune tech jobs application resume",
+  ],
+  "resume-vs-job-description-match-score-guide": [
+    "resume jd match score guide",
+    "resume and job description match percentage",
+    "how to improve resume jd score",
+    "resume jd checker for interview calls",
+    "jd match score low what to do",
+    "resume tailoring based on job description",
+    "job description keyword mapping resume",
+    "resume job fit score improve",
+  ],
+  "ats-resume-mistakes-indian-jobseekers": [
+    "ats resume mistakes india",
+    "why ats rejects resume",
+    "resume not parsing in ats",
+    "ats friendly resume format india",
+    "resume formatting mistakes for jobs",
+    "resume rejected before recruiter review",
+    "ats optimization checklist india",
+    "ats resume fix guide",
+  ],
+  "how-to-tailor-resume-for-each-job-application": [
+    "tailor resume for each job",
+    "customize resume for job description",
+    "resume tailoring checklist",
+    "how to edit resume before applying",
+    "targeted resume for product company jobs",
+    "resume version by role family",
+    "quick resume tailoring workflow",
+    "resume customization for interview calls",
   ],
 };
 
