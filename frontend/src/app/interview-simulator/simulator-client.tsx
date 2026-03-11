@@ -34,6 +34,19 @@ type SimulatorScoreBreakdown = {
   overall?: number;
 };
 
+type SimulatorVideoSentiment = {
+  used?: boolean;
+  sentiment_label?: string;
+  sentiment_score?: number;
+  confidence_signal_score?: number;
+  eye_contact_score?: number;
+  engagement_score?: number;
+  notes?: string[];
+  frames_analyzed?: number;
+  model?: string | null;
+  reason?: string;
+};
+
 type SimulatorTurnFeedback = {
   round_number: number;
   stage_key?: string;
@@ -63,6 +76,7 @@ type SimulatorTurnFeedback = {
     model?: string | null;
     reason?: string;
   };
+  video_sentiment?: SimulatorVideoSentiment;
   created_at?: string;
 };
 
@@ -296,6 +310,8 @@ const JOIN_CHIME_DURATION_MS = 900;
 const AUTO_START_LISTEN_DELAY_MS = 550;
 const AUTO_SUBMIT_SILENCE_MS = 1400;
 const AI_AUDIO_MIN_BYTES = 700;
+const VIDEO_SENTIMENT_SAMPLE_LIMIT = 3;
+const VIDEO_SENTIMENT_SAMPLE_INTERVAL_MS = 5800;
 const authApiUrl = (path: string) => `${AUTH_API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 const simulatorApiUrl = (path: string) => `${SIMULATOR_API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
@@ -338,6 +354,20 @@ const formatRoundLabel = (roundNumber: number, stageLabel: string) => {
   const safeRoundNumber = Math.max(1, roundNumber || 1);
   const safeStageLabel = stageLabel.trim() || "Screening";
   return `Round ${safeRoundNumber}: ${safeStageLabel}`;
+};
+
+const formatVideoSentimentLabel = (value?: string) => {
+  const normalized = normalizeSpeechText(value || "").toLowerCase();
+  if (!normalized) return "Unknown";
+  if (normalized === "steady") return "Steady";
+  if (normalized === "positive") return "Positive";
+  if (normalized === "nervous") return "Nervous";
+  if (normalized === "negative") return "Negative";
+  return normalized
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
 };
 
 const formatRoomTime = (value: Date) =>
@@ -494,6 +524,7 @@ export default function InterviewSimulatorClient() {
   const [interimTranscript, setInterimTranscript] = useState("");
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [videoPromptDismissed, setVideoPromptDismissed] = useState(false);
   const [roomClock, setRoomClock] = useState(() => new Date());
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const keepListeningRef = useRef(false);
@@ -516,6 +547,9 @@ export default function InterviewSimulatorClient() {
   const prejoinVideoRef = useRef<HTMLVideoElement | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const latestVideoSamplesRef = useRef<string[]>([]);
+  const videoSampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoSamplingIntervalRef = useRef<number | null>(null);
   const resumeFileInputRef = useRef<HTMLInputElement | null>(null);
   const jdFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -656,6 +690,30 @@ export default function InterviewSimulatorClient() {
     attachStream(prejoinVideoRef.current);
     attachStream(liveVideoRef.current);
   }, [cameraEnabled, roomStage, prejoinModalOpen]);
+
+  useEffect(() => {
+    if (!cameraEnabled || roomStage !== "live" || !sessionId || Boolean(report) || Boolean(pendingRoundStart)) {
+      clearVideoSamplingInterval();
+      if (!cameraEnabled || roomStage !== "live") {
+        resetVideoSamples();
+      }
+      return;
+    }
+    clearVideoSamplingInterval();
+    const primeSample = captureVideoSentimentSample();
+    if (primeSample) {
+      latestVideoSamplesRef.current = [...latestVideoSamplesRef.current, primeSample].slice(-VIDEO_SENTIMENT_SAMPLE_LIMIT);
+    }
+    videoSamplingIntervalRef.current = window.setInterval(() => {
+      const sampled = captureVideoSentimentSample();
+      if (!sampled) return;
+      latestVideoSamplesRef.current = [...latestVideoSamplesRef.current, sampled].slice(-VIDEO_SENTIMENT_SAMPLE_LIMIT);
+    }, VIDEO_SENTIMENT_SAMPLE_INTERVAL_MS);
+
+    return () => {
+      clearVideoSamplingInterval();
+    };
+  }, [cameraEnabled, roomStage, sessionId, report, pendingRoundStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (roomStage !== "live") return;
@@ -896,6 +954,8 @@ export default function InterviewSimulatorClient() {
           recognitionRef.current.stop();
         } catch {}
       }
+      clearVideoSamplingInterval();
+      resetVideoSamples();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -938,6 +998,45 @@ export default function InterviewSimulatorClient() {
     }
     if (typeof payload?.detail === "string") return payload.detail;
     return `Request failed (${response.status})`;
+  };
+
+  const clearVideoSamplingInterval = () => {
+    if (videoSamplingIntervalRef.current) {
+      window.clearInterval(videoSamplingIntervalRef.current);
+      videoSamplingIntervalRef.current = null;
+    }
+  };
+
+  const resetVideoSamples = () => {
+    latestVideoSamplesRef.current = [];
+  };
+
+  const captureVideoSentimentSample = () => {
+    if (!cameraEnabled || !mediaStreamRef.current) return "";
+    const sourceVideo = (roomStage === "live" ? liveVideoRef.current : prejoinVideoRef.current) || liveVideoRef.current || prejoinVideoRef.current;
+    if (!sourceVideo || sourceVideo.readyState < 2 || sourceVideo.videoWidth < 8 || sourceVideo.videoHeight < 8) return "";
+
+    const targetWidth = Math.min(360, Math.max(192, sourceVideo.videoWidth));
+    const targetHeight = Math.max(120, Math.round((sourceVideo.videoHeight / sourceVideo.videoWidth) * targetWidth));
+    const canvas = videoSampleCanvasRef.current || document.createElement("canvas");
+    videoSampleCanvasRef.current = canvas;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const context = canvas.getContext("2d");
+    if (!context) return "";
+    context.drawImage(sourceVideo, 0, 0, targetWidth, targetHeight);
+    const encoded = canvas.toDataURL("image/jpeg", 0.64);
+    return encoded.startsWith("data:image/") ? encoded : "";
+  };
+
+  const collectVideoSamplesForTurn = () => {
+    const latestSample = captureVideoSentimentSample();
+    if (latestSample) {
+      const deduped = [...latestVideoSamplesRef.current.filter((sample) => sample !== latestSample), latestSample];
+      latestVideoSamplesRef.current = deduped.slice(-VIDEO_SENTIMENT_SAMPLE_LIMIT);
+    }
+    if (!cameraEnabled) return [];
+    return latestVideoSamplesRef.current.slice(-VIDEO_SENTIMENT_SAMPLE_LIMIT);
   };
 
   const clearAutoListenTimeout = () => {
@@ -1202,6 +1301,8 @@ export default function InterviewSimulatorClient() {
   const resetSimulationState = () => {
     stopQuestionAudioPlayback();
     clearPrefetchedQuestionAudio();
+    clearVideoSamplingInterval();
+    resetVideoSamples();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -1244,6 +1345,7 @@ export default function InterviewSimulatorClient() {
     setInterviewerJoined(false);
     setJoinLoading(false);
     setIsListening(false);
+    setVideoPromptDismissed(false);
     autoSpokenQuestionRef.current = "";
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -1275,7 +1377,10 @@ export default function InterviewSimulatorClient() {
     setSimulatorError("");
     stopQuestionAudioPlayback();
     clearPrefetchedQuestionAudio();
+    clearVideoSamplingInterval();
+    resetVideoSamples();
     autoSpokenQuestionRef.current = "";
+    setVideoPromptDismissed(false);
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
@@ -1403,6 +1508,7 @@ export default function InterviewSimulatorClient() {
       setSimulatorError("Answer is too short. Add more context before submitting.");
       return;
     }
+    const videoFrameSamples = collectVideoSamplesForTurn();
 
     setSimulatorError("");
     setSubmitLoading(true);
@@ -1422,6 +1528,7 @@ export default function InterviewSimulatorClient() {
             session_secret: sessionSecret,
             answer_text: preparedAnswer.trim(),
             response_time_seconds: answerTimerSeconds,
+            video_frame_samples: videoFrameSamples.length > 0 ? videoFrameSamples : undefined,
             auth_token: authToken || undefined,
           }),
         },
@@ -1454,6 +1561,7 @@ export default function InterviewSimulatorClient() {
       speechBaseAnswerRef.current = "";
       speechFinalTranscriptRef.current = "";
       pendingVoiceAutoSubmitRef.current = "";
+      resetVideoSamples();
 
       if (payload.completed) {
         setPendingRoundStart(null);
@@ -2039,6 +2147,8 @@ export default function InterviewSimulatorClient() {
 
   const toggleCameraPreview = async () => {
     if (cameraEnabled) {
+      clearVideoSamplingInterval();
+      resetVideoSamples();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -2047,6 +2157,7 @@ export default function InterviewSimulatorClient() {
       if (liveVideoRef.current) liveVideoRef.current.srcObject = null;
       setCameraEnabled(false);
       setCameraError("");
+      setVideoPromptDismissed(false);
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -2066,6 +2177,7 @@ export default function InterviewSimulatorClient() {
       }
       setCameraEnabled(true);
       setCameraError("");
+      setVideoPromptDismissed(false);
     } catch {
       setCameraEnabled(false);
       setCameraError("Camera permission denied or unavailable.");
@@ -2110,6 +2222,12 @@ export default function InterviewSimulatorClient() {
         `${formatRoundLabel(turn.round_number, turn.stage_label || "Round")} | Question ${turn.question_number_in_stage || 1}: ${turn.question}`,
         `Answer Time: ${turn.response_time_seconds}s | Words: ${turn.answer_word_count}`,
         `Scores: Communication ${turn.scores.communication}% | Clarity ${turn.scores.clarity}% | Domain ${turn.scores.domain_depth}% | Confidence ${turn.scores.confidence}%`,
+        ...(turn.video_sentiment?.used
+          ? [
+              `Video Sentiment: ${formatVideoSentimentLabel(turn.video_sentiment.sentiment_label)} ${clampPercent(turn.video_sentiment.sentiment_score || 0)}%`,
+              `Video Confidence Cue: ${clampPercent(turn.video_sentiment.confidence_signal_score || 0)}%`,
+            ]
+          : []),
         `Summary: ${turn.feedback_summary}`,
         `Strengths: ${(turn.strengths || []).join("; ")}`,
         `Improvements: ${(turn.improvements || []).join("; ")}`,
@@ -2222,6 +2340,14 @@ export default function InterviewSimulatorClient() {
       : "You can view your results now. Further rounds are closed for this interview."
     : "";
   const isFirstInterviewPrompt = roundNumber <= 1 && questionNumberInStage <= 1 && turnHistory.length === 0;
+  const showVideoSentimentPrompt =
+    roomStage === "live" &&
+    !cameraEnabled &&
+    !videoPromptDismissed &&
+    !report &&
+    !pendingRoundStart &&
+    Boolean(sessionId);
+  const latestVideoSentiment = latestTurnFeedback?.video_sentiment;
   const liveInterviewerIntro =
     isFirstInterviewPrompt
       ? openingRemark || `Hi ${candidateName || "there"}, good to meet you. I'm ${interviewerName}, ${interviewerTitle}, and I'll guide this interview one question at a time.`
@@ -2275,6 +2401,33 @@ export default function InterviewSimulatorClient() {
       {interviewOverlayActive ? (
         <div className="fixed inset-0 z-[120] overflow-y-auto bg-[#020611]/58 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-6 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pt-[max(1.5rem,env(safe-area-inset-top))]">
           <div className="mx-auto flex min-h-full w-full max-w-[1480px] items-start justify-center">
+            {showVideoSentimentPrompt ? (
+              <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[140] flex justify-center px-3 sm:justify-end sm:px-6">
+                <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-emerald-200/34 bg-[linear-gradient(145deg,rgba(6,24,34,0.96),rgba(4,16,24,0.98))] p-4 shadow-[0_20px_54px_rgba(2,8,22,0.6)]">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-emerald-100/74">Boost Accuracy</p>
+                  <h3 className="mt-2 text-base font-semibold text-emerald-50">Turn on video for better sentiment analysis.</h3>
+                  <p className="mt-2 text-xs text-emerald-50/82">
+                    The interviewer scores confidence cues from your live video presence. Frames are used only for analysis and are never recorded.
+                  </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void toggleCameraPreview()}
+                      className="rounded-full border border-emerald-200/40 bg-emerald-300/20 px-3 py-1.5 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-300/28"
+                    >
+                      Turn On Video
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVideoPromptDismissed(true)}
+                      className="rounded-full border border-cyan-100/22 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-100/86 transition hover:bg-cyan-100/10"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {showPrejoinOverlay ? (
               <div className="w-full max-w-4xl rounded-[2rem] border border-cyan-100/20 bg-[linear-gradient(160deg,rgba(6,18,34,0.97),rgba(4,12,24,0.98))] p-5 shadow-[0_26px_80px_rgba(2,8,22,0.6)] sm:p-7">
                 <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-cyan-100/10 bg-[#06152a]/94 px-3 py-3">
@@ -2354,7 +2507,7 @@ export default function InterviewSimulatorClient() {
                       disabled={joinLoading}
                       className="w-full rounded-full border border-cyan-100/22 bg-cyan-100/10 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18 disabled:opacity-60 sm:w-auto"
                     >
-                      {cameraEnabled ? "Camera Preview On" : "Enable Camera Preview"}
+                      {cameraEnabled ? "Video Analysis On" : "Turn On Video"}
                     </button>
                     <button
                       type="button"
@@ -2368,7 +2521,7 @@ export default function InterviewSimulatorClient() {
                       Edit Setup
                     </button>
                   </div>
-                  <p className="text-[11px] text-cyan-100/68">Camera is local preview only for interview presence. It is not recorded.</p>
+                  <p className="text-[11px] text-cyan-100/68">Video enables live sentiment scoring and confidence cues. Frames are not recorded.</p>
                 </div>
               </div>
             ) : (
@@ -2445,7 +2598,7 @@ export default function InterviewSimulatorClient() {
                                   </div>
                                 ) : null}
                               </div>
-                              <p className="border-t border-cyan-100/10 px-3 py-2 text-[11px] text-cyan-100/68">Local camera preview only. Not shared with interviewer AI.</p>
+                              <p className="border-t border-cyan-100/10 px-3 py-2 text-[11px] text-cyan-100/68">Live camera feeds confidence sentiment analysis. Frames are transient and not recorded.</p>
                             </article>
                           </div>
 
@@ -2536,7 +2689,7 @@ export default function InterviewSimulatorClient() {
                             disabled={submitLoading}
                             className="w-full rounded-full border border-cyan-100/22 bg-cyan-100/10 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18 disabled:opacity-60 sm:w-auto"
                           >
-                            {cameraEnabled ? "Camera Preview On" : "Enable Camera Preview"}
+                            {cameraEnabled ? "Video Analysis On" : "Turn On Video"}
                           </button>
                           <button
                             type="button"
@@ -3043,6 +3196,19 @@ export default function InterviewSimulatorClient() {
                     <p className="rounded-xl border border-cyan-100/16 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/78">
                       {latestTurnFeedback.feedback_summary}
                     </p>
+                    {latestVideoSentiment?.used ? (
+                      <div className="rounded-xl border border-emerald-200/20 bg-emerald-200/10 px-3 py-2 text-xs text-emerald-50/90">
+                        <p>
+                          Video sentiment: {formatVideoSentimentLabel(latestVideoSentiment.sentiment_label)} (
+                          {clampPercent(latestVideoSentiment.sentiment_score || 0)}%)
+                        </p>
+                        <p className="mt-1 text-emerald-100/80">
+                          Confidence cues {clampPercent(latestVideoSentiment.confidence_signal_score || 0)}% • Eye contact{" "}
+                          {clampPercent(latestVideoSentiment.eye_contact_score || 0)}%
+                        </p>
+                        {latestVideoSentiment.notes?.[0] ? <p className="mt-1 text-emerald-100/76">{latestVideoSentiment.notes[0]}</p> : null}
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </article>
@@ -3061,6 +3227,11 @@ export default function InterviewSimulatorClient() {
                         </div>
                         <p className="mt-2 text-[11px] text-cyan-100/68">Question {turn.question_number_in_stage || 1}</p>
                         <p className="mt-2 text-[11px] text-cyan-50/84">{turn.feedback_summary}</p>
+                        {turn.video_sentiment?.used ? (
+                          <p className="mt-2 text-[11px] text-emerald-100/78">
+                            Video: {formatVideoSentimentLabel(turn.video_sentiment.sentiment_label)} ({clampPercent(turn.video_sentiment.sentiment_score || 0)}%)
+                          </p>
+                        ) : null}
                         <p className="mt-2 text-[11px] text-cyan-100/70">Overall {clampPercent(turn.scores.overall || 0)}%</p>
                       </article>
                     ))}

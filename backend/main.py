@@ -347,6 +347,15 @@ INTERVIEW_SIMULATOR_TTS_CACHE_MAX_ITEMS = max(
     1,
     min(16, int((os.getenv("INTERVIEW_SIMULATOR_TTS_CACHE_MAX_ITEMS") or "6").strip())),
 )
+INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_ENABLED = env_flag("INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_ENABLED", True)
+INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_FRAMES = max(
+    1,
+    min(4, int((os.getenv("INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_FRAMES") or "3").strip())),
+)
+INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_DATA_URL_CHARS = max(
+    1600,
+    min(420000, int((os.getenv("INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_DATA_URL_CHARS") or "220000").strip())),
+)
 PUBLIC_INSTANT_LOCK = threading.Lock()
 PUBLIC_INSTANT_REQUEST_STATE: dict[str, dict[str, Any]] = {}
 PUBLIC_INSTANT_RESULT_STORE: dict[str, dict[str, Any]] = {}
@@ -590,6 +599,7 @@ class InterviewSimulatorTurnRequest(BaseModel):
     session_id: str
     answer_text: str
     response_time_seconds: int | None = None
+    video_frame_samples: list[str] | None = None
     session_secret: str | None = None
     auth_token: str | None = None
 
@@ -9255,6 +9265,10 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
     session_id = re.sub(r"[^A-Za-z0-9]", "", safe_text(data.session_id))[:32]
     session_secret = safe_text(data.session_secret)[:64]
     answer_text = safe_text(data.answer_text).strip()
+    video_frame_samples = sanitize_interview_simulator_video_frames(
+        data.video_frame_samples,
+        limit=INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_FRAMES,
+    )
     answer_too_short = len(answer_text) < 18
     if len(session_id) < 8:
         raise HTTPException(status_code=400, detail="Invalid simulator session id.")
@@ -9460,6 +9474,14 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         response_time_seconds=data.response_time_seconds,
         difficulty=difficulty,
     )
+    video_sentiment_payload, video_sentiment_model, video_sentiment_error = request_interview_simulator_video_sentiment(
+        video_frame_samples,
+        role=role,
+        industry=industry,
+        stage_label=current_stage_label,
+        question=question,
+        answer_text=answer_text,
+    )
     llm_overlay, llm_model, llm_error = request_interview_simulator_turn_overlay(
         candidate_name=candidate_name,
         interviewer_name=interviewer_name,
@@ -9558,6 +9580,28 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         if re.search(r"\b(?:strong|solid|relevant|credible|aligned)\b", feedback_summary.lower()):
             feedback_summary = safe_text(heuristic_payload.get("feedback_summary"))[:220] or feedback_summary
 
+    relevance_score_for_video = safe_float(heuristic_payload.get("relevance_score"), 0.0)
+    scores = blend_interview_simulator_video_confidence(
+        scores,
+        video_sentiment_payload,
+        relevance_score_for_video,
+    )
+    if isinstance(video_sentiment_payload, dict) and video_sentiment_payload.get("used"):
+        video_sentiment_label = safe_text(video_sentiment_payload.get("sentiment_label")).strip().lower()
+        video_confidence_signal = clamp(safe_float(video_sentiment_payload.get("confidence_signal_score"), 0.0))
+        if video_sentiment_label in {"positive", "steady"} and video_confidence_signal >= 64:
+            strengths = dedupe_text_list(
+                ["Your on-camera presence looked composed and interview-ready.", *strengths],
+                limit=4,
+                max_item_len=180,
+            )
+        elif video_sentiment_label in {"nervous", "negative"}:
+            improvements = dedupe_text_list(
+                ["Steady your pace and eye contact to improve on-camera confidence signals.", *improvements],
+                limit=4,
+                max_item_len=180,
+            )
+
     scores["overall"] = clamp(
         0.27 * safe_float(scores.get("communication"), 0.0)
         + 0.23 * safe_float(scores.get("clarity"), 0.0)
@@ -9575,6 +9619,19 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         off_topic=bool(heuristic_payload.get("off_topic")),
         llm_bridge=interviewer_bridge,
     )
+
+    video_sentiment_turn_payload: dict[str, Any] = {
+        "used": bool(video_sentiment_payload and video_sentiment_payload.get("used")),
+        "sentiment_label": safe_text((video_sentiment_payload or {}).get("sentiment_label")),
+        "sentiment_score": clamp(safe_float((video_sentiment_payload or {}).get("sentiment_score"), 0.0)),
+        "confidence_signal_score": clamp(safe_float((video_sentiment_payload or {}).get("confidence_signal_score"), 0.0)),
+        "eye_contact_score": clamp(safe_float((video_sentiment_payload or {}).get("eye_contact_score"), 0.0)),
+        "engagement_score": clamp(safe_float((video_sentiment_payload or {}).get("engagement_score"), 0.0)),
+        "notes": dedupe_text_list(normalize_string_list((video_sentiment_payload or {}).get("notes"), limit=2, max_item_len=140), limit=2, max_item_len=140),
+        "frames_analyzed": int((video_sentiment_payload or {}).get("frames_analyzed") or len(video_frame_samples)),
+        "model": video_sentiment_model if video_sentiment_payload else None,
+        "reason": "vision_overlay" if video_sentiment_payload else (video_sentiment_error or ("no_video_frames" if not video_frame_samples else "vision_unavailable")),
+    }
 
     turn_payload = {
         "round_number": round_number,
@@ -9603,6 +9660,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
         "candidate_signal": candidate_signal,
         "next_focus_skill": next_focus_skill,
         "interviewer_bridge": interviewer_bridge,
+        "video_sentiment": video_sentiment_turn_payload,
         "ai": {
             "used": ai_used,
             "model": llm_model if ai_used else None,
@@ -9846,6 +9904,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "overall_score": int(report_payload.get("overall_score") or 0),
                 "readiness": safe_text(report_payload.get("readiness_label")),
                 "ai_used": ai_used,
+                "video_sentiment_used": bool(video_sentiment_payload),
                 "mode": mode,
                 "saved_report_id": saved_report_id or None,
                 "guest_mode": owner_user_id <= 0,
@@ -9862,6 +9921,7 @@ def analysis_interview_simulator_turn(data: InterviewSimulatorTurnRequest, reque
                 "round_number": response_round_number,
                 "overall": int((turn_payload.get("scores") or {}).get("overall") or 0),
                 "ai_used": ai_used,
+                "video_sentiment_used": bool(video_sentiment_payload),
                 "mode": mode,
                 "guest_mode": owner_user_id <= 0,
             },
@@ -14363,6 +14423,189 @@ def decide_interview_simulator_stage_progression(
         return True, None
 
     return True, None
+
+
+def sanitize_interview_simulator_video_frames(values: Any, limit: int = INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_FRAMES) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    effective_limit = max(1, min(6, int(limit or INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_FRAMES)))
+    cleaned: list[str] = []
+    seen_fingerprints: set[str] = set()
+
+    for item in values[: effective_limit * 3]:
+        raw = safe_text(item)
+        if not raw:
+            continue
+
+        data_url = ""
+        if raw.startswith("data:image/") and ";base64," in raw:
+            header, _, encoded = raw.partition(",")
+            normalized_encoded = re.sub(r"\s+", "", encoded)
+            if len(normalized_encoded) < 120:
+                continue
+            if not re.fullmatch(r"[A-Za-z0-9+/=]+", normalized_encoded):
+                continue
+            capped_encoded = normalized_encoded[: max(120, INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_DATA_URL_CHARS)]
+            capped_encoded = capped_encoded[: len(capped_encoded) - (len(capped_encoded) % 4)] or capped_encoded
+            data_url = f"{safe_text(header)},{capped_encoded}"
+        else:
+            normalized_encoded = re.sub(r"\s+", "", raw)
+            if len(normalized_encoded) < 120:
+                continue
+            if not re.fullmatch(r"[A-Za-z0-9+/=]+", normalized_encoded):
+                continue
+            capped_encoded = normalized_encoded[: max(120, INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_DATA_URL_CHARS)]
+            capped_encoded = capped_encoded[: len(capped_encoded) - (len(capped_encoded) % 4)] or capped_encoded
+            data_url = f"data:image/jpeg;base64,{capped_encoded}"
+
+        if len(data_url) < 140:
+            continue
+        _, _, fingerprint_source = data_url.partition(",")
+        fingerprint = hashlib.sha1(fingerprint_source[-2200:].encode("utf-8")).hexdigest()
+        if fingerprint in seen_fingerprints:
+            continue
+        seen_fingerprints.add(fingerprint)
+        cleaned.append(data_url)
+        if len(cleaned) >= effective_limit:
+            break
+
+    return cleaned
+
+
+def request_interview_simulator_video_sentiment(
+    video_frame_samples: list[str],
+    *,
+    role: str,
+    industry: str,
+    stage_label: str,
+    question: str,
+    answer_text: str,
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    if not INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_ENABLED:
+        return None, None, "video_sentiment_disabled"
+    if client is None:
+        return None, None, "OPENAI_API_KEY not configured"
+
+    cleaned_frames = sanitize_interview_simulator_video_frames(video_frame_samples, limit=INTERVIEW_SIMULATOR_VIDEO_SENTIMENT_MAX_FRAMES)
+    if not cleaned_frames:
+        return None, None, "no_video_frames"
+
+    prompt = f"""
+You are an interview behavior analyst.
+Assess only visible non-verbal interview cues from the provided video snapshots.
+
+Role context: {safe_text(role)}
+Industry context: {safe_text(industry)}
+Round context: {safe_text(stage_label)}
+Question asked: {safe_text(question)}
+Candidate answer transcript (for context only): {safe_text(answer_text)[:900]}
+
+Return strict JSON only:
+{{
+  "sentiment_label": "positive|steady|nervous|negative|unknown",
+  "sentiment_score": 0,
+  "confidence_signal_score": 0,
+  "eye_contact_score": 0,
+  "engagement_score": 0,
+  "notes": ["short non-verbal cue 1", "short non-verbal cue 2"]
+}}
+
+Rules:
+- Focus on facial expression, visible composure, engagement, and eye-contact alignment.
+- Do not infer protected traits or identity labels.
+- If frames are unclear, lower confidence and use "unknown" or "steady" conservatively.
+- Keep notes short, factual, and interview-relevant.
+"""
+
+    models: list[str] = []
+    for model in [ANALYZE_LLM_MODEL, OPENAI_MODEL, *OPENAI_FALLBACK_MODELS]:
+        candidate = safe_text(model)
+        if candidate and candidate not in models:
+            models.append(candidate)
+
+    last_error: str | None = None
+    for model in models:
+        for attempt in range(2):
+            try:
+                content_parts: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+                for data_url in cleaned_frames:
+                    content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "Return strict JSON only. No markdown."},
+                        {"role": "user", "content": content_parts},
+                    ],
+                    temperature=0.0,
+                )
+                content = extract_llm_text(response.choices[0].message.content if response.choices else "")
+                parsed = parse_llm_json_payload(content)
+                if not isinstance(parsed, dict):
+                    last_error = f"invalid_json_from_{model}"
+                    logger.error("Interview video sentiment returned non-JSON content for model '%s'.", model)
+                    break
+
+                sentiment_label = safe_text(parsed.get("sentiment_label")).strip().lower()
+                if sentiment_label not in {"positive", "steady", "nervous", "negative", "unknown"}:
+                    sentiment_label = "unknown"
+                sentiment_score = clamp(safe_float(parsed.get("sentiment_score"), 0.0))
+                confidence_signal_score = clamp(safe_float(parsed.get("confidence_signal_score"), 0.0))
+                eye_contact_score = clamp(safe_float(parsed.get("eye_contact_score"), 0.0))
+                engagement_score = clamp(safe_float(parsed.get("engagement_score"), 0.0))
+                notes = dedupe_text_list(normalize_string_list(parsed.get("notes"), limit=3, max_item_len=140), limit=2, max_item_len=140)
+
+                payload = {
+                    "used": True,
+                    "sentiment_label": sentiment_label,
+                    "sentiment_score": sentiment_score,
+                    "confidence_signal_score": confidence_signal_score,
+                    "eye_contact_score": eye_contact_score,
+                    "engagement_score": engagement_score,
+                    "notes": notes,
+                    "frames_analyzed": len(cleaned_frames),
+                }
+                return payload, model, None
+            except Exception as exc:
+                last_error = f"{type(exc).__name__} on model {model}"
+                logger.exception("Interview video sentiment failed for model '%s' (attempt %s).", model, attempt + 1)
+                if attempt == 0 and is_transient_openai_error(exc):
+                    time.sleep(0.25)
+                    continue
+                break
+
+    return None, None, last_error
+
+
+def blend_interview_simulator_video_confidence(
+    score_payload: dict[str, Any],
+    video_sentiment_payload: dict[str, Any] | None,
+    relevance_score: float,
+) -> dict[str, Any]:
+    if not isinstance(score_payload, dict):
+        return score_payload
+    if not isinstance(video_sentiment_payload, dict) or not video_sentiment_payload.get("used"):
+        return score_payload
+
+    base_confidence = clamp_float(safe_float(score_payload.get("confidence"), 0.0), 0.0, 100.0)
+    sentiment_score = clamp_float(safe_float(video_sentiment_payload.get("sentiment_score"), 0.0), 0.0, 100.0)
+    confidence_signal = clamp_float(safe_float(video_sentiment_payload.get("confidence_signal_score"), 0.0), 0.0, 100.0)
+    eye_contact = clamp_float(safe_float(video_sentiment_payload.get("eye_contact_score"), 0.0), 0.0, 100.0)
+    engagement = clamp_float(safe_float(video_sentiment_payload.get("engagement_score"), 0.0), 0.0, 100.0)
+    target_confidence = clamp_float(0.42 * confidence_signal + 0.24 * sentiment_score + 0.2 * eye_contact + 0.14 * engagement, 0.0, 100.0)
+    blended = clamp_float(0.76 * base_confidence + 0.24 * target_confidence, 0.0, 100.0)
+
+    max_shift = 11.0
+    if blended > base_confidence + max_shift:
+        blended = base_confidence + max_shift
+    elif blended < base_confidence - max_shift:
+        blended = base_confidence - max_shift
+
+    if relevance_score < 45 and blended > base_confidence + 4.0:
+        blended = base_confidence + 4.0
+
+    score_payload["confidence"] = clamp(blended)
+    return score_payload
 
 
 def build_interview_turn_heuristics(
