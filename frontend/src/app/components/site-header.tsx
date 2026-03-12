@@ -47,6 +47,7 @@ const baseNavLinks: NavLink[] = [
   { href: "/resources", label: "Guides" },
   { href: "/pricing", label: "Pricing" },
 ];
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
@@ -74,10 +75,12 @@ export default function SiteHeader() {
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileToolsPanelRef = useRef<HTMLDivElement | null>(null);
   const portalReady = typeof window !== "undefined";
+
   const navLinks = useMemo(
     () => (authToken ? baseNavLinks.filter((link) => link.href !== "/resources") : baseNavLinks),
-    [authToken]
+    [authToken],
   );
+
   const headerAnalyzeHref = addUtmParams("/instant-fit", {
     source: "header_nav",
     medium: "internal",
@@ -88,11 +91,13 @@ export default function SiteHeader() {
     medium: "internal",
     campaign: "nav_auth_entry",
   });
+
   const isToolsActive = (link: NavLink) =>
     link.children?.some((child) => isLinkActive(pathname, hash, child)) || false;
   const isStudioNav = (href: string) => href === "/studio" || href === "/ai-resume-studio";
   const toolsNavLinks = navLinks.find((link) => link.children?.length)?.children || [];
   const isToolsDropdownOpen = (link: NavLink) => (link.children ? showToolsMenu : false);
+
   const closeNavigationMenus = () => {
     setMobileMenuOpen(false);
     setShowToolsMenu(false);
@@ -167,8 +172,12 @@ export default function SiteHeader() {
     const closeOnOutsideClick = (event: Event) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      const clickedInsideDesktopTools = Boolean(toolsMenuRef.current && toolsMenuRef.current.contains(target));
-      const clickedInsideMobileTools = Boolean(mobileToolsPanelRef.current && mobileToolsPanelRef.current.contains(target));
+      const clickedInsideDesktopTools = Boolean(
+        toolsMenuRef.current && toolsMenuRef.current.contains(target),
+      );
+      const clickedInsideMobileTools = Boolean(
+        mobileToolsPanelRef.current && mobileToolsPanelRef.current.contains(target),
+      );
       if (!clickedInsideDesktopTools && !clickedInsideMobileTools) {
         setShowToolsMenu(false);
       }
@@ -214,25 +223,25 @@ export default function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-cyan-100/12 bg-[#030c1b]/96">
-      <div className="border-b border-cyan-100/8 px-3 py-2 sm:px-6 sm:py-2.5">
-        <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-50/70 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
-          <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.9)]" />
-          Precision shortlist prediction platform for every role
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
+      <div className="border-b border-slate-100 px-4 py-2 sm:px-6">
+        <p className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-center text-[11px] font-medium tracking-[0.08em] text-slate-500 sm:text-xs">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          Role-fit scoring and interview preparation in one clean workflow.
         </p>
       </div>
 
-      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-3 sm:h-20 sm:px-6">
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:h-20 sm:px-6">
         <Link href="/" className="group">
           <BrandLogo
             intro
             subtitle="Interview Calls Made Easier"
-            titleClassName="font-mono text-sm tracking-wide sm:text-xl"
-            subtitleClassName="text-[10px] tracking-[0.16em] sm:text-xs sm:tracking-[0.26em]"
+            titleClassName="font-semibold"
+            subtitleClassName="text-[10px] tracking-[0.14em]"
           />
         </Link>
 
-        <nav className="hidden items-center gap-2 text-sm font-medium text-cyan-50/78 md:flex lg:gap-3">
+        <nav className="hidden items-center gap-2 text-sm font-medium text-slate-700 md:flex lg:gap-3">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
             if (!link.children) {
@@ -243,8 +252,8 @@ export default function SiteHeader() {
                   onClick={handleNavLinkClick(link.href)}
                   className={`rounded-full border px-3 py-1.5 transition ${
                     active
-                      ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
-                      : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
+                      ? "border-cyan-200 bg-cyan-50 text-slate-900"
+                      : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900"
                   }`}
                 >
                   {link.label}
@@ -252,24 +261,24 @@ export default function SiteHeader() {
               );
             }
             return (
-              <div key={link.label} ref={toolsMenuRef} className="group relative">
+              <div key={link.label} ref={toolsMenuRef} className="relative">
                 <button
                   type="button"
                   onClick={() => setShowToolsMenu((prev) => !prev)}
                   aria-expanded={isToolsDropdownOpen(link)}
                   className={`rounded-full border px-3 py-1.5 transition ${
                     active
-                      ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
-                      : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
+                      ? "border-cyan-200 bg-cyan-50 text-slate-900"
+                      : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900"
                   }`}
                 >
                   {link.label}
                 </button>
                 <div
-                  className={`absolute left-0 top-full z-20 mt-2 min-w-[220px] rounded-xl border border-cyan-100/24 bg-[#05152a] p-2 shadow-[0_22px_55px_rgba(2,8,22,0.5)] transition-all duration-150 ${
+                  className={`absolute left-0 top-full z-20 mt-2 min-w-[230px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)] transition-all duration-150 ${
                     isToolsDropdownOpen(link)
-                      ? "visible opacity-100 pointer-events-auto"
-                      : "invisible opacity-0 pointer-events-none"
+                      ? "pointer-events-auto visible opacity-100"
+                      : "pointer-events-none invisible opacity-0"
                   }`}
                 >
                   <div className="flex flex-col gap-1.5">
@@ -278,7 +287,7 @@ export default function SiteHeader() {
                         key={`${link.label}-${child.href}-${child.label}`}
                         href={child.href}
                         onClick={handleToolsLinkClick(child.href)}
-                        className="rounded-lg border border-cyan-100/20 px-3 py-2 text-sm text-cyan-50 transition hover:bg-cyan-100/16 hover:text-cyan-100"
+                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-slate-900"
                       >
                         {child.label}
                       </Link>
@@ -295,11 +304,11 @@ export default function SiteHeader() {
             <>
               <Link
                 href="/dashboard"
-                className="hidden rounded-xl border border-cyan-200/35 bg-cyan-200/14 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/22 sm:inline"
+                className="hidden rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 sm:inline"
               >
                 Dashboard
               </Link>
-              <span className="rounded-xl border border-emerald-200/36 bg-emerald-200/14 px-2.5 py-1.5 text-xs font-semibold text-emerald-100">
+              <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700">
                 Wallet: {wallet.credits}
               </span>
               <button
@@ -312,7 +321,7 @@ export default function SiteHeader() {
                   setMobileMenuOpen(false);
                   window.localStorage.removeItem("hirescore_auth_token");
                 }}
-                className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 sm:inline"
+                className="hidden rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 sm:inline"
               >
                 Sign Out
               </button>
@@ -327,7 +336,7 @@ export default function SiteHeader() {
                     cta_label: "Sign Up / Login",
                   });
                 }}
-                className="hidden rounded-xl border border-emerald-200/34 bg-emerald-200/14 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-200/24 md:inline-flex"
+                className="hidden rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 md:inline-flex"
               >
                 Sign Up / Login
               </Link>
@@ -339,13 +348,14 @@ export default function SiteHeader() {
                     cta_label: "Instant Fit Check (Free)",
                   });
                 }}
-                className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
+                className="rounded-xl border border-cyan-200 bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-cyan-600 sm:px-4 sm:py-2 sm:text-sm"
               >
                 <span className="sm:hidden">Instant Fit</span>
                 <span className="hidden sm:inline">Instant Fit Check (Free)</span>
               </Link>
             </>
           )}
+
           <button
             type="button"
             onClick={() => {
@@ -354,15 +364,15 @@ export default function SiteHeader() {
             }}
             aria-expanded={mobileMenuOpen}
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-cyan-100/28 bg-cyan-100/8 px-3 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 md:hidden"
+            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 md:hidden"
           >
             {mobileMenuOpen ? "Close" : "Menu"}
           </button>
         </div>
       </div>
 
-      <div className={`border-t border-cyan-100/8 px-3 py-2 md:hidden ${mobileMenuOpen ? "block" : "hidden"}`}>
-        <nav className="mx-auto grid w-full max-w-7xl grid-cols-2 gap-1.5 text-xs text-cyan-50/80">
+      <div className={`border-t border-slate-100 px-3 py-3 md:hidden ${mobileMenuOpen ? "block" : "hidden"}`}>
+        <nav className="mx-auto grid w-full max-w-7xl grid-cols-2 gap-1.5 text-xs text-slate-700">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
             if (!link.children) {
@@ -373,8 +383,8 @@ export default function SiteHeader() {
                   onClick={handleNavLinkClick(link.href)}
                   className={`inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-1.5 text-center transition ${
                     active
-                      ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                      : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
+                      ? "border-cyan-200 bg-cyan-50 text-slate-900"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                   }`}
                 >
                   {link.label}
@@ -389,14 +399,15 @@ export default function SiteHeader() {
                 aria-expanded={isToolsDropdownOpen(link)}
                 className={`col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-1.5 transition ${
                   active
-                    ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                    : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
+                    ? "border-cyan-200 bg-cyan-50 text-slate-900"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                 }`}
               >
                 {link.label}
               </button>
             );
           })}
+
           {!authToken && (
             <Link
               href={headerAuthHref}
@@ -407,11 +418,12 @@ export default function SiteHeader() {
                   cta_label: "Sign Up / Login",
                 });
               }}
-              className="col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 text-center font-semibold text-emerald-100 transition hover:bg-emerald-200/24"
+              className="col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-center font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Sign Up / Login
             </Link>
           )}
+
           {authToken && (
             <button
               type="button"
@@ -423,21 +435,23 @@ export default function SiteHeader() {
                 setMobileMenuOpen(false);
                 window.localStorage.removeItem("hirescore_auth_token");
               }}
-              className="col-span-1 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-cyan-100/20 bg-transparent px-3 py-1.5 text-center font-semibold text-cyan-100/90 transition hover:bg-cyan-100/12"
+              className="col-span-1 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-center font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Sign Out
             </button>
           )}
+
           {authToken && (
             <Link
               href="/dashboard"
               onClick={() => setMobileMenuOpen(false)}
-              className="col-span-1 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 text-center font-semibold text-emerald-100"
+              className="col-span-1 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-center font-semibold text-emerald-700"
             >
               Wallet {wallet?.credits ?? 0}
             </Link>
           )}
         </nav>
+
         {showToolsMenu && toolsNavLinks.length > 0 && (
           <div ref={mobileToolsPanelRef} className="mx-auto mt-2 grid w-full max-w-7xl gap-1.5 sm:grid-cols-2">
             {toolsNavLinks.map((child) => {
@@ -452,8 +466,8 @@ export default function SiteHeader() {
                   }}
                   className={`inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-2 text-center transition ${
                     childActive
-                      ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                      : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
+                      ? "border-cyan-200 bg-cyan-50 text-slate-900"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                   }`}
                 >
                   {child.label}
@@ -472,7 +486,7 @@ export default function SiteHeader() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[6px]"
+                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[4px]"
                   onClick={(event) => {
                     if (event.target !== event.currentTarget) return;
                     setShowStudioLockModal(false);
@@ -482,19 +496,19 @@ export default function SiteHeader() {
                     initial={{ opacity: 0, y: 18, scale: 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.97 }}
-                    className="relative my-auto w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_24px_70px_rgba(2,8,20,0.55)]"
+                    className="relative my-auto w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-slate-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.24)]"
                   >
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_42%,rgba(253,230,138,0.08))]" />
-
                     <div className="relative">
                       <StudioLockVisual compact />
-                      <p className="text-center text-xs uppercase tracking-[0.18em] text-cyan-100/72">Resume Studio Gate</p>
-                      <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Let&apos;s Analyze Your Skills First</h3>
-                      <p className="mt-3 text-center text-sm text-cyan-50/80">
+                      <p className="text-center text-xs uppercase tracking-[0.16em] text-slate-500">Resume Studio Gate</p>
+                      <h3 className="mt-2 text-center text-2xl font-semibold text-slate-900 sm:text-3xl">
+                        Let&apos;s Analyze Your Skills First
+                      </h3>
+                      <p className="mt-3 text-center text-sm text-slate-600">
                         Complete your first analysis on the Analysis page to unlock AI Resume Studio.
                       </p>
-                      <p className="mt-2 text-center text-xs text-cyan-100/72">
-                        Analysis runs completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
+                      <p className="mt-2 text-center text-xs text-slate-500">
+                        Analysis runs completed: <span className="font-semibold text-slate-900">{analysisCount}</span>
                       </p>
 
                       <div className="mt-5 grid gap-2 sm:grid-cols-2">
@@ -508,14 +522,14 @@ export default function SiteHeader() {
                             });
                             router.push("/upload");
                           }}
-                          className="rounded-xl border border-cyan-100/35 bg-cyan-200/18 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
+                          className="rounded-xl border border-cyan-200 bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600"
                         >
                           Go To Analysis
                         </button>
                         <button
                           type="button"
                           onClick={() => setShowStudioLockModal(false)}
-                          className="rounded-xl border border-cyan-100/22 bg-transparent px-4 py-2.5 text-sm font-semibold text-cyan-50/86 transition hover:bg-cyan-100/8"
+                          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                         >
                           Not Now
                         </button>
@@ -525,7 +539,7 @@ export default function SiteHeader() {
                 </motion.div>
               )}
             </AnimatePresence>,
-            document.body
+            document.body,
           )
         : null}
     </header>
