@@ -11648,19 +11648,34 @@ def build_jd_match_payload(industry: str, role: str, resume_text: str, job_descr
     denominator = max(1, len(jd_tokens))
     coverage = (len(matched) / denominator) * 100.0
 
-    role_track, blueprint, critical_skills, _ = resolve_role_profile(role, industry, resume_skills)
+    requested_track, requested_track_score = infer_role_track_with_score(role, industry)
+    detected_jd_track, detected_jd_track_score = infer_track_from_document(job_description)
+    if requested_track_score > 0 and requested_track in ROLE_BLUEPRINTS:
+        target_track = requested_track
+    elif detected_jd_track in ROLE_BLUEPRINTS and detected_jd_track not in {"", "general"} and detected_jd_track_score >= 3:
+        # If role/industry hints are weak or omitted, use JD intent as the scoring anchor.
+        target_track = detected_jd_track
+    else:
+        target_track = "general"
+
+    role_track = target_track
+    blueprint = ROLE_BLUEPRINTS.get(role_track, ROLE_BLUEPRINTS["general"])
+    critical_skills = ROLE_CRITICAL_SKILLS.get(role_track, ROLE_CRITICAL_SKILLS["general"])
     skill_priority = classify_jd_skill_priority(job_description, jd_skills, critical_skills)
     must_have_skills = skill_priority.get("must_have") or []
     good_to_have_skills = skill_priority.get("good_to_have") or []
     missing_must_have_base = [skill for skill in must_have_skills if not phrase_in_text(resume_text, skill)]
     critical_total = max(1, len(critical_skills))
-    critical_hits = len([skill for skill in critical_skills if skill in resume_tokens])
+    critical_hits = len(
+        [
+            skill
+            for skill in critical_skills
+            if phrase_in_text(resume_text, skill) or normalize_token(skill) in resume_tokens
+        ]
+    )
     critical_coverage = (critical_hits / critical_total) * 100.0
     deterministic_match_score = clamp(0.68 * coverage + 0.32 * critical_coverage)
 
-    target_track = infer_role_track(role, industry)
-    if target_track == "general":
-        target_track = role_track
     relevance = build_jd_relevance_baseline(industry, role, job_description, target_track=target_track)
 
     suggested_bullets: list[str] = []
