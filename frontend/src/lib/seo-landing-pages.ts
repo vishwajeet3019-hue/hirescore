@@ -2323,6 +2323,170 @@ export const seoLandingPages: SeoLandingPage[] = [
       },
     ],
   },
+  {
+    slug: "resume-for-gurgaon-tech-jobs",
+    keyword: "resume for gurgaon tech companies",
+    title: "Resume for Gurgaon Tech Companies",
+    metaDescription:
+      "Build a stronger resume for Gurgaon tech companies with role-targeted keywords, measurable outcomes, and recruiter-friendly structure.",
+    h1: "Resume for Gurgaon Tech Companies",
+    intro:
+      "Gurgaon (Gurugram) hiring teams often prioritize fast relevance checks: role fit, stack depth, and business impact. This guide helps you align your resume for product startups, GCC teams, and enterprise tech roles in Gurgaon.",
+    roleFocus: "Gurgaon Tech Jobs",
+    searchIntent: "Improve callback rates for Gurgaon tech and software job applications.",
+    painPoints: [
+      "Resume is generic and not tuned to Gurgaon role requirements.",
+      "Projects list tasks but do not show measurable business outcomes.",
+      "Notice period, location readiness, and domain context are unclear.",
+    ],
+    whatYouGet: [
+      "A Gurgaon-focused resume checklist for software, product, and analytics roles.",
+      "Keyword mapping guidance for product startups, GCCs, and enterprise hiring teams.",
+      "A clear bullet rewrite framework that improves recruiter scan speed.",
+    ],
+    actionPlan: [
+      "Identify 3-5 target Gurgaon job descriptions and extract repeated must-have skills.",
+      "Rewrite top experience bullets with ownership, metrics, and delivery impact.",
+      "Highlight Gurgaon location readiness and run ATS + JD match check before applying.",
+    ],
+    faqs: [
+      {
+        question: "Should I mention Gurgaon or relocation readiness on my resume?",
+        answer: "Yes. Mentioning Gurgaon or relocation readiness helps recruiters quickly qualify location-dependent roles.",
+      },
+      {
+        question: "How many resume versions should I keep for Gurgaon jobs?",
+        answer: "Keep 2-4 base versions by role family and tailor final edits for each job description.",
+      },
+      {
+        question: "Do Gurgaon recruiters value domain context?",
+        answer: "Yes. Domain context like fintech, SaaS, and enterprise workflows can improve shortlist relevance.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-delhi-ncr-software-jobs",
+    keyword: "resume for delhi ncr software jobs",
+    title: "Resume for Delhi NCR Software Jobs",
+    metaDescription:
+      "Optimize your resume for Delhi NCR software jobs with stronger role-fit keywords, impact-led bullets, and ATS-ready formatting.",
+    h1: "Resume for Delhi NCR Software Jobs",
+    intro:
+      "Delhi NCR software hiring is broad across Noida, Gurgaon, and Delhi. This guide helps you position your resume for mixed hiring pipelines where recruiters shortlist quickly based on role clarity and measurable outcomes.",
+    roleFocus: "Delhi NCR Software Jobs",
+    searchIntent: "Get more interview calls from Delhi NCR software and product company roles.",
+    painPoints: [
+      "Candidates apply with one resume across very different NCR roles.",
+      "Technical experience is listed without impact metrics or scale context.",
+      "Profile summary does not clearly signal seniority and target role.",
+    ],
+    whatYouGet: [
+      "A practical framework to tailor your resume for Delhi NCR hiring patterns.",
+      "Examples to convert activity-heavy bullets into outcome-led statements.",
+      "A section-by-section optimization plan for ATS parsing and recruiter readability.",
+    ],
+    actionPlan: [
+      "Define your top role track and align headline, summary, and skills to it.",
+      "Prioritize 5-7 achievements with measurable results and business context.",
+      "Tailor each application to job description keywords before submitting.",
+    ],
+    faqs: [
+      {
+        question: "Can one resume work for all Delhi NCR software roles?",
+        answer: "Use one master resume, but tailor core sections for each role family and company type.",
+      },
+      {
+        question: "What should experienced candidates highlight first?",
+        answer: "Lead with high-impact outcomes, scope of ownership, and technologies tied to business value.",
+      },
+      {
+        question: "Is ATS optimization enough to get shortlisted?",
+        answer: "ATS fit is necessary, but shortlist quality depends on clear role relevance and measurable impact.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-remote-jobs-india",
+    keyword: "resume for remote jobs india",
+    title: "Resume for Remote Jobs in India",
+    metaDescription:
+      "Create a remote-job-ready resume for India with async collaboration proof, outcome-focused achievements, and global-role keyword relevance.",
+    h1: "Resume for Remote Jobs in India",
+    intro:
+      "Remote hiring teams evaluate communication quality, execution ownership, and async collaboration signals. This guide helps Indian candidates present a resume that fits global and domestic remote role expectations.",
+    roleFocus: "Remote Jobs India",
+    searchIntent: "Increase shortlist rates for remote roles from India across product, engineering, and operations.",
+    painPoints: [
+      "Resume lacks evidence of async collaboration and written communication.",
+      "Candidates mention remote tools but not delivery discipline or outcomes.",
+      "No clear timezone overlap, ownership scope, or independent execution proof.",
+    ],
+    whatYouGet: [
+      "A remote-role resume framework for Indian professionals targeting global teams.",
+      "Guidance on showcasing documentation, handoffs, and cross-timezone collaboration.",
+      "Keyword strategy to align resume language with remote-first job descriptions.",
+    ],
+    actionPlan: [
+      "Highlight 2-3 projects where you owned deliverables with minimal supervision.",
+      "Add impact metrics and async collaboration signals in top experience bullets.",
+      "Tailor resume keywords for remote role requirements and rerun final checks.",
+    ],
+    faqs: [
+      {
+        question: "Should I mention timezone overlap for remote jobs?",
+        answer: "Yes. Mentioning your availability and overlap window can reduce hiring friction for distributed teams.",
+      },
+      {
+        question: "What remote-specific proof should be in the resume?",
+        answer: "Show ownership, async communication, documentation habits, and outcomes delivered without close supervision.",
+      },
+      {
+        question: "Can freshers target remote roles from India?",
+        answer: "Yes, but they should emphasize strong projects, communication quality, and reliability signals.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-startup-jobs-india",
+    keyword: "resume for startup jobs india",
+    title: "Resume for Startup Jobs in India",
+    metaDescription:
+      "Build a startup-focused resume for India with ownership-heavy bullets, execution speed metrics, and cross-functional impact proof.",
+    h1: "Resume for Startup Jobs in India",
+    intro:
+      "Startup recruiters in India look for speed, ownership, and problem-solving under ambiguity. This guide helps you position your resume for early-stage and growth-stage startup roles.",
+    roleFocus: "Startup Jobs India",
+    searchIntent: "Improve resume conversion for startup job applications across Indian tech hubs.",
+    painPoints: [
+      "Resume sounds process-heavy instead of execution and ownership focused.",
+      "Candidates list responsibilities without launch, growth, or quality metrics.",
+      "No proof of operating across multiple functions in lean teams.",
+    ],
+    whatYouGet: [
+      "A startup-ready resume structure that highlights speed and accountability.",
+      "Examples to frame ambiguity-handling, experimentation, and shipping outcomes.",
+      "A role-fit checklist for startup engineering, product, and operations applications.",
+    ],
+    actionPlan: [
+      "Rewrite summary to emphasize ownership, adaptability, and business impact.",
+      "Add quantified outcomes for launches, experiments, and process improvements.",
+      "Tailor each application to startup stage and role scope before submitting.",
+    ],
+    faqs: [
+      {
+        question: "What do startup recruiters scan first in a resume?",
+        answer: "They usually scan for ownership depth, speed of execution, and measurable outcomes.",
+      },
+      {
+        question: "Should I include side projects for startup jobs?",
+        answer: "Yes. Relevant side projects can signal initiative, shipping mindset, and practical problem solving.",
+      },
+      {
+        question: "How is a startup resume different from enterprise resume?",
+        answer: "Startup resumes should emphasize end-to-end ownership and impact under constraints, not only scope size.",
+      },
+    ],
+  },
 ];
 
 export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
@@ -2399,8 +2563,22 @@ export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
       "resume for pune it jobs",
       "resume for chennai tech jobs",
       "resume for gurgaon tech companies",
+      "resume for delhi ncr software jobs",
       "resume for noida software jobs",
       "resume for mumbai it jobs",
+    ],
+  },
+  {
+    label: "Remote and Startup Search",
+    phrases: [
+      "resume for remote jobs india",
+      "work from home software jobs resume",
+      "resume for startup jobs india",
+      "startup company resume format",
+      "remote job application resume tips",
+      "resume for distributed teams",
+      "startup hiring resume checklist",
+      "global remote jobs from india resume",
     ],
   },
 ];
@@ -2965,6 +3143,46 @@ const keywordVariantsBySlug: Record<string, string[]> = {
     "job switch resume mumbai",
     "it jobs mumbai resume checklist",
     "resume for mumbai software engineer",
+  ],
+  "resume-for-gurgaon-tech-jobs": [
+    "resume for gurgaon tech companies",
+    "gurgaon software engineer resume format",
+    "gurugram it jobs resume",
+    "resume for product company jobs gurgaon",
+    "job switch resume gurgaon",
+    "ncr tech company resume checklist",
+    "resume for gurgaon startup jobs",
+    "resume for dlf cyber city tech jobs",
+  ],
+  "resume-for-delhi-ncr-software-jobs": [
+    "resume for delhi ncr software jobs",
+    "delhi ncr software engineer resume format",
+    "resume for noida gurgaon delhi tech jobs",
+    "ncr developer resume checklist",
+    "resume for delhi product companies",
+    "job switch resume delhi ncr",
+    "resume for delhi it jobs",
+    "software jobs in ncr resume tips",
+  ],
+  "resume-for-remote-jobs-india": [
+    "resume for remote jobs india",
+    "remote software job resume format",
+    "work from home jobs resume india",
+    "remote developer resume with async skills",
+    "resume for global remote roles from india",
+    "remote job cv for indian candidates",
+    "resume for distributed team jobs",
+    "remote work experience resume examples",
+  ],
+  "resume-for-startup-jobs-india": [
+    "resume for startup jobs india",
+    "startup job resume format india",
+    "resume for early stage startup roles",
+    "resume for startup software engineer",
+    "product startup resume checklist",
+    "resume for fast paced startup jobs",
+    "startup jobs not getting interview calls",
+    "resume for startup hiring teams",
   ],
 };
 
