@@ -46,20 +46,21 @@ export default function GrowthShareSection({
   }, [pageUrl, trackShare]);
 
   return (
-    <section className="mx-auto mt-10 max-w-5xl">
-      <div className="premium-panel rounded-2xl p-6 sm:p-8">
-        <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/62">Share With Friends</p>
-        <h2 className="mt-2 text-2xl font-semibold text-cyan-50">Share This Guide With A Friend</h2>
-        <p className="mt-2 text-sm text-cyan-50/72">
-          Indian jobseekers trust recommendations from real people. Share this page with someone who is also applying now.
+    <section className="mx-auto mt-12 max-w-7xl">
+      <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:p-8">
+        <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Share With Friends</p>
+        <h2 className="mt-2 text-2xl font-semibold text-slate-900">Share This With A Friend Who Is Applying</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Most candidates discover better tools through referrals. Share this page with someone preparing for interviews right now.
         </p>
+
         <div className="mt-5 flex flex-wrap gap-3">
           <a
             href={whatsappUrl}
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => trackShare("whatsapp")}
-            className="w-full rounded-xl border border-cyan-100/38 bg-cyan-200/18 px-4 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto"
+            className="w-full rounded-xl border border-cyan-200 bg-cyan-500 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-cyan-600 sm:w-auto"
           >
             Share on WhatsApp
           </a>
@@ -68,7 +69,7 @@ export default function GrowthShareSection({
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => trackShare("telegram")}
-            className="w-full rounded-xl border border-cyan-100/30 bg-cyan-100/14 px-4 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/22 sm:w-auto"
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:w-auto"
           >
             Share on Telegram
           </a>
@@ -77,14 +78,14 @@ export default function GrowthShareSection({
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => trackShare("linkedin")}
-            className="w-full rounded-xl border border-cyan-100/30 bg-cyan-100/10 px-4 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18 sm:w-auto"
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:w-auto"
           >
             Share on LinkedIn
           </a>
           <button
             type="button"
             onClick={copyLink}
-            className="w-full rounded-xl border border-cyan-100/34 bg-cyan-200/12 px-4 py-2.5 text-center text-sm font-semibold text-cyan-50/90 transition hover:bg-cyan-100/16 sm:w-auto"
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:w-auto"
           >
             {copied ? "Copied!" : "Copy Page Link"}
           </button>

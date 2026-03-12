@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Manrope } from "next/font/google";
 import AppChrome from "./components/app-chrome";
 import AnalyticsPageviewTracker from "./components/analytics-pageview";
 import MotionProvider from "./components/motion-provider";
@@ -7,6 +8,12 @@ import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
 const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-manrope",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -92,8 +99,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-<html lang="en-IN">
-      <body className="antialiased overflow-x-hidden">
+    <html lang="en-IN">
+      <body
+        className={`${manrope.variable} [font-family:var(--font-manrope)] antialiased overflow-x-hidden bg-[#f7f9fc] text-slate-900`}
+      >
         {GA_MEASUREMENT_ID ? (
           <>
             <Script
