@@ -150,6 +150,9 @@ def resolve_auth_db_path() -> str:
         return explicit
     if os.path.isdir("/var/data"):
         return "/var/data/hirescore_auth.db"
+    if (os.getenv("VERCEL") or "").strip() or (os.getenv("VERCEL_ENV") or "").strip():
+        # Vercel serverless file system is read-only except /tmp.
+        return "/tmp/hirescore_auth.db"
     local_default = os.path.join(os.path.dirname(__file__), "data", "hirescore_auth.db")
     return local_default
 
