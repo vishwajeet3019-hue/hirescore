@@ -7,7 +7,6 @@ import {
   indianJobSeekerKeywordClusters,
   seoLandingPages,
 } from "@/lib/seo-landing-pages";
-import { featureSeoPages } from "@/lib/feature-seo-pages";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
 
@@ -39,11 +38,6 @@ export default function ResourcesPage() {
     source: "resources_hub",
     medium: "organic",
     campaign: "resource_hub",
-  });
-  const resourcesFeatureHref = addUtmParams("/features", {
-    source: "resources_hub",
-    medium: "organic",
-    campaign: "feature_seo_hub",
   });
   const getResourceGuideHref = (slug: string) =>
     addUtmParams(`/resources/${slug}`, {
@@ -100,14 +94,6 @@ export default function ResourcesPage() {
               className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto"
             >
               View Premium Plans
-            </TrackedLink>
-            <TrackedLink
-              href={resourcesFeatureHref}
-              eventName="cta_feature_guides_open"
-              eventParams={{ cta_location: "resources_hub", cta_label: "Feature SEO Guides" }}
-              className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto"
-            >
-              Feature SEO Guides ({featureSeoPages.length})
             </TrackedLink>
           </div>
         </div>
