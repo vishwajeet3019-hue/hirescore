@@ -82,7 +82,7 @@ const primaryApiUrl = buildApiUrl(PRIMARY_API_BASE_URL);
 const fallbackApiUrl = buildApiUrl(INSTANT_FIT_FALLBACK_API_BASE_URL);
 
 const fieldClass =
-  "w-full rounded-xl border border-cyan-100/28 bg-[#08233f]/72 px-3 py-2.5 text-sm text-cyan-50 placeholder:text-cyan-100/38 outline-none transition focus:border-cyan-100/62";
+  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70";
 const textAreaClass = `${fieldClass} min-h-[136px] leading-relaxed`;
 
 const generatePublicSessionId = () => {
@@ -391,18 +391,20 @@ export default function InstantFitClient() {
     !runningCheck;
 
   return (
-    <main className="min-h-screen px-4 pb-16 pt-10 sm:px-6 lg:px-8">
-      <section className="mx-auto max-w-6xl rounded-[2rem] border border-cyan-100/24 bg-[linear-gradient(150deg,rgba(8,28,52,0.93),rgba(5,18,34,0.96)_58%,rgba(18,46,58,0.86))] p-6 shadow-[0_26px_70px_rgba(2,8,22,0.48)] sm:p-8">
-        <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/78">No Login Tool</p>
-        <h1 className="mt-3 text-3xl font-semibold text-cyan-50 sm:text-5xl">Instant AI JD Fit Check</h1>
-        <p className="mt-3 max-w-3xl text-sm text-cyan-50/78 sm:text-base">
+    <main className="min-h-screen bg-[#f7f9fc] px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)] sm:p-8">
+        <p className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.1em] text-slate-700">
+          No Login Tool
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 sm:text-5xl">Instant AI JD Fit Check</h1>
+        <p className="mt-3 max-w-3xl text-sm text-slate-600 sm:text-base">
           Upload or paste your resume and JD. Get match percentage, matched skills, missing skills, and clear next steps in one run.
         </p>
       </section>
 
       <section className="mx-auto mt-6 grid max-w-6xl gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(7,27,50,0.86),rgba(4,18,36,0.9))] p-5">
-          <h2 className="text-lg font-semibold text-cyan-50">Inputs</h2>
+        <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Inputs</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <input
               value={industry}
@@ -454,7 +456,7 @@ export default function InstantFitClient() {
               type="button"
               onClick={() => resumeFileInputRef.current?.click()}
               disabled={resumeUploading || runningCheck}
-              className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {resumeUploading ? "Extracting Resume..." : "Upload Resume"}
             </button>
@@ -462,7 +464,7 @@ export default function InstantFitClient() {
               type="button"
               onClick={() => jdFileInputRef.current?.click()}
               disabled={jdUploading || runningCheck}
-              className="rounded-xl border border-cyan-100/34 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {jdUploading ? "Extracting JD..." : "Upload JD"}
             </button>
@@ -470,76 +472,76 @@ export default function InstantFitClient() {
               type="button"
               onClick={() => void handleRunInstantFit()}
               disabled={!canRunCheck}
-              className="rounded-xl border border-cyan-100/34 bg-cyan-200/18 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl border border-amber-300 bg-amber-300 px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {runningCheck ? "Running AI Match..." : "Run Instant AI Match"}
             </button>
           </div>
 
-          {resumeFileName && <p className="mt-2 text-xs text-cyan-100/78">Resume imported from: {resumeFileName}</p>}
-          {jdFileName && <p className="mt-2 text-xs text-cyan-100/78">JD imported from: {jdFileName}</p>}
+          {resumeFileName && <p className="mt-2 text-xs text-slate-500">Resume imported from: {resumeFileName}</p>}
+          {jdFileName && <p className="mt-2 text-xs text-slate-500">JD imported from: {jdFileName}</p>}
           {result?.rate_limit && (
-            <p className="mt-2 text-xs text-cyan-100/74">
+            <p className="mt-2 text-xs text-slate-500">
               Public usage remaining: {Math.max(0, Number(result.rate_limit.remaining || 0))} of{" "}
               {Math.max(0, Number(result.rate_limit.limit || 0))} in current window.
             </p>
           )}
-          {error && <p className="mt-2 text-xs text-amber-100">{error}</p>}
+          {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
         </div>
 
-        <div className="rounded-2xl border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(7,27,50,0.86),rgba(4,18,36,0.9))] p-5">
-          <h2 className="text-lg font-semibold text-cyan-50">Match Result</h2>
+        <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
+          <h2 className="text-lg font-semibold text-slate-900">Match Result</h2>
 
           {runningCheck ? (
-            <div className="mt-4 rounded-2xl border border-cyan-100/18 bg-cyan-100/8 p-4">
-              <div className="mx-auto relative h-24 w-24">
-                <div className="absolute inset-0 rounded-full border-2 border-cyan-100/24" />
-                <div className="absolute inset-2 rounded-full border-2 border-cyan-200/45 border-t-transparent animate-spin" />
-                <div className="absolute inset-5 rounded-full border border-emerald-200/40 animate-pulse" />
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="relative mx-auto h-24 w-24">
+                <div className="absolute inset-0 rounded-full border-2 border-slate-300" />
+                <div className="absolute inset-2 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
+                <div className="absolute inset-5 animate-pulse rounded-full border border-emerald-400/60" />
               </div>
-              <p className="mt-3 text-center text-sm font-semibold text-cyan-50">AI is evaluating role alignment...</p>
+              <p className="mt-3 text-center text-sm font-semibold text-slate-800">AI is evaluating role alignment...</p>
               <div className="mt-3 space-y-2">
-                <div className="h-2 rounded-full border border-cyan-100/22 bg-cyan-100/10 overflow-hidden">
-                  <div className="h-full w-[86%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
+                <div className="h-2 overflow-hidden rounded-full border border-slate-200 bg-white">
+                  <div className="h-full w-[86%] animate-pulse rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400" />
                 </div>
-                <div className="h-2 rounded-full border border-cyan-100/22 bg-cyan-100/10 overflow-hidden">
-                  <div className="h-full w-[72%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
+                <div className="h-2 overflow-hidden rounded-full border border-slate-200 bg-white">
+                  <div className="h-full w-[72%] animate-pulse rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400" />
                 </div>
-                <div className="h-2 rounded-full border border-cyan-100/22 bg-cyan-100/10 overflow-hidden">
-                  <div className="h-full w-[92%] animate-pulse rounded-full bg-gradient-to-r from-cyan-300/70 via-sky-300/75 to-emerald-200/80" />
+                <div className="h-2 overflow-hidden rounded-full border border-slate-200 bg-white">
+                  <div className="h-full w-[92%] animate-pulse rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400" />
                 </div>
               </div>
             </div>
           ) : !result ? (
-            <p className="mt-3 text-sm text-cyan-50/72">
+            <p className="mt-3 text-sm text-slate-600">
               Run Instant AI Match to view score, matched skills, missing skills, and action plan.
             </p>
           ) : (
             <>
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/10 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Match Percentage</p>
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Match Percentage</p>
                 <div className="mt-1 flex flex-wrap items-end gap-2">
-                  <p className="text-3xl font-semibold text-cyan-50">{clampPercent(result.match_percentage)}%</p>
+                  <p className="text-3xl font-semibold text-slate-900">{clampPercent(result.match_percentage)}%</p>
                   {result.jd_relevance?.verdict && (
-                    <span className="mb-1 rounded-full border border-cyan-100/24 bg-cyan-100/8 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/78">
+                    <span className="mb-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-600">
                       {result.jd_relevance.verdict.replace(/_/g, " ")}
                     </span>
                   )}
                   {result.skill_breakdown?.gap_severity && (
-                    <span className="mb-1 rounded-full border border-cyan-100/24 bg-cyan-100/8 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/78">
+                    <span className="mb-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-600">
                       Gap {result.skill_breakdown.gap_severity}
                     </span>
                   )}
                 </div>
-                <p className="mt-2 text-sm text-cyan-100/84">{result.alignment_summary}</p>
-                <p className="mt-2 text-xs text-cyan-100/72">
+                <p className="mt-2 text-sm text-slate-700">{result.alignment_summary}</p>
+                <p className="mt-2 text-xs text-slate-500">
                   {result.ai?.used ? "Hybrid AI mode active" : "Rules mode active"}
                   {result.ai?.model ? ` | model: ${result.ai.model}` : ""}
                 </p>
               </div>
 
-              <div className="mt-3 rounded-lg border border-cyan-100/20 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/70">AI Match Graphs</p>
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <p className="text-xs uppercase tracking-[0.12em] text-slate-500">AI Match Graphs</p>
                 <div className="mt-3 space-y-2.5">
                   {[
                     { label: "Role Match", value: result.metrics.match_percentage },
@@ -549,13 +551,13 @@ export default function InstantFitClient() {
                     { label: "Good-To-Have Coverage", value: result.metrics.good_to_have_coverage },
                   ].map((metric) => (
                     <div key={metric.label}>
-                      <div className="flex items-center justify-between text-xs text-cyan-100/80">
+                      <div className="flex items-center justify-between text-xs text-slate-600">
                         <span>{metric.label}</span>
                         <span>{clampPercent(metric.value)}%</span>
                       </div>
-                      <div className="mt-1 h-2 overflow-hidden rounded-full border border-cyan-100/18 bg-[#061a34]">
+                      <div className="mt-1 h-2 overflow-hidden rounded-full border border-slate-200 bg-white">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-300 to-emerald-200 transition-all duration-700"
+                          className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-emerald-400 transition-all duration-700"
                           style={{ width: `${clampPercent(metric.value)}%` }}
                         />
                       </div>
@@ -564,41 +566,43 @@ export default function InstantFitClient() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Matched Skills</p>
-                <p className="mt-1 text-sm text-cyan-50/82">{(result.matched_skills || []).slice(0, 16).join(", ") || "None detected yet."}</p>
-                <p className="mt-3 text-xs uppercase tracking-[0.12em] text-cyan-100/72">Missing Skills</p>
-                <p className="mt-1 text-sm text-cyan-50/82">{(result.missing_skills || []).slice(0, 18).join(", ") || "No critical gaps detected."}</p>
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Matched Skills</p>
+                <p className="mt-1 text-sm text-slate-700">{(result.matched_skills || []).slice(0, 16).join(", ") || "None detected yet."}</p>
+                <p className="mt-3 text-xs uppercase tracking-[0.12em] text-slate-500">Missing Skills</p>
+                <p className="mt-1 text-sm text-slate-700">{(result.missing_skills || []).slice(0, 18).join(", ") || "No critical gaps detected."}</p>
               </div>
 
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">AI Feedback</p>
-                <ul className="mt-2 space-y-1 text-sm text-cyan-100/84">
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+                <p className="text-xs uppercase tracking-[0.12em] text-slate-500">AI Feedback</p>
+                <ul className="mt-2 space-y-1 text-sm text-slate-700">
                   {(result.feedback || []).slice(0, 5).map((line, index) => (
                     <li key={`${line}-${index}`}>- {line}</li>
                   ))}
                 </ul>
-                <p className="mt-3 text-xs uppercase tracking-[0.12em] text-cyan-100/72">Improvements</p>
-                <ul className="mt-2 space-y-1 text-sm text-cyan-100/84">
+                <p className="mt-3 text-xs uppercase tracking-[0.12em] text-slate-500">Improvements</p>
+                <ul className="mt-2 space-y-1 text-sm text-slate-700">
                   {(result.improvements || []).slice(0, 5).map((line, index) => (
                     <li key={`${line}-${index}`}>- {line}</li>
                   ))}
                 </ul>
-                <p className="mt-3 text-xs uppercase tracking-[0.12em] text-cyan-100/72">Next Steps</p>
-                <ol className="mt-2 space-y-1 text-sm text-cyan-100/84">
+                <p className="mt-3 text-xs uppercase tracking-[0.12em] text-slate-500">Next Steps</p>
+                <ol className="mt-2 space-y-1 text-sm text-slate-700">
                   {(result.next_steps || []).slice(0, 4).map((line, index) => (
-                    <li key={`${line}-${index}`}>{index + 1}. {line}</li>
+                    <li key={`${line}-${index}`}>
+                      {index + 1}. {line}
+                    </li>
                   ))}
                 </ol>
               </div>
 
-              <div className="mt-3 rounded-lg border border-cyan-100/18 bg-cyan-100/8 p-3">
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => void handleCreateShareLink()}
                     disabled={shareLoading}
-                    className="rounded-lg border border-cyan-100/28 bg-cyan-100/14 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/22 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {shareLoading ? "Generating Share Link..." : "Share Score Card"}
                   </button>
@@ -606,7 +610,7 @@ export default function InstantFitClient() {
                     href={fullAnalysisHref}
                     eventName="cta_check_my_score_click"
                     eventParams={{ cta_location: "instant_fit_result", cta_label: "Run Full Analysis" }}
-                    className="rounded-lg border border-cyan-100/24 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
+                    className="rounded-lg border border-cyan-200 bg-cyan-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-600"
                   >
                     Run Full Analysis
                   </TrackedLink>
@@ -614,18 +618,18 @@ export default function InstantFitClient() {
                     href={pricingHref}
                     eventName="cta_view_premium_plans_click"
                     eventParams={{ cta_location: "instant_fit_result", cta_label: "View Premium Plans" }}
-                    className="rounded-lg border border-cyan-100/24 bg-transparent px-3 py-2 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                   >
                     View Premium Plans
                   </TrackedLink>
                 </div>
-                {shareMessage && <p className="mt-2 text-xs text-cyan-100/82">{shareMessage}</p>}
+                {shareMessage && <p className="mt-2 text-xs text-slate-600">{shareMessage}</p>}
                 {shareUrl && (
                   <a
                     href={shareUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-flex text-xs font-semibold text-cyan-100 underline decoration-cyan-100/50 underline-offset-2"
+                    className="mt-2 inline-flex text-xs font-semibold text-cyan-700 underline decoration-cyan-300 underline-offset-2"
                   >
                     {shareUrl}
                   </a>
