@@ -2200,6 +2200,129 @@ export const seoLandingPages: SeoLandingPage[] = [
       },
     ],
   },
+  {
+    slug: "resume-for-chennai-it-jobs",
+    keyword: "resume for chennai it jobs",
+    title: "Resume for Chennai IT Jobs",
+    metaDescription:
+      "Build a stronger resume for Chennai IT jobs with role-specific keywords, clear impact bullets, and recruiter-friendly positioning.",
+    h1: "Resume for Chennai IT Jobs",
+    intro:
+      "Chennai hiring teams scan resumes quickly for role fit, stack depth, and delivery impact. This guide helps you align your resume to Chennai IT openings across product and services companies.",
+    roleFocus: "Chennai IT Jobs",
+    searchIntent: "Increase shortlist probability for Chennai software and IT roles with local-market resume optimization.",
+    painPoints: [
+      "Resume is generic and not aligned to target role families in Chennai.",
+      "Tech stack is listed without measurable outcomes or production impact.",
+      "Location preference and notice period are unclear for urgent openings.",
+    ],
+    whatYouGet: [
+      "A Chennai-focused resume structure for software, data, and support roles.",
+      "Keyword mapping guidance for services, GCC, and product hiring teams.",
+      "High-impact bullet rewrite patterns to improve recruiter scan clarity.",
+    ],
+    actionPlan: [
+      "Pick one target role family and align summary, skills, and top experience bullets.",
+      "Add measurable results for delivery speed, quality, reliability, or business impact.",
+      "Highlight Chennai location readiness and run an ATS + JD match check before applying.",
+    ],
+    faqs: [
+      {
+        question: "Should I mention location preference in resume for Chennai jobs?",
+        answer: "Yes. Mention Chennai or relocation readiness to reduce recruiter uncertainty for location-filtered roles.",
+      },
+      {
+        question: "Which sections matter most for Chennai IT recruiters?",
+        answer: "Headline, summary, skills, and first experience block usually carry the strongest first-pass impact.",
+      },
+      {
+        question: "Can one resume work for both product and services companies?",
+        answer: "Use one master resume, but tailor high-impact sections for each company type before applying.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-noida-software-jobs",
+    keyword: "resume for noida software jobs",
+    title: "Resume for Noida Software Jobs",
+    metaDescription:
+      "Optimize your resume for Noida software jobs with stronger project impact, ATS keyword depth, and role-targeted positioning.",
+    h1: "Resume for Noida Software Jobs",
+    intro:
+      "Noida software hiring is competitive and fast-moving. This guide helps you present your profile with clear ownership, relevant stack alignment, and outcomes that recruiters can evaluate quickly.",
+    roleFocus: "Noida Software Jobs",
+    searchIntent: "Improve callback rates for Noida software and tech hiring pipelines.",
+    painPoints: [
+      "Resume bullets describe tasks but do not prove ownership or outcomes.",
+      "Skills are broad and not mapped to Noida role requirements.",
+      "Candidates apply in volume with one untailored resume version.",
+    ],
+    whatYouGet: [
+      "Role-fit checklist for Noida engineering and analytics job applications.",
+      "A practical framework for converting project work into business outcomes.",
+      "Section-level edits to improve ATS parsing and recruiter readability.",
+    ],
+    actionPlan: [
+      "Shortlist target roles and extract must-have skills from 3-5 Noida job descriptions.",
+      "Rewrite top bullets with measurable impact and role-relevant stack terms.",
+      "Run resume analysis and JD matching before every focused application batch.",
+    ],
+    faqs: [
+      {
+        question: "How many resume versions should I keep for Noida software jobs?",
+        answer: "Maintain 2-4 versions by role family and tailor final edits per job description.",
+      },
+      {
+        question: "Is a one-page resume enough for experienced candidates?",
+        answer: "One page is ideal when concise; two pages are acceptable if every line supports role fit and impact.",
+      },
+      {
+        question: "Do recruiters care more about tools or outcomes?",
+        answer: "Outcomes usually decide shortlist quality; tools support credibility when tied to results.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-mumbai-it-jobs",
+    keyword: "resume for mumbai it jobs",
+    title: "Resume for Mumbai IT Jobs",
+    metaDescription:
+      "Create a recruiter-ready resume for Mumbai IT jobs with stronger impact proof, domain relevance, and ATS-friendly formatting.",
+    h1: "Resume for Mumbai IT Jobs",
+    intro:
+      "Mumbai IT roles often prioritize execution quality, domain context, and communication clarity. This guide helps you present your value with cleaner structure and stronger proof points.",
+    roleFocus: "Mumbai IT Jobs",
+    searchIntent: "Get more recruiter responses for Mumbai-based IT and technology roles.",
+    painPoints: [
+      "Resume misses domain context for fintech, BFSI, media, or enterprise hiring.",
+      "Experience bullets are activity-heavy and weak on measurable outcomes.",
+      "Profile summary does not clearly signal role intent and strengths.",
+    ],
+    whatYouGet: [
+      "A Mumbai-focused resume strategy for high-competition IT openings.",
+      "Examples to connect technical execution with business outcomes.",
+      "A shortlist-first structure that improves readability in first-pass screening.",
+    ],
+    actionPlan: [
+      "Rewrite summary with target role, domain focus, and strongest value proposition.",
+      "Prioritize top achievements with metrics for revenue, speed, quality, or reliability.",
+      "Tailor resume keywords for each Mumbai job family and rerun final checks before applying.",
+    ],
+    faqs: [
+      {
+        question: "Should I include domain specialization for Mumbai jobs?",
+        answer: "Yes. Domain context can improve relevance quickly, especially for BFSI, fintech, and enterprise roles.",
+      },
+      {
+        question: "Can freshers use this Mumbai resume approach?",
+        answer: "Yes. Freshers should replace experience depth with strong project outcomes and role-focused skills.",
+      },
+      {
+        question: "What is the fastest way to improve shortlist rate?",
+        answer: "Tailor your top sections for each role and ensure bullets prove outcomes, not just responsibilities.",
+      },
+    ],
+  },
 ];
 
 export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
@@ -2812,6 +2935,36 @@ const keywordVariantsBySlug: Record<string, string[]> = {
     "resume version by role family",
     "quick resume tailoring workflow",
     "resume customization for interview calls",
+  ],
+  "resume-for-chennai-it-jobs": [
+    "resume for chennai it jobs",
+    "chennai software resume format",
+    "resume for product jobs chennai",
+    "it jobs chennai resume checklist",
+    "chennai tech hiring resume tips",
+    "resume for services companies chennai",
+    "job switch resume chennai",
+    "resume for chennai software engineer",
+  ],
+  "resume-for-noida-software-jobs": [
+    "resume for noida software jobs",
+    "noida it resume format",
+    "resume for noida tech companies",
+    "software engineer resume noida",
+    "resume for product jobs noida",
+    "noida hiring resume checklist",
+    "job switch resume noida",
+    "resume for noida developer jobs",
+  ],
+  "resume-for-mumbai-it-jobs": [
+    "resume for mumbai it jobs",
+    "mumbai software resume format",
+    "resume for mumbai tech companies",
+    "mumbai it hiring resume tips",
+    "resume for fintech jobs mumbai",
+    "job switch resume mumbai",
+    "it jobs mumbai resume checklist",
+    "resume for mumbai software engineer",
   ],
 };
 
