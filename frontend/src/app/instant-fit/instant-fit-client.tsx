@@ -391,20 +391,66 @@ export default function InstantFitClient() {
     !runningCheck;
 
   return (
-    <main className="min-h-screen bg-[#f7f9fc] px-4 pb-16 pt-10 sm:px-6 lg:px-8">
-      <section className="mx-auto max-w-6xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)] sm:p-8">
-        <p className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.1em] text-slate-700">
-          No Login Tool
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 sm:text-5xl">Instant AI JD Fit Check</h1>
-        <p className="mt-3 max-w-3xl text-sm text-slate-600 sm:text-base">
-          Upload or paste your resume and JD. Get match percentage, matched skills, missing skills, and clear next steps in one run.
-        </p>
+    <main className="relative min-h-screen overflow-hidden bg-[#f7f9fc] px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-cyan-200/45 blur-3xl" />
+        <div className="absolute -left-20 top-56 h-72 w-72 rounded-full bg-amber-200/45 blur-3xl" />
+        <div className="absolute bottom-10 right-16 h-56 w-56 rounded-full bg-emerald-200/35 blur-3xl" />
+      </div>
+
+      <section className="mx-auto max-w-6xl rounded-[2.2rem] border border-slate-200 bg-white p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)] sm:p-8 lg:p-10">
+        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+          <div>
+            <p className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-slate-700">
+              No Login Tool
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 sm:text-5xl">
+              Instant AI JD Fit Check
+              <span className="block bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 bg-clip-text text-transparent">
+                built for faster shortlist decisions
+              </span>
+            </h1>
+            <p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
+              Upload or paste your resume and JD. Get match percentage, matched skills, missing skills, and clear next steps in one run.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2.5">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
+                1. Add Resume + JD
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
+                2. Run AI Match
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
+                3. Improve and Re-apply
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-cyan-50 to-emerald-50 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+            <p className="text-xs uppercase tracking-[0.12em] text-slate-500">What you get in this run</p>
+            <div className="mt-4 space-y-2.5">
+              {[
+                "Role-fit percentage with JD relevance context",
+                "Matched and missing skills with action points",
+                "Immediate next steps for resume iteration",
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-2 rounded-xl border border-white/70 bg-white/85 px-3 py-2.5">
+                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-cyan-500" />
+                  <p className="text-sm text-slate-700">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="mx-auto mt-6 grid max-w-6xl gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
-          <h2 className="text-lg font-semibold text-slate-900">Inputs</h2>
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.06)] sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">Inputs</h2>
+            <p className="text-xs text-slate-500">Minimum 24 characters each for resume and JD</p>
+          </div>
+
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <input
               value={industry}
@@ -412,7 +458,12 @@ export default function InstantFitClient() {
               placeholder="Industry (optional)"
               className={fieldClass}
             />
-            <input value={role} onChange={(event) => setRole(event.target.value)} placeholder="Role (optional)" className={fieldClass} />
+            <input
+              value={role}
+              onChange={(event) => setRole(event.target.value)}
+              placeholder="Role (optional)"
+              className={fieldClass}
+            />
           </div>
 
           <textarea
@@ -472,7 +523,7 @@ export default function InstantFitClient() {
               type="button"
               onClick={() => void handleRunInstantFit()}
               disabled={!canRunCheck}
-              className="rounded-xl border border-amber-300 bg-amber-300 px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl border border-amber-300 bg-gradient-to-r from-amber-300 to-amber-200 px-3 py-2 text-xs font-semibold text-slate-900 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {runningCheck ? "Running AI Match..." : "Run Instant AI Match"}
             </button>
@@ -489,11 +540,11 @@ export default function InstantFitClient() {
           {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
         </div>
 
-        <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:p-6">
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.06)] sm:p-6">
           <h2 className="text-lg font-semibold text-slate-900">Match Result</h2>
 
           {runningCheck ? (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50 p-4">
               <div className="relative mx-auto h-24 w-24">
                 <div className="absolute inset-0 rounded-full border-2 border-slate-300" />
                 <div className="absolute inset-2 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
@@ -513,12 +564,18 @@ export default function InstantFitClient() {
               </div>
             </div>
           ) : !result ? (
-            <p className="mt-3 text-sm text-slate-600">
-              Run Instant AI Match to view score, matched skills, missing skills, and action plan.
-            </p>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 text-cyan-700">%</div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Result card will appear here</p>
+                  <p className="text-sm text-slate-600">Run instant match to unlock score, gaps, and next actions.</p>
+                </div>
+              </div>
+            </div>
           ) : (
             <>
-              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+              <div className="mt-3 rounded-xl border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-emerald-50 p-4">
                 <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Match Percentage</p>
                 <div className="mt-1 flex flex-wrap items-end gap-2">
                   <p className="text-3xl font-semibold text-slate-900">{clampPercent(result.match_percentage)}%</p>
@@ -568,9 +625,32 @@ export default function InstantFitClient() {
 
               <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
                 <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Matched Skills</p>
-                <p className="mt-1 text-sm text-slate-700">{(result.matched_skills || []).slice(0, 16).join(", ") || "None detected yet."}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(result.matched_skills || []).slice(0, 12).map((skill) => (
+                    <span
+                      key={`matched-${skill}`}
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                  {(result.matched_skills || []).length === 0 && <p className="text-sm text-slate-600">None detected yet.</p>}
+                </div>
+
                 <p className="mt-3 text-xs uppercase tracking-[0.12em] text-slate-500">Missing Skills</p>
-                <p className="mt-1 text-sm text-slate-700">{(result.missing_skills || []).slice(0, 18).join(", ") || "No critical gaps detected."}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(result.missing_skills || []).slice(0, 14).map((skill) => (
+                    <span
+                      key={`missing-${skill}`}
+                      className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                  {(result.missing_skills || []).length === 0 && (
+                    <p className="text-sm text-slate-600">No critical gaps detected.</p>
+                  )}
+                </div>
               </div>
 
               <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
@@ -596,7 +676,7 @@ export default function InstantFitClient() {
                 </ol>
               </div>
 
-              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+              <div className="mt-3 rounded-xl border border-slate-200 bg-gradient-to-r from-white via-cyan-50/50 to-white p-3.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
