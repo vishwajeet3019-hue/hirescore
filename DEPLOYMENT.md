@@ -66,10 +66,23 @@ This repo includes `render.yaml` for the backend service.
 3. Set environment variable:
 - `NEXT_PUBLIC_API_BASE_URL=https://api.hirescore.in`
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID=<your-google-oauth-client-id.apps.googleusercontent.com>`
-4. Deploy.
-5. In Vercel project domains, add:
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID=<prod-ga4-id>`
+- Optional staging/preview analytics:
+  - `NEXT_PUBLIC_GA_STAGING_MEASUREMENT_ID=<staging-ga4-id>`
+  - `NEXT_PUBLIC_GA_PREVIEW_MEASUREMENT_ID=<preview-ga4-id>` (leave empty unless needed)
+  - `NEXT_PUBLIC_GA_ENABLE_PREVIEW=false`
+4. Set deploy guardrail variables:
+- `DEPLOY_PROD_BRANCH=main`
+- `DEPLOY_STAGING_BRANCH=staging`
+- `DEPLOY_GUARD_BYPASS=false`
+5. Deploy.
+6. In Vercel project domains, add:
 - `hirescore.in`
 - `www.hirescore.in`
+7. Guardrail behavior:
+- `hirescore.in` and `www.hirescore.in` only serve when build branch is `main`.
+- `staging.hirescore.in` only serves when build branch is `staging`.
+- Mismatched branch/host returns a `503 Deployment Guard Active` page.
 
 ## 3) DNS Records (Domain Provider)
 
@@ -138,7 +151,9 @@ Use staging for unrestricted testing across multiple devices.
 3. Point `staging.hirescore.in` alias to the latest preview deployment.
 4. Set Vercel Preview env var:
 - `NEXT_PUBLIC_API_BASE_URL=https://api-staging.hirescore.in`
-5. Redeploy preview.
+5. Set staging analytics env var:
+- `NEXT_PUBLIC_GA_STAGING_MEASUREMENT_ID=<staging-ga4-id>`
+6. Redeploy preview.
 
 ### DNS records for staging
 

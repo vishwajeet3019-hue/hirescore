@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import AppChrome from "./components/app-chrome";
+import AnalyticsBootstrap from "./components/analytics-bootstrap";
 import AnalyticsPageviewTracker from "./components/analytics-pageview";
 import MotionProvider from "./components/motion-provider";
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
-const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -92,25 +91,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-<html lang="en-IN">
+    <html lang="en-IN">
       <body className="antialiased overflow-x-hidden">
-        {GA_MEASUREMENT_ID ? (
-          <>
-            <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-              strategy="afterInteractive"
-            />
-            <Script id="ga4-init" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${GA_MEASUREMENT_ID}', { send_page_view: false });
-              `}
-            </Script>
-            <AnalyticsPageviewTracker />
-          </>
-        ) : null}
+        <AnalyticsBootstrap />
+        <AnalyticsPageviewTracker />
         <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden">
           <div className="futuristic-grid" />
         </div>

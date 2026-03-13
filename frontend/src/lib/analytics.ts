@@ -1,3 +1,5 @@
+import { isPreviewHost, isProductionHost, isStagingHost, normalizeHost } from "@/lib/runtime-hosts";
+
 type EventValue = string | number | boolean;
 
 declare global {
@@ -7,8 +9,39 @@ declare global {
   }
 }
 
+const BOT_USER_AGENT_PATTERN =
+  /bot|spider|crawler|crawl|headless|lighthouse|pingdom|monitor|slurp|bingpreview|facebookexternalhit|whatsapp|telegrambot|discordbot|applebot|yandex|baiduspider|duckduckbot|semrush|ahrefs|mj12bot|bytespider/i;
+const GA_ENABLE_PREVIEW = (process.env.NEXT_PUBLIC_GA_ENABLE_PREVIEW?.trim() || "").toLowerCase() === "true";
+
+type NavigatorWithWebDriver = Navigator & {
+  webdriver?: boolean;
+};
+
+const isLikelyAutomatedClient = (): boolean => {
+  const agent = (navigator.userAgent || "").trim();
+  if (!agent) return true;
+  if (BOT_USER_AGENT_PATTERN.test(agent)) return true;
+  if ((navigator as NavigatorWithWebDriver).webdriver) return true;
+  return false;
+};
+
+const isAllowedAnalyticsHost = (): boolean => {
+  const host = normalizeHost(window.location.hostname);
+  if (!host) return false;
+  if (isProductionHost(host) || isStagingHost(host)) return true;
+  if (GA_ENABLE_PREVIEW && isPreviewHost(host)) return true;
+  return false;
+};
+
+const shouldTrackAnalytics = (): boolean => {
+  if (typeof window === "undefined") return false;
+  if (!isAllowedAnalyticsHost()) return false;
+  if (isLikelyAutomatedClient()) return false;
+  return true;
+};
+
 export const trackEvent = (eventName: string, params: Record<string, EventValue> = {}) => {
-  if (typeof window === "undefined") return;
+  if (!shouldTrackAnalytics()) return;
 
   if (typeof window.gtag === "function") {
     window.gtag("event", eventName, params);
@@ -25,7 +58,7 @@ export const trackEvent = (eventName: string, params: Record<string, EventValue>
 
 export const trackPageView = (pagePath: string) => {
   const safePath = pagePath || "/";
-  if (typeof window === "undefined") return;
+  if (!shouldTrackAnalytics()) return;
 
   const params = {
     page_path: safePath,
