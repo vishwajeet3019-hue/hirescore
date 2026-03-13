@@ -605,7 +605,7 @@ export default function DashboardPage() {
             <div className="mt-6 grid gap-4 xl:grid-cols-12">
               <section className="xl:col-span-8 rounded-[2rem] border border-cyan-100/26 bg-[linear-gradient(130deg,rgba(8,33,58,0.95)_0%,rgba(9,25,44,0.94)_56%,rgba(40,29,16,0.82)_100%)] p-5 shadow-[0_28px_65px_rgba(2,8,22,0.45)] sm:p-7">
                 <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Improve your profile to get more interview calls.</h2>
-                <p className="mt-1 text-xs uppercase tracking-[0.12em] text-cyan-100/74">Profile: {email || "User"}</p>
+                <p className="mt-1 break-all text-xs uppercase tracking-[0.12em] text-cyan-100/74">Profile: {email || "User"}</p>
                 <p className="mt-2 text-sm text-cyan-50/74">
                   {nextMilestone
                     ? `Next highest-impact move: ${nextMilestone.title}`
@@ -1064,7 +1064,7 @@ export default function DashboardPage() {
             <p className="mt-1 text-sm text-cyan-50/70">Each analysis and completed interview simulator report is auto-saved to your account dashboard.</p>
             {reportsError && <p className="mt-3 text-xs text-amber-100">{reportsError}</p>}
             {!reports.length ? (
-              <p className="mt-4 text-sm text-cyan-50/70">No reports saved yet. Run one analysis to see it here.</p>
+              <p className="mt-4 text-sm text-cyan-50/70">No reports saved yet. Run analysis or complete an interview simulation while signed in to see reports here.</p>
             ) : (
               <div className="mt-4 space-y-3">
                 {reports.map((report) => (

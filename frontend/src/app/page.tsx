@@ -111,6 +111,11 @@ export default function Home() {
     medium: "organic",
     campaign: "home_instant_fit",
   });
+  const homeGuidedFlowHref = addUtmParams("/guided-flow", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_guided_flow",
+  });
   const homePricingHref = addUtmParams("/pricing", {
     source: "home",
     medium: "organic",
@@ -256,10 +261,19 @@ export default function Home() {
                 </TrackedLink>
 
                 <TrackedLink
+                  href={homeGuidedFlowHref}
+                  eventName="guided_flow_step_click"
+                  eventParams={{ cta_location: "home_hero", step: 0, label: "Guided Flow" }}
+                  className="w-full rounded-2xl border border-emerald-100/34 bg-gradient-to-r from-emerald-300/24 via-cyan-300/20 to-cyan-200/14 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
+                >
+                  Open Guided Flow
+                </TrackedLink>
+
+                <TrackedLink
                   href={homeInterviewDemoHref}
                   eventName="cta_interview_demo_click"
                   eventParams={{ cta_location: "home_hero", cta_label: "Try Free 90-Second Interview" }}
-                  className="w-full rounded-2xl border border-emerald-100/34 bg-gradient-to-r from-emerald-300/24 via-cyan-300/20 to-cyan-200/14 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
+                  className="w-full rounded-2xl border border-emerald-100/34 bg-gradient-to-r from-emerald-300/20 via-cyan-300/18 to-cyan-200/12 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
                 >
                   Try Free 90-Second Interview
                 </TrackedLink>
