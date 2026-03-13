@@ -170,6 +170,7 @@ AUTH_DB_PATH = resolve_auth_db_path()
 AUTH_TOKEN_SECRET = (os.getenv("AUTH_TOKEN_SECRET") or "replace-this-in-production").strip()
 AUTH_TOKEN_TTL_HOURS = int((os.getenv("AUTH_TOKEN_TTL_HOURS") or "720").strip())
 GUEST_CHAT_TOKEN_TTL_HOURS = max(6, min(24 * 90, int((os.getenv("GUEST_CHAT_TOKEN_TTL_HOURS") or "168").strip())))
+GUEST_SYSTEM_EMAIL_SUFFIX = "@guest.hirescore.local"
 # Testing helper endpoint (/auth/topup) should be disabled by default in production.
 ALLOW_UNVERIFIED_TOPUP = env_flag("ALLOW_UNVERIFIED_TOPUP", False)
 EMAIL_OTP_REQUIRED = env_flag("EMAIL_OTP_REQUIRED", True)
@@ -3000,7 +3001,7 @@ def normalize_guest_chat_key(value: str | None) -> str:
 
 def guest_chat_email_for_key(guest_key: str) -> str:
     fingerprint = hashlib.sha256(f"guest-chat:{guest_key}:{AUTH_TOKEN_SECRET}".encode("utf-8")).hexdigest()[:24]
-    return f"guest-chat-{fingerprint}@guest.hirescore.local"
+    return f"guest-chat-{fingerprint}{GUEST_SYSTEM_EMAIL_SUFFIX}"
 
 
 def get_or_create_guest_chat_user(guest_key: str) -> sqlite3.Row:
@@ -16410,6 +16411,11 @@ def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str,
             return float(default)
 
     users_total = scalar_int("SELECT COUNT(*) AS count FROM users")
+    real_users_total = scalar_int(
+        "SELECT COUNT(*) AS count FROM users WHERE lower(email) NOT LIKE ?",
+        (f"%{GUEST_SYSTEM_EMAIL_SUFFIX}",),
+    )
+    guest_users_total = max(0, users_total - real_users_total)
     feedback_total = scalar_int("SELECT COUNT(*) AS count FROM user_feedback")
     feedback_avg = round(scalar_float("SELECT COALESCE(AVG(rating), 0) AS value FROM user_feedback", key="value"), 2)
     signups_total = scalar_int(
@@ -16477,6 +16483,8 @@ def collect_admin_analytics_summary(connection: sqlite3.Connection) -> dict[str,
 
     return {
         "users_total": users_total,
+        "real_users_total": real_users_total,
+        "guest_users_total": guest_users_total,
         "signups_total": signups_total,
         "logins_total": logins_total,
         "analyses_total": analyses_total,

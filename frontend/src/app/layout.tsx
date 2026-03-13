@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Manrope } from "next/font/google";
 import AppChrome from "./components/app-chrome";
+import AnalyticsBootstrap from "./components/analytics-bootstrap";
 import AnalyticsPageviewTracker from "./components/analytics-pageview";
 import MotionProvider from "./components/motion-provider";
 import "./globals.css";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
-const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
 const manrope = Manrope({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
@@ -103,23 +102,8 @@ export default function RootLayout({
       <body
         className={`${manrope.variable} [font-family:var(--font-manrope)] antialiased overflow-x-hidden bg-[#f7f9fc] text-slate-900`}
       >
-        {GA_MEASUREMENT_ID ? (
-          <>
-            <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-              strategy="afterInteractive"
-            />
-            <Script id="ga4-init" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${GA_MEASUREMENT_ID}', { send_page_view: false });
-              `}
-            </Script>
-            <AnalyticsPageviewTracker />
-          </>
-        ) : null}
+        <AnalyticsBootstrap />
+        <AnalyticsPageviewTracker />
         <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden">
           <div className="futuristic-grid" />
         </div>
