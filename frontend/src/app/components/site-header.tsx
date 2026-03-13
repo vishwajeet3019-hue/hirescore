@@ -29,7 +29,6 @@ type NavLink = {
 };
 
 const baseNavLinks: NavLink[] = [
-  { href: "/", label: "Home" },
   { href: "/guided-flow", label: "Guided Flow" },
   { href: "/#workflow", label: "How It Works", isSection: true },
   {
@@ -42,10 +41,10 @@ const baseNavLinks: NavLink[] = [
       { href: "/interview-simulator", label: "4. Interview Simulator" },
       { href: "/dashboard", label: "5. Action Plan Dashboard" },
       { href: "/ai-resume-studio", label: "Resume Studio" },
+      { href: "/case-studies", label: "Success Stories" },
+      { href: "/resources", label: "Guides" },
     ],
   },
-  { href: "/case-studies", label: "Success Stories" },
-  { href: "/resources", label: "Guides" },
   { href: "/pricing", label: "Pricing" },
 ];
 
@@ -76,12 +75,7 @@ export default function SiteHeader() {
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileToolsPanelRef = useRef<HTMLDivElement | null>(null);
   const portalReady = typeof window !== "undefined";
-
-  const navLinks = useMemo(
-    () => (authToken ? baseNavLinks.filter((link) => link.href !== "/resources") : baseNavLinks),
-    [authToken],
-  );
-
+  const navLinks = useMemo(() => baseNavLinks, []);
   const headerAnalyzeHref = addUtmParams("/instant-fit", {
     source: "header_nav",
     medium: "internal",
@@ -242,7 +236,7 @@ export default function SiteHeader() {
           />
         </Link>
 
-        <nav className="hidden items-center gap-2 text-sm font-medium text-slate-700 md:flex lg:gap-3">
+        <nav className="hidden items-center gap-2 text-sm font-medium text-slate-700 xl:flex">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
             if (!link.children) {
@@ -251,7 +245,7 @@ export default function SiteHeader() {
                   key={link.href}
                   href={link.href}
                   onClick={handleNavLinkClick(link.href)}
-                  className={`rounded-full border px-3 py-1.5 transition ${
+                  className={`whitespace-nowrap rounded-full border px-3 py-1.5 transition ${
                     active
                       ? "border-cyan-200 bg-cyan-50 text-slate-900"
                       : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900"
@@ -267,7 +261,7 @@ export default function SiteHeader() {
                   type="button"
                   onClick={() => setShowToolsMenu((prev) => !prev)}
                   aria-expanded={isToolsDropdownOpen(link)}
-                  className={`rounded-full border px-3 py-1.5 transition ${
+                  className={`whitespace-nowrap rounded-full border px-3 py-1.5 transition ${
                     active
                       ? "border-cyan-200 bg-cyan-50 text-slate-900"
                       : "border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900"
@@ -288,7 +282,7 @@ export default function SiteHeader() {
                         key={`${link.label}-${child.href}-${child.label}`}
                         href={child.href}
                         onClick={handleToolsLinkClick(child.href)}
-                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-slate-900"
+                        className="whitespace-nowrap rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-slate-900"
                       >
                         {child.label}
                       </Link>
@@ -337,7 +331,7 @@ export default function SiteHeader() {
                     cta_label: "Sign Up / Login",
                   });
                 }}
-                className="hidden rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 md:inline-flex"
+                className="hidden rounded-xl border border-slate-200 bg-transparent px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 lg:inline-flex"
               >
                 Sign Up / Login
               </Link>
@@ -365,14 +359,14 @@ export default function SiteHeader() {
             }}
             aria-expanded={mobileMenuOpen}
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 md:hidden"
+            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 xl:hidden"
           >
             {mobileMenuOpen ? "Close" : "Menu"}
           </button>
         </div>
       </div>
 
-      <div className={`border-t border-slate-100 px-3 py-3 md:hidden ${mobileMenuOpen ? "block" : "hidden"}`}>
+      <div className={`border-t border-slate-100 px-3 py-3 xl:hidden ${mobileMenuOpen ? "block" : "hidden"}`}>
         <nav className="mx-auto grid w-full max-w-7xl grid-cols-2 gap-1.5 text-xs text-slate-700">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
