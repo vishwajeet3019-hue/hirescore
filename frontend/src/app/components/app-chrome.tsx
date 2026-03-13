@@ -62,18 +62,6 @@ export default function AppChrome({ children }: AppChromeProps) {
                 Tools Hub
               </TrackedLink>
               <TrackedLink
-                href={addUtmParams("/features", {
-                  source: "footer",
-                  medium: "internal",
-                  campaign: "site_footer",
-                })}
-                eventName="cta_navigation"
-                eventParams={{ cta_location: "footer", cta_label: "Feature Guides" }}
-                className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
-              >
-                Feature Guides
-              </TrackedLink>
-              <TrackedLink
                 href={addUtmParams("/application-copilot", {
                   source: "footer",
                   medium: "internal",

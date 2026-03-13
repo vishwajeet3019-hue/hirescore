@@ -9,7 +9,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.
 export const metadata: Metadata = {
   title: "Feature Guides: JD Matcher, Interview Simulator, Resume Studio",
   description:
-    "Explore feature-focused SEO guides for JD matching, resume building, analysis, and interview simulation. Each page maps directly to a live HireScore tool.",
+    "Explore feature-focused guides for JD matching, resume building, analysis, and interview simulation. Each page maps directly to a live HireScore tool.",
   keywords: [
     "jd matcher tool",
     "resume vs jd match score checker",
@@ -29,7 +29,7 @@ export default function FeaturesSeoHubPage() {
   const itemListJsonLd = {
     "@context": "https://schema.org",
     "@type": "ItemList",
-    name: "HireScore Feature SEO Guides",
+    name: "HireScore Feature Guides",
     itemListElement: featureSeoPages.map((item, index) => ({
       "@type": "ListItem",
       position: index + 1,
@@ -57,7 +57,7 @@ export default function FeaturesSeoHubPage() {
             Feature Guides
           </p>
           <h1 className="mt-3 text-3xl font-semibold leading-tight text-cyan-50 sm:text-5xl">
-            SEO Landing Pages For New HireScore Features
+            Guides For HireScore Features
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-relaxed text-cyan-50/74 sm:text-base">
             These pages target high-intent queries around JD matching, resume analysis, interview simulation, and
@@ -130,7 +130,7 @@ export default function FeaturesSeoHubPage() {
         </div>
       </section>
 
-      <GrowthShareSection location="feature_seo_hub" title="HireScore Feature SEO Guides" />
+      <GrowthShareSection location="feature_seo_hub" title="HireScore Feature Guides" />
     </main>
   );
 }
