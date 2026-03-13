@@ -24,6 +24,9 @@ export function middleware(request: NextRequest) {
 
   const host = normalizeHost(request.headers.get("host"));
   if (!host) return NextResponse.next();
+  // Vercel CLI/manual deploys may not provide git branch metadata.
+  // In that case, skip branch guard to avoid blocking production traffic.
+  if (!ACTIVE_BRANCH) return NextResponse.next();
 
   if (isProductionHost(host) && ACTIVE_BRANCH !== PRODUCTION_BRANCH) {
     return guardResponse("production", host);
