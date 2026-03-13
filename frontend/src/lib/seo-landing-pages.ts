@@ -2487,6 +2487,47 @@ export const seoLandingPages: SeoLandingPage[] = [
       },
     ],
   },
+  {
+    slug: "resume-for-kolkata-it-jobs",
+    keyword: "resume for kolkata it jobs",
+    title: "Resume for Kolkata IT Jobs",
+    metaDescription:
+      "Improve your resume for Kolkata IT jobs with role-targeted keywords, measurable impact bullets, and recruiter-ready structure.",
+    h1: "Resume for Kolkata IT Jobs",
+    intro:
+      "Kolkata IT recruiters often shortlist quickly based on role clarity, practical skills, and delivery outcomes. This guide helps you position your resume for software, analytics, and product roles across Sector V and New Town hiring pipelines.",
+    roleFocus: "Kolkata IT Jobs",
+    searchIntent: "Increase interview callbacks for Kolkata-based IT and software job applications.",
+    painPoints: [
+      "Resume sections are generic and not aligned to Kolkata role requirements.",
+      "Projects mention tools but fail to prove ownership or business impact.",
+      "Candidates apply broadly without tailoring to job-description keywords.",
+    ],
+    whatYouGet: [
+      "A Kolkata-focused resume optimization checklist for high-competition hiring.",
+      "A practical framework to rewrite experience bullets with measurable outcomes.",
+      "Keyword alignment guidance for services, product, and GCC role families.",
+    ],
+    actionPlan: [
+      "Extract recurring skills from 5 target Kolkata job descriptions and prioritize them in your resume.",
+      "Rewrite top bullets using impact metrics for speed, quality, reliability, or revenue.",
+      "Run final ATS and JD-match checks before each application batch.",
+    ],
+    faqs: [
+      {
+        question: "Should I mention Kolkata location preference on resume?",
+        answer: "Yes. Mentioning Kolkata or relocation readiness helps recruiters filter faster for location-sensitive openings.",
+      },
+      {
+        question: "Can one resume work for both services and product jobs in Kolkata?",
+        answer: "Use one master resume, then tailor summary, skills, and top bullets based on company type and role scope.",
+      },
+      {
+        question: "What is the fastest way to improve shortlist rate in Kolkata IT jobs?",
+        answer: "Match your top sections to the job description and lead with outcome-driven bullets instead of task lists.",
+      },
+    ],
+  },
 ];
 
 export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
@@ -2566,6 +2607,7 @@ export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
       "resume for delhi ncr software jobs",
       "resume for noida software jobs",
       "resume for mumbai it jobs",
+      "resume for kolkata it jobs",
     ],
   },
   {
@@ -3183,6 +3225,16 @@ const keywordVariantsBySlug: Record<string, string[]> = {
     "resume for fast paced startup jobs",
     "startup jobs not getting interview calls",
     "resume for startup hiring teams",
+  ],
+  "resume-for-kolkata-it-jobs": [
+    "resume for kolkata it jobs",
+    "kolkata software resume format",
+    "resume for sector 5 it companies",
+    "new town tech jobs resume",
+    "resume for kolkata software engineer",
+    "job switch resume kolkata",
+    "it jobs kolkata cv format",
+    "resume for product and services jobs kolkata",
   ],
 };
 
