@@ -206,6 +206,15 @@ export default function ApplicationCopilotClient() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tab = safeTrim(params.get("tab")).toLowerCase();
+    if (tab === "overview" || tab === "plan" || tab === "tracks") {
+      setOutputTab(tab);
+    }
+  }, []);
+
+  useEffect(() => {
     const syncAuth = async () => {
       const token = window.localStorage.getItem("hirescore_auth_token") || "";
       if (!token) {
@@ -496,6 +505,45 @@ export default function ApplicationCopilotClient() {
     { label: "Must-Have", value: copilotResult?.jd_match?.must_have_coverage || 0 },
     { label: "JD Relevance", value: copilotResult?.jd_match?.jd_relevance || 0 },
   ];
+  const whyScoreNotes = useMemo(() => {
+    if (!copilotResult) return [];
+    const notes: string[] = [];
+    const roleMatch = Math.max(0, Math.min(100, Math.round(copilotResult.match_percentage || 0)));
+    const mustHave = Math.max(0, Math.min(100, Math.round(copilotResult.jd_match?.must_have_coverage || 0)));
+    const critical = Math.max(0, Math.min(100, Math.round(copilotResult.jd_match?.critical_coverage || 0)));
+    const jdRelevance = Math.max(0, Math.min(100, Math.round(copilotResult.jd_match?.jd_relevance || 0)));
+    notes.push(`Role match is ${roleMatch}% based on your current resume evidence against this JD.`);
+    notes.push(`Must-have coverage is ${mustHave}% and critical coverage is ${critical}%, which drive shortlist confidence most.`);
+    notes.push(`JD relevance is ${jdRelevance}%, indicating how close your profile narrative is to the job intent.`);
+    return notes.slice(0, 3);
+  }, [copilotResult]);
+  const topThreeFixes = useMemo(() => {
+    if (!copilotResult) return [];
+    const fixes: string[] = [];
+    for (const item of copilotResult.resume_improvements || []) {
+      const clean = safeTrim(item);
+      if (clean) fixes.push(clean);
+      if (fixes.length >= 3) break;
+    }
+    for (const skill of copilotResult.missing_skills || []) {
+      const cleanSkill = safeTrim(skill);
+      if (!cleanSkill) continue;
+      fixes.push(`Add evidence for ${cleanSkill} in your latest role/project bullets.`);
+      if (fixes.length >= 3) break;
+    }
+    return fixes.slice(0, 3);
+  }, [copilotResult]);
+  const expectedImpact = useMemo(() => {
+    if (!copilotResult) return null;
+    const roleMatch = Math.max(0, Math.min(100, Math.round(copilotResult.match_percentage || 0)));
+    const mustHave = Math.max(0, Math.min(100, Math.round(copilotResult.jd_match?.must_have_coverage || 0)));
+    const critical = Math.max(0, Math.min(100, Math.round(copilotResult.jd_match?.critical_coverage || 0)));
+    const improvementPotential = Math.max(6, Math.min(22, Math.round(((100 - roleMatch) * 0.08) + ((100 - mustHave) * 0.06) + ((100 - critical) * 0.06))));
+    return {
+      minLift: Math.max(3, Math.round(improvementPotential * 0.6)),
+      maxLift: improvementPotential,
+    };
+  }, [copilotResult]);
 
   return (
     <main className="min-h-screen px-4 pb-16 pt-8 sm:px-6 lg:px-8">
@@ -697,6 +745,30 @@ export default function ApplicationCopilotClient() {
                   <p className="mt-2 text-sm text-cyan-100/84">{copilotResult.jd_match?.alignment_summary || "AI generated role-fit summary ready."}</p>
                 </div>
 
+                <div className="grid gap-3 lg:grid-cols-3">
+                  <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3 lg:col-span-2">
+                    <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Why This Score</p>
+                    <ul className="mt-2 space-y-1 text-sm text-cyan-50/84">
+                      {whyScoreNotes.map((note, index) => (
+                        <li key={`why-score-${index}`}>- {note}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
+                    <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Expected Impact</p>
+                    {expectedImpact ? (
+                      <>
+                        <p className="mt-2 text-2xl font-semibold text-cyan-50">+{expectedImpact.minLift}% to +{expectedImpact.maxLift}%</p>
+                        <p className="mt-2 text-xs text-cyan-100/78">
+                          Estimated shortlist lift if top fixes are applied before your next application batch.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm text-cyan-50/72">Run copilot to estimate impact.</p>
+                    )}
+                  </div>
+                </div>
+
                 <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
                   <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Performance Graphs</p>
                   <div className="mt-3 space-y-2.5">
@@ -718,6 +790,20 @@ export default function ApplicationCopilotClient() {
                 </div>
 
                 <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3 lg:col-span-2">
+                    <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Top 3 Fixes</p>
+                    <ol className="mt-2 space-y-1 text-sm text-cyan-50/84">
+                      {topThreeFixes.length ? (
+                        topThreeFixes.map((fix, index) => (
+                          <li key={`top-fix-${index}`}>
+                            {index + 1}. {fix}
+                          </li>
+                        ))
+                      ) : (
+                        <li>Run copilot to generate high-impact fixes.</li>
+                      )}
+                    </ol>
+                  </div>
                   <div className="rounded-xl border border-cyan-100/18 bg-cyan-100/8 p-3">
                     <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Matched Skills</p>
                     <div className="mt-2 flex flex-wrap gap-2">

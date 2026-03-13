@@ -50,6 +50,18 @@ export default function AppChrome({ children }: AppChromeProps) {
             </div>
             <div className="mt-4 grid gap-2 text-sm">
               <TrackedLink
+                href={addUtmParams("/guided-flow", {
+                  source: "footer",
+                  medium: "internal",
+                  campaign: "site_footer",
+                })}
+                eventName="guided_flow_step_click"
+                eventParams={{ cta_location: "footer", step: 0, label: "Guided Flow" }}
+                className="inline-block font-semibold text-cyan-100 transition hover:text-cyan-50"
+              >
+                Guided Flow
+              </TrackedLink>
+              <TrackedLink
                 href={addUtmParams("/tools", {
                   source: "footer",
                   medium: "internal",

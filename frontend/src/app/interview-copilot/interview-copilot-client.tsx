@@ -131,7 +131,7 @@ export default function InterviewCopilotClient() {
         setAuthToken("");
         setWallet(null);
         setAuthEmail("");
-        setAuthError("Login required to run Interview Copilot.");
+        setAuthError("Login required to run Interview Prep.");
         return;
       }
 
@@ -257,11 +257,11 @@ export default function InterviewCopilotClient() {
 
   const handleRunCopilot = async () => {
     if (!authToken || !authHeader) {
-      setCopilotError("Login required to run Interview Copilot.");
+      setCopilotError("Login required to run Interview Prep.");
       return;
     }
     if (resumeText.trim().length < 24) {
-      setCopilotError("Upload resume file or paste richer resume text before running Interview Copilot.");
+      setCopilotError("Upload resume file or paste richer resume text before running Interview Prep.");
       return;
     }
 
@@ -337,7 +337,7 @@ export default function InterviewCopilotClient() {
       }
       setInterviewPrep(null);
       setApplicationPack(null);
-      setCopilotError(error instanceof Error ? error.message : "Unable to run Interview Copilot right now.");
+      setCopilotError(error instanceof Error ? error.message : "Unable to run Interview Prep right now.");
     } finally {
       setCopilotLoading(false);
     }
@@ -383,14 +383,26 @@ export default function InterviewCopilotClient() {
       <section className="mx-auto max-w-[1320px] rounded-[2rem] border border-cyan-100/22 bg-[linear-gradient(150deg,rgba(8,26,48,0.94),rgba(4,14,30,0.96)_52%,rgba(7,30,52,0.92))] p-6 shadow-[0_20px_54px_rgba(2,8,22,0.48)] sm:p-8">
         <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/78">Interview Operations Console</p>
-            <h1 className="mt-3 text-3xl font-semibold text-cyan-50 sm:text-5xl">Interview Copilot</h1>
+            <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/78">Interview Prep Workspace</p>
+            <h1 className="mt-3 text-3xl font-semibold text-cyan-50 sm:text-5xl">Interview Prep</h1>
             <p className="mt-3 max-w-3xl text-sm text-cyan-50/78 sm:text-base">
               Convert resume + role context into targeted interview preparation and an application-ready outreach kit.
             </p>
             <p className="mt-4 rounded-xl border border-cyan-100/22 bg-cyan-100/8 px-3 py-2 text-xs text-cyan-100/80">
               Required input: resume content. Optional input: JD and critical skill gaps.
             </p>
+            <TrackedLink
+              href={addUtmParams("/interview-simulator", {
+                source: "interview_copilot",
+                medium: "internal",
+                campaign: "copilot_to_simulator",
+              })}
+              eventName="cta_interview_simulator_click"
+              eventParams={{ cta_location: "interview_copilot_header", cta_label: "Open Live Interview Simulator" }}
+              className="mt-4 inline-flex rounded-xl border border-cyan-100/32 bg-cyan-200/14 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/22"
+            >
+              Open Live Interview Simulator
+            </TrackedLink>
           </div>
 
           <div className="rounded-2xl border border-cyan-100/22 bg-[#061a32]/72 p-4">
@@ -424,7 +436,7 @@ export default function InterviewCopilotClient() {
               disabled={!canRunCopilot}
               className="mt-3 w-full rounded-xl border border-cyan-100/38 bg-gradient-to-r from-cyan-200/20 via-cyan-200/16 to-emerald-200/14 px-3 py-2.5 text-sm font-semibold text-cyan-50 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {copilotLoading ? "Running Copilot..." : "Run Interview Copilot"}
+              {copilotLoading ? "Running Prep..." : "Run Interview Prep"}
             </button>
 
             <div className="mt-3 grid gap-2">
@@ -542,7 +554,7 @@ export default function InterviewCopilotClient() {
                 </div>
               </div>
             ) : !hasOutput ? (
-              <p className="mt-4 text-sm text-cyan-50/72">Run Interview Copilot to generate role-specific prep and messaging outputs.</p>
+              <p className="mt-4 text-sm text-cyan-50/72">Run Interview Prep to generate role-specific prep and messaging outputs.</p>
             ) : copilotOutput ? (
               <>
                 {outputView === "briefing" && (

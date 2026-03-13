@@ -5,11 +5,18 @@ import { addUtmParams } from "@/lib/utm";
 
 const tools = [
   {
+    title: "Guided Flow",
+    description: "Follow one end-to-end workflow from resume upload to JD match, prep, and weekly action plan.",
+    href: "/guided-flow",
+    ctaLabel: "Open Guided Flow",
+    tag: "Recommended",
+  },
+  {
     title: "Application Copilot",
-    description: "Run JD match, matched skills review, missing skills detection, and action-ready feedback in one flow.",
+    description: "Run JD match, see top fixes, and track every role in the built-in application tracker.",
     href: "/application-copilot",
     ctaLabel: "Open Copilot",
-    tag: "JD Matching",
+    tag: "Copilot + Tracker",
   },
   {
     title: "AI Resume Studio",
@@ -49,9 +56,9 @@ const tools = [
 ];
 
 export const metadata: Metadata = {
-  title: "HireScore Tools | JD Matching, Resume Builder, Interview Simulator",
+  title: "HireScore Tools | Guided Flow, Copilot, Interview Practice",
   description:
-    "Explore all live HireScore tools for JD matching, resume optimization, shortlist prediction, and interview simulation.",
+    "Explore the guided HireScore workflow and all supporting tools for JD matching, resume optimization, and interview practice.",
   alternates: {
     canonical: "/tools",
   },
@@ -66,6 +73,11 @@ export const metadata: Metadata = {
 };
 
 export default function ToolsPage() {
+  const toolsGuidedFlowHref = addUtmParams("/guided-flow", {
+    source: "tools_hub",
+    medium: "organic",
+    campaign: "tools_guided_flow",
+  });
   return (
     <main className="min-h-screen px-4 pb-20 pt-8 sm:px-6 sm:pt-12 lg:px-8">
       <section className="mx-auto max-w-7xl">
@@ -73,14 +85,19 @@ export default function ToolsPage() {
           <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/70 sm:text-xs sm:tracking-[0.24em]">
             HireScore Platform
           </p>
-          <h1 className="mt-3 text-3xl font-semibold leading-tight text-cyan-50 sm:text-5xl">
-            All Tools In One Place
-          </h1>
+          <h1 className="mt-3 text-3xl font-semibold leading-tight text-cyan-50 sm:text-5xl">Use HireScore As One Guided System</h1>
           <p className="mt-4 max-w-3xl text-sm leading-relaxed text-cyan-50/74 sm:text-base">
-            Access the complete tool stack for job applications: JD matching, resume optimization, analysis, and live
-            interview simulation.
+            Start with Guided Flow, then jump into any specialized workspace when you need deeper control.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
+            <TrackedLink
+              href={toolsGuidedFlowHref}
+              eventName="guided_flow_step_click"
+              eventParams={{ cta_location: "tools_hub_hero", step: 0, label: "Guided Flow" }}
+              className="w-full rounded-2xl border border-emerald-100/42 bg-emerald-200/20 px-6 py-3 text-center text-sm font-semibold tracking-wide text-emerald-50 transition hover:bg-emerald-200/30 sm:w-auto"
+            >
+              Open Guided Flow
+            </TrackedLink>
             <TrackedLink
               href={addUtmParams("/features", {
                 source: "tools_hub",

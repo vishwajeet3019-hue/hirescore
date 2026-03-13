@@ -5,6 +5,8 @@ import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 
 type AdminAnalytics = {
   users_total: number;
+  real_users_total?: number;
+  guest_users_total?: number;
   signups_total: number;
   logins_total: number;
   analyses_total: number;
@@ -105,6 +107,17 @@ type AdminChatUser = {
   credits: number;
 };
 
+type AdminImpersonationPayload = {
+  auth_token?: string;
+  expires_in_minutes?: number;
+  user?: {
+    id?: number;
+    name?: string;
+    email?: string;
+    plan?: string;
+  };
+};
+
 type RowEditorState = {
   name: string;
   email: string;
@@ -131,6 +144,8 @@ const userAuthApiUrl = (path: string) => {
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
 const DEFAULT_ADMIN_ANALYTICS: AdminAnalytics = {
   users_total: 0,
+  real_users_total: 0,
+  guest_users_total: 0,
   signups_total: 0,
   logins_total: 0,
   analyses_total: 0,
@@ -204,6 +219,7 @@ export default function AdminPage() {
   const [chatModerationKey, setChatModerationKey] = useState<string | null>(null);
   const [activityTab, setActivityTab] = useState<"feedback" | "events" | "credits">("feedback");
   const [workspaceTab, setWorkspaceTab] = useState<"users" | "support" | "activity">("users");
+  const [impersonatingUserId, setImpersonatingUserId] = useState<number | null>(null);
 
   const [rowEditors, setRowEditors] = useState<Record<number, RowEditorState>>({});
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
@@ -586,6 +602,42 @@ export default function AdminPage() {
     }
   };
 
+  const handleAdminImpersonationLogin = async (user: AdminUser) => {
+    if (user.id <= 0) return;
+    const confirmed = window.confirm(`Open ${user.email} dashboard as this user?`);
+    if (!confirmed) return;
+
+    const row = getRowEditor(user.id);
+    const reason = row.reason.trim() || "admin_support_dark_login";
+    setImpersonatingUserId(user.id);
+    setRowBusy((prev) => ({ ...prev, [user.id]: true }));
+    setError("");
+    setSuccess("");
+    try {
+      const payload = await adminFetch<AdminImpersonationPayload>(`/admin/users/${user.id}/impersonate`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      if (!payload?.auth_token) {
+        throw new Error("Unable to create user session.");
+      }
+
+      window.localStorage.setItem("hirescore_auth_token", payload.auth_token);
+      const ttl = Number(payload.expires_in_minutes || 0);
+      const ttlText = Number.isFinite(ttl) && ttl > 0 ? ` Token expires in ${ttl} min.` : "";
+      setSuccess(`Dark login active for ${payload.user?.email || user.email}.${ttlText}`);
+      const opened = window.open("/dashboard", "_blank", "noopener,noreferrer");
+      if (!opened) {
+        window.location.href = "/dashboard";
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to open user dashboard.");
+    } finally {
+      setImpersonatingUserId(null);
+      setRowBusy((prev) => ({ ...prev, [user.id]: false }));
+    }
+  };
+
   const loadChatConversation = async (
     userId: number,
     credentialOverride?: string,
@@ -835,6 +887,8 @@ export default function AdminPage() {
     "rounded-xl border border-slate-300/18 bg-[#0b1120]/94 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-300/45 outline-none transition focus:border-sky-300/65";
 
   const metricRows = [
+    { label: "Real Users", value: analytics.real_users_total ?? analytics.users_total },
+    { label: "Guest Users", value: analytics.guest_users_total ?? 0 },
     { label: "Total Users", value: analytics.users_total },
     { label: "Signups", value: analytics.signups_total },
     { label: "Logins", value: analytics.logins_total },
@@ -913,6 +967,7 @@ export default function AdminPage() {
                   setChatReplyText("");
                   setHasLoadedSupport(false);
                   setHasLoadedActivity(false);
+                  setImpersonatingUserId(null);
                   window.localStorage.removeItem("hirescore_admin_token");
                   window.localStorage.removeItem("hirescore_admin_api_key");
                   window.localStorage.removeItem("hirescore_admin_auth_mode");
@@ -1041,6 +1096,7 @@ export default function AdminPage() {
                   setChatReplyText("");
                   setHasLoadedSupport(false);
                   setHasLoadedActivity(false);
+                  setImpersonatingUserId(null);
                   setError("");
                   setSuccess("");
                   window.localStorage.removeItem("hirescore_admin_token");
@@ -1344,6 +1400,14 @@ export default function AdminPage() {
                           </div>
 
                           <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleAdminImpersonationLogin(user)}
+                              disabled={busy}
+                              className="rounded-xl border border-violet-300/35 bg-violet-300/14 px-3 py-2 text-xs font-semibold text-violet-100 transition hover:bg-violet-300/24 disabled:opacity-60"
+                            >
+                              {impersonatingUserId === user.id ? "Opening Dashboard..." : "Dark Login"}
+                            </button>
                             <button
                               type="button"
                               onClick={() => void runUserUpdate(user.id)}

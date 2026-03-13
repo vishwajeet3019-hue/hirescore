@@ -57,16 +57,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.85,
     },
     {
-      url: `${SITE_URL}/jd-matcher`,
+      url: `${SITE_URL}/guided-flow`,
       lastModified: now,
       changeFrequency: "weekly",
-      priority: 0.8,
-    },
-    {
-      url: `${SITE_URL}/interview-copilot`,
-      lastModified: now,
-      changeFrequency: "weekly",
-      priority: 0.8,
+      priority: 0.9,
     },
     {
       url: `${SITE_URL}/tools`,

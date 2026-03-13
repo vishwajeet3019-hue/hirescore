@@ -111,6 +111,11 @@ export default function Home() {
     medium: "organic",
     campaign: "home_instant_fit",
   });
+  const homeGuidedFlowHref = addUtmParams("/guided-flow", {
+    source: "home",
+    medium: "organic",
+    campaign: "home_guided_flow",
+  });
   const homePricingHref = addUtmParams("/pricing", {
     source: "home",
     medium: "organic",
@@ -229,6 +234,15 @@ export default function Home() {
                   className="w-full rounded-2xl border border-amber-300 bg-amber-300 px-6 py-3 text-center text-sm font-semibold text-slate-900 transition hover:bg-amber-200 sm:w-auto sm:px-7 sm:py-3.5"
                 >
                   Instant Fit Check (Free)
+                </TrackedLink>
+
+                <TrackedLink
+                  href={homeGuidedFlowHref}
+                  eventName="guided_flow_step_click"
+                  eventParams={{ cta_location: "home_hero", step: 0, label: "Guided Flow" }}
+                  className="w-full rounded-2xl border border-emerald-100/34 bg-gradient-to-r from-emerald-300/24 via-cyan-300/20 to-cyan-200/14 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
+                >
+                  Open Guided Flow
                 </TrackedLink>
 
                 <TrackedLink

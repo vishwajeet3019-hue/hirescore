@@ -30,17 +30,18 @@ type NavLink = {
 
 const baseNavLinks: NavLink[] = [
   { href: "/", label: "Home" },
+  { href: "/guided-flow", label: "Guided Flow" },
   { href: "/#workflow", label: "How It Works", isSection: true },
   {
     href: "/tools",
     label: "Tools",
     children: [
-      { href: "/instant-fit", label: "Instant Fit Check" },
-      { href: "/application-copilot", label: "Application Copilot" },
-      { href: "/analysis", label: "Analysis" },
-      { href: "/ai-resume-studio", label: "AI Resume Studio" },
-      { href: "/interview-simulator", label: "Interview Simulator" },
-      { href: "/interview-prep", label: "Interview Prep" },
+      { href: "/instant-fit", label: "1. Instant Fit Check" },
+      { href: "/application-copilot", label: "2. Copilot + Tracker" },
+      { href: "/interview-prep", label: "3. Interview Prep" },
+      { href: "/interview-simulator", label: "4. Interview Simulator" },
+      { href: "/dashboard", label: "5. Action Plan Dashboard" },
+      { href: "/ai-resume-studio", label: "Resume Studio" },
     ],
   },
   { href: "/case-studies", label: "Success Stories" },
