@@ -40,13 +40,13 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/favicon-48x48.png?v=20260312b", sizes: "48x48", type: "image/png" },
-      { url: "/favicon-96x96.png?v=20260312b", sizes: "96x96", type: "image/png" },
-      { url: "/favicon.ico?v=20260312b", sizes: "any" },
-      { url: "/icon.svg?v=20260312b", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-48x48.png", sizes: "48x48", type: "image/png" },
+      { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
     ],
-    shortcut: [{ url: "/favicon.ico?v=20260312b" }],
-    apple: [{ url: "/apple-icon.png?v=20260312b", sizes: "180x180", type: "image/png" }],
+    shortcut: [{ url: "/favicon.ico" }],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
   openGraph: {
     type: "website",
