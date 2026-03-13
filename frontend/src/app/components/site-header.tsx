@@ -29,7 +29,6 @@ type NavLink = {
 };
 
 const baseNavLinks: NavLink[] = [
-  { href: "/", label: "Home" },
   { href: "/guided-flow", label: "Guided Flow" },
   { href: "/#workflow", label: "How It Works", isSection: true },
   {
@@ -42,10 +41,10 @@ const baseNavLinks: NavLink[] = [
       { href: "/interview-simulator", label: "4. Interview Simulator" },
       { href: "/dashboard", label: "5. Action Plan Dashboard" },
       { href: "/ai-resume-studio", label: "Resume Studio" },
+      { href: "/case-studies", label: "Success Stories" },
+      { href: "/resources", label: "Guides" },
     ],
   },
-  { href: "/case-studies", label: "Success Stories" },
-  { href: "/resources", label: "Guides" },
   { href: "/pricing", label: "Pricing" },
 ];
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
@@ -75,10 +74,7 @@ export default function SiteHeader() {
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileToolsPanelRef = useRef<HTMLDivElement | null>(null);
   const portalReady = typeof window !== "undefined";
-  const navLinks = useMemo(
-    () => (authToken ? baseNavLinks.filter((link) => link.href !== "/resources") : baseNavLinks),
-    [authToken]
-  );
+  const navLinks = useMemo(() => baseNavLinks, []);
   const headerAnalyzeHref = addUtmParams("/instant-fit", {
     source: "header_nav",
     medium: "internal",
@@ -233,7 +229,7 @@ export default function SiteHeader() {
           />
         </Link>
 
-        <nav className="hidden items-center gap-2 text-sm font-medium text-cyan-50/78 md:flex lg:gap-3">
+        <nav className="hidden items-center gap-1.5 text-sm font-medium text-cyan-50/78 xl:flex">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
             if (!link.children) {
@@ -242,7 +238,7 @@ export default function SiteHeader() {
                   key={link.href}
                   href={link.href}
                   onClick={handleNavLinkClick(link.href)}
-                  className={`rounded-full border px-3 py-1.5 transition ${
+                  className={`whitespace-nowrap rounded-full border px-3 py-1.5 transition ${
                     active
                       ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
                       : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
@@ -258,7 +254,7 @@ export default function SiteHeader() {
                   type="button"
                   onClick={() => setShowToolsMenu((prev) => !prev)}
                   aria-expanded={isToolsDropdownOpen(link)}
-                  className={`rounded-full border px-3 py-1.5 transition ${
+                  className={`whitespace-nowrap rounded-full border px-3 py-1.5 transition ${
                     active
                       ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
                       : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
@@ -279,7 +275,7 @@ export default function SiteHeader() {
                         key={`${link.label}-${child.href}-${child.label}`}
                         href={child.href}
                         onClick={handleToolsLinkClick(child.href)}
-                        className="rounded-lg border border-cyan-100/20 px-3 py-2 text-sm text-cyan-50 transition hover:bg-cyan-100/16 hover:text-cyan-100"
+                        className="whitespace-nowrap rounded-lg border border-cyan-100/20 px-3 py-2 text-sm text-cyan-50 transition hover:bg-cyan-100/16 hover:text-cyan-100"
                       >
                         {child.label}
                       </Link>
@@ -328,7 +324,7 @@ export default function SiteHeader() {
                     cta_label: "Sign Up / Login",
                   });
                 }}
-                className="hidden rounded-xl border border-emerald-200/34 bg-emerald-200/14 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-200/24 md:inline-flex"
+                className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 lg:inline-flex"
               >
                 Sign Up / Login
               </Link>
@@ -355,14 +351,14 @@ export default function SiteHeader() {
             }}
             aria-expanded={mobileMenuOpen}
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-cyan-100/28 bg-cyan-100/8 px-3 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 md:hidden"
+            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-cyan-100/28 bg-cyan-100/8 px-3 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 xl:hidden"
           >
             {mobileMenuOpen ? "Close" : "Menu"}
           </button>
         </div>
       </div>
 
-      <div className={`border-t border-cyan-100/8 px-3 py-2 md:hidden ${mobileMenuOpen ? "block" : "hidden"}`}>
+      <div className={`border-t border-cyan-100/8 px-3 py-2 xl:hidden ${mobileMenuOpen ? "block" : "hidden"}`}>
         <nav className="mx-auto grid w-full max-w-7xl grid-cols-2 gap-1.5 text-xs text-cyan-50/80">
           {navLinks.map((link) => {
             const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
