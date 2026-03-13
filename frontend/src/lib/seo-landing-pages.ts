@@ -2528,6 +2528,129 @@ export const seoLandingPages: SeoLandingPage[] = [
       },
     ],
   },
+  {
+    slug: "resume-for-ahmedabad-it-jobs",
+    keyword: "resume for ahmedabad it jobs",
+    title: "Resume for Ahmedabad IT Jobs",
+    metaDescription:
+      "Build a stronger resume for Ahmedabad IT jobs with role-specific keywords, impact-driven bullets, and ATS-ready structure.",
+    h1: "Resume for Ahmedabad IT Jobs",
+    intro:
+      "Ahmedabad and Gandhinagar IT hiring teams prioritize practical skills, delivery outcomes, and clear role-fit signals. This guide helps you optimize your resume for product, services, and startup opportunities across the local market.",
+    roleFocus: "Ahmedabad IT Jobs",
+    searchIntent: "Increase interview calls for Ahmedabad-based IT and software job applications.",
+    painPoints: [
+      "Resume highlights tools but not measurable project impact.",
+      "Candidates apply with one generic version across different role types.",
+      "Core sections do not match the language of local job descriptions.",
+    ],
+    whatYouGet: [
+      "A city-focused resume checklist for Ahmedabad and Gandhinagar hiring patterns.",
+      "A framework to rewrite bullets around ownership, outcomes, and business value.",
+      "Keyword alignment guidance for software, analytics, and product tracks.",
+    ],
+    actionPlan: [
+      "Collect 5 Ahmedabad IT job descriptions and identify recurring must-have skills.",
+      "Rewrite top experience bullets with metrics for speed, quality, and reliability.",
+      "Run ATS and JD-match checks before each application batch.",
+    ],
+    faqs: [
+      {
+        question: "Should I mention Ahmedabad location readiness on resume?",
+        answer: "Yes. Mentioning Ahmedabad or relocation readiness helps recruiters shortlist faster for location-sensitive roles.",
+      },
+      {
+        question: "Can freshers use this resume strategy for Ahmedabad IT jobs?",
+        answer: "Yes. Freshers should highlight strong project outcomes, role-relevant skills, and internship impact.",
+      },
+      {
+        question: "How many resume versions should I maintain?",
+        answer: "Keep 2-4 role-based versions and tailor key sections before each application.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-jaipur-it-jobs",
+    keyword: "resume for jaipur it jobs",
+    title: "Resume for Jaipur IT Jobs",
+    metaDescription:
+      "Optimize your resume for Jaipur IT jobs with clearer role-fit messaging, measurable achievements, and recruiter-friendly formatting.",
+    h1: "Resume for Jaipur IT Jobs",
+    intro:
+      "Jaipur hiring teams look for clear role intent, practical execution, and business impact evidence. This guide helps you structure your resume for software, QA, analytics, and product-support roles in Jaipur's growing tech market.",
+    roleFocus: "Jaipur IT Jobs",
+    searchIntent: "Improve shortlist probability for Jaipur IT and software openings.",
+    painPoints: [
+      "Resume summary does not clearly define target role and strengths.",
+      "Experience bullets are task-heavy with weak impact proof.",
+      "Skills section is broad and not prioritized by job relevance.",
+    ],
+    whatYouGet: [
+      "A Jaipur-focused resume framework aligned to current hiring expectations.",
+      "A practical approach to convert responsibilities into measurable outcomes.",
+      "A section-by-section plan to improve ATS readability and recruiter scan clarity.",
+    ],
+    actionPlan: [
+      "Define your top role track and align headline, summary, and skills to it.",
+      "Prioritize 5-7 quantified achievements in the first visible sections.",
+      "Tailor each application to job-description keywords before submission.",
+    ],
+    faqs: [
+      {
+        question: "Is one-page resume best for Jaipur IT jobs?",
+        answer: "One page works for early-career candidates; experienced profiles can use two pages if each line adds clear value.",
+      },
+      {
+        question: "Do recruiters prioritize tools or outcomes?",
+        answer: "Outcomes usually drive shortlist decisions, while tools support credibility.",
+      },
+      {
+        question: "Should I tailor resume for every application?",
+        answer: "Yes. Tailoring top sections for each role significantly improves response rates.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-kochi-it-jobs",
+    keyword: "resume for kochi it jobs",
+    title: "Resume for Kochi IT Jobs",
+    metaDescription:
+      "Create a recruiter-ready resume for Kochi IT jobs with role-aligned keywords, strong impact bullets, and ATS-friendly structure.",
+    h1: "Resume for Kochi IT Jobs",
+    intro:
+      "Kochi IT hiring, especially around Infopark and SmartCity corridors, rewards candidates with clear ownership and measurable delivery outcomes. This guide helps you optimize your resume for engineering, data, and support roles.",
+    roleFocus: "Kochi IT Jobs",
+    searchIntent: "Get more callbacks for Kochi-based IT and software job applications.",
+    painPoints: [
+      "Resume lacks clear evidence of ownership and delivery impact.",
+      "Projects are listed without metrics or stakeholder outcomes.",
+      "Candidates do not align resume language with target role keywords.",
+    ],
+    whatYouGet: [
+      "A Kochi-focused resume optimization checklist for faster shortlist decisions.",
+      "Impact-first rewrite patterns for project and experience sections.",
+      "Keyword guidance for services, product, and hybrid role applications.",
+    ],
+    actionPlan: [
+      "Map your resume keywords to 3-5 Kochi job descriptions in your target role family.",
+      "Rewrite top bullets using action-result format with quantified outcomes.",
+      "Run ATS and JD-match checks before applying to each company.",
+    ],
+    faqs: [
+      {
+        question: "Should I include location preference for Kochi jobs?",
+        answer: "Yes. Mentioning Kochi or relocation readiness removes friction in early screening.",
+      },
+      {
+        question: "Can this approach work for non-developer IT roles?",
+        answer: "Yes. The same structure works for QA, support, analytics, and operations roles when outcomes are clear.",
+      },
+      {
+        question: "What is the quickest resume upgrade for better callbacks?",
+        answer: "Improve headline, summary, and top experience bullets to match job-description intent and prove measurable impact.",
+      },
+    ],
+  },
 ];
 
 export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
@@ -2608,6 +2731,9 @@ export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
       "resume for noida software jobs",
       "resume for mumbai it jobs",
       "resume for kolkata it jobs",
+      "resume for ahmedabad it jobs",
+      "resume for jaipur it jobs",
+      "resume for kochi it jobs",
     ],
   },
   {
@@ -3235,6 +3361,36 @@ const keywordVariantsBySlug: Record<string, string[]> = {
     "job switch resume kolkata",
     "it jobs kolkata cv format",
     "resume for product and services jobs kolkata",
+  ],
+  "resume-for-ahmedabad-it-jobs": [
+    "resume for ahmedabad it jobs",
+    "ahmedabad software resume format",
+    "resume for gandhinagar it companies",
+    "it jobs ahmedabad cv format",
+    "resume for ahmedabad software engineer",
+    "job switch resume ahmedabad",
+    "resume for product jobs ahmedabad",
+    "resume for startup jobs ahmedabad",
+  ],
+  "resume-for-jaipur-it-jobs": [
+    "resume for jaipur it jobs",
+    "jaipur software resume format",
+    "resume for jaipur tech companies",
+    "it jobs jaipur cv format",
+    "resume for jaipur software engineer",
+    "job switch resume jaipur",
+    "resume for product and services jobs jaipur",
+    "jaipur hiring resume checklist",
+  ],
+  "resume-for-kochi-it-jobs": [
+    "resume for kochi it jobs",
+    "kochi software resume format",
+    "resume for infopark kochi jobs",
+    "smartcity kochi tech jobs resume",
+    "resume for kochi software engineer",
+    "job switch resume kochi",
+    "it jobs kochi cv format",
+    "resume for product and services jobs kochi",
   ],
 };
 
