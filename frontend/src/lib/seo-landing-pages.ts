@@ -2651,6 +2651,129 @@ export const seoLandingPages: SeoLandingPage[] = [
       },
     ],
   },
+  {
+    slug: "resume-for-indore-it-jobs",
+    keyword: "resume for indore it jobs",
+    title: "Resume for Indore IT Jobs",
+    metaDescription:
+      "Build a stronger resume for Indore IT jobs with role-specific keywords, measurable outcomes, and ATS-friendly formatting.",
+    h1: "Resume for Indore IT Jobs",
+    intro:
+      "Indore IT recruiters look for clear role-fit, practical project depth, and measurable impact. This guide helps you optimize your resume for software, QA, data, and product-support roles across fast-growing hiring clusters.",
+    roleFocus: "Indore IT Jobs",
+    searchIntent: "Increase interview callbacks for Indore-based IT and software applications.",
+    painPoints: [
+      "Resume uses generic language that does not match role expectations.",
+      "Project bullets list tasks but miss quantified outcomes.",
+      "Candidates apply broadly without tailoring for company-specific requirements.",
+    ],
+    whatYouGet: [
+      "An Indore-focused resume checklist aligned with active local hiring patterns.",
+      "A framework to rewrite experience bullets with outcome-first structure.",
+      "Role-based keyword guidance for product, services, and startup openings.",
+    ],
+    actionPlan: [
+      "Collect 5 Indore job descriptions and identify recurring skill and role terms.",
+      "Rewrite top bullets using measurable impact on speed, quality, or business metrics.",
+      "Run ATS and JD-match checks before each application batch.",
+    ],
+    faqs: [
+      {
+        question: "Should I mention location preference for Indore jobs?",
+        answer: "Yes. Mentioning Indore or relocation readiness helps recruiters filter faster for local openings.",
+      },
+      {
+        question: "Can freshers target Indore IT roles with this approach?",
+        answer: "Yes. Freshers should focus on project outcomes, practical skills, and internship contributions.",
+      },
+      {
+        question: "What is the fastest resume improvement for Indore hiring?",
+        answer: "Align headline, summary, and top bullets to the exact role while leading with measurable outcomes.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-bhubaneswar-it-jobs",
+    keyword: "resume for bhubaneswar it jobs",
+    title: "Resume for Bhubaneswar IT Jobs",
+    metaDescription:
+      "Optimize your resume for Bhubaneswar IT jobs with clearer role intent, strong impact bullets, and recruiter-ready structure.",
+    h1: "Resume for Bhubaneswar IT Jobs",
+    intro:
+      "Bhubaneswar tech hiring teams prioritize practical execution, ownership, and role clarity. This guide helps you position your resume for software, testing, analytics, and support opportunities across Infocity and nearby tech corridors.",
+    roleFocus: "Bhubaneswar IT Jobs",
+    searchIntent: "Improve shortlist rate for Bhubaneswar IT and software applications.",
+    painPoints: [
+      "Resume summary does not clearly define target role and strengths.",
+      "Experience points are task-heavy and lack business impact proof.",
+      "Skills section is broad but not prioritized for target job descriptions.",
+    ],
+    whatYouGet: [
+      "A Bhubaneswar-focused framework for stronger recruiter readability.",
+      "A practical method to convert responsibilities into measurable outcomes.",
+      "ATS keyword alignment guidance for local and remote-first hiring roles.",
+    ],
+    actionPlan: [
+      "Pick one role track and align headline, summary, and skills around it.",
+      "Prioritize 5-7 quantified achievements in the top half of the resume.",
+      "Tailor each application with job-description keyword matching before submission.",
+    ],
+    faqs: [
+      {
+        question: "Should I keep one-page resume for Bhubaneswar IT jobs?",
+        answer: "One page works for early-career candidates; experienced profiles can use two pages if each point adds clear value.",
+      },
+      {
+        question: "Do recruiters value tools or outcomes more?",
+        answer: "Outcomes usually drive shortlist decisions; tools support role-fit credibility.",
+      },
+      {
+        question: "How often should I customize resume for applications?",
+        answer: "Customize the top sections for every role-family application to improve response rate.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-coimbatore-it-jobs",
+    keyword: "resume for coimbatore it jobs",
+    title: "Resume for Coimbatore IT Jobs",
+    metaDescription:
+      "Create a high-conversion resume for Coimbatore IT jobs with role-aligned keywords, impact-led bullets, and ATS optimization.",
+    h1: "Resume for Coimbatore IT Jobs",
+    intro:
+      "Coimbatore IT and software recruiters shortlist candidates who show practical ownership and delivery outcomes. This guide helps you optimize your resume for engineering, QA, analytics, and product-support roles in the local market.",
+    roleFocus: "Coimbatore IT Jobs",
+    searchIntent: "Get more interview calls for Coimbatore-based IT and software openings.",
+    painPoints: [
+      "Resume lacks clear evidence of ownership and measurable delivery impact.",
+      "Projects are listed without relevance to target job descriptions.",
+      "Candidates do not tailor content for product vs services role expectations.",
+    ],
+    whatYouGet: [
+      "A Coimbatore-focused optimization checklist for faster shortlisting.",
+      "Impact-first bullet rewrite patterns for experience and project sections.",
+      "Keyword guidance for software, data, support, and hybrid role tracks.",
+    ],
+    actionPlan: [
+      "Map resume keywords to 3-5 Coimbatore job descriptions in your target role.",
+      "Rewrite top experience bullets using action-result format with metrics.",
+      "Run ATS and JD-match validation before each application submission.",
+    ],
+    faqs: [
+      {
+        question: "Should I add location preference for Coimbatore jobs?",
+        answer: "Yes. Mentioning Coimbatore or relocation readiness reduces friction in initial screening.",
+      },
+      {
+        question: "Can this resume structure help non-developer IT candidates?",
+        answer: "Yes. The same structure works for QA, support, analytics, and operations roles when outcomes are clear.",
+      },
+      {
+        question: "What gives the quickest shortlist boost in Coimbatore hiring?",
+        answer: "Strong role-aligned headline, concise summary, and quantified impact bullets improve callback chances fastest.",
+      },
+    ],
+  },
 ];
 
 export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
@@ -2734,6 +2857,9 @@ export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
       "resume for ahmedabad it jobs",
       "resume for jaipur it jobs",
       "resume for kochi it jobs",
+      "resume for indore it jobs",
+      "resume for bhubaneswar it jobs",
+      "resume for coimbatore it jobs",
     ],
   },
   {
@@ -3391,6 +3517,36 @@ const keywordVariantsBySlug: Record<string, string[]> = {
     "job switch resume kochi",
     "it jobs kochi cv format",
     "resume for product and services jobs kochi",
+  ],
+  "resume-for-indore-it-jobs": [
+    "resume for indore it jobs",
+    "indore software resume format",
+    "resume for indore tech companies",
+    "it jobs indore cv format",
+    "resume for indore software engineer",
+    "job switch resume indore",
+    "resume for startup jobs indore",
+    "resume for product and services jobs indore",
+  ],
+  "resume-for-bhubaneswar-it-jobs": [
+    "resume for bhubaneswar it jobs",
+    "bhubaneswar software resume format",
+    "resume for infocity bhubaneswar jobs",
+    "it jobs bhubaneswar cv format",
+    "resume for bhubaneswar software engineer",
+    "job switch resume bhubaneswar",
+    "resume for product and services jobs bhubaneswar",
+    "bhubaneswar hiring resume checklist",
+  ],
+  "resume-for-coimbatore-it-jobs": [
+    "resume for coimbatore it jobs",
+    "coimbatore software resume format",
+    "resume for coimbatore tech companies",
+    "it jobs coimbatore cv format",
+    "resume for coimbatore software engineer",
+    "job switch resume coimbatore",
+    "resume for product jobs coimbatore",
+    "coimbatore hiring resume checklist",
   ],
 };
 
