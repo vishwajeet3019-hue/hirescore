@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
+import { addAuthChangeListener, resolveAuthSession } from "@/lib/public-access";
 import { addUtmParams } from "@/lib/utm";
 import TrackedLink from "../components/tracked-link";
 
@@ -228,8 +229,17 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
+    let cancelled = false;
     const loadDashboard = async () => {
-      const authToken = window.localStorage.getItem("hirescore_auth_token") || "";
+      setError("");
+      const session = await resolveAuthSession<AuthPayload>();
+      if (cancelled) return;
+      if (session.error) {
+        setLoading(false);
+        setError(session.error.message);
+        return;
+      }
+      const authToken = session.token || "";
       if (!authToken) {
         setLoading(false);
         setError("Login required to open dashboard.");
@@ -270,6 +280,14 @@ export default function DashboardPage() {
       }
     };
     void loadDashboard();
+    const unsubscribe = addAuthChangeListener(() => {
+      setLoading(true);
+      void loadDashboard();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

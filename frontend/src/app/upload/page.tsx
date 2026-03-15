@@ -8,6 +8,7 @@ import { addUtmParams } from "@/lib/utm";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
 import { trackAnalyzeComplete, trackAnalyzeStart, trackEvent, trackSignup } from "@/lib/analytics";
+import { addAuthChangeListener, clearStoredAuthToken, resolveAuthSession, setStoredAuthToken } from "@/lib/public-access";
 import TrackedLink from "@/app/components/tracked-link";
 
 type ImprovementArea = {
@@ -38,6 +39,7 @@ type AuthPayload = {
   user?: AuthUser;
   wallet?: CreditWallet;
   feedback_required?: boolean;
+  guest_mode?: boolean;
   otp_required?: boolean;
   message?: string;
   otp_expires_minutes?: number;
@@ -483,6 +485,11 @@ const AUTH_LIVE_LOADING_STEPS = [
 ] as const;
 const MIN_ANALYSIS_LOADING_MS = 6000;
 const MIN_AUTH_LIVE_LOADING_MS = 5600;
+const ANALYSIS_LIVE_START_PROGRESS = 12;
+const ANALYSIS_LIVE_END_PROGRESS = 94;
+const AUTH_LIVE_START_PROGRESS = 10;
+const AUTH_LIVE_END_PROGRESS = 95;
+const AUTH_LIVE_COMPLETE_PAUSE_MS = 220;
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
 
 type ResultTabId = "summary" | "strategy" | "salary" | "market" | "improvements";
@@ -494,6 +501,179 @@ const RESULT_STEPS: { id: ResultTabId; label: string; description: string }[] = 
   { id: "market", label: "Hiring Timing", description: "Apply at the right windows and reduce market risk." },
   { id: "improvements", label: "Improvements", description: "Track final fix list and turn weak areas into strengths." },
 ];
+
+type TimedLoadingProgressOptions = {
+  totalMs: number;
+  stepCount: number;
+  startProgress: number;
+  endProgress: number;
+};
+
+const useTimedLoadingProgress = ({
+  totalMs,
+  stepCount,
+  startProgress,
+  endProgress,
+}: TimedLoadingProgressOptions) => {
+  const [progress, setProgress] = useState(startProgress);
+  const [stepIndex, setStepIndex] = useState(0);
+
+  useEffect(() => {
+    let frameId = 0;
+    let startedAt: number | null = null;
+    const stepDuration = totalMs / Math.max(1, stepCount);
+
+    const tick = (now: number) => {
+      if (startedAt === null) {
+        startedAt = now;
+      }
+
+      const elapsed = Math.min(now - startedAt, totalMs);
+      const nextProgress = startProgress + (elapsed / totalMs) * (endProgress - startProgress);
+      const nextStepIndex = Math.min(stepCount - 1, Math.floor(elapsed / stepDuration));
+
+      setProgress((previous) => (Math.abs(previous - nextProgress) < 0.15 ? previous : nextProgress));
+      setStepIndex((previous) => (previous === nextStepIndex ? previous : nextStepIndex));
+
+      if (elapsed < totalMs) {
+        frameId = window.requestAnimationFrame(tick);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [endProgress, startProgress, stepCount, totalMs]);
+
+  return {
+    progress,
+    stepIndex,
+  };
+};
+
+function AuthLiveOverlay({ completionTick }: { completionTick: number }) {
+  const { progress, stepIndex } = useTimedLoadingProgress({
+    totalMs: MIN_AUTH_LIVE_LOADING_MS,
+    stepCount: AUTH_LIVE_LOADING_STEPS.length,
+    startProgress: AUTH_LIVE_START_PROGRESS,
+    endProgress: AUTH_LIVE_END_PROGRESS,
+  });
+  const [initialCompletionTick] = useState(completionTick);
+  const isCompleting = completionTick > initialCompletionTick;
+  const resolvedProgress = isCompleting ? 100 : progress;
+  const resolvedStepIndex = isCompleting ? AUTH_LIVE_LOADING_STEPS.length - 1 : stepIndex;
+  const progressScale = Math.min(1, Math.max(0, resolvedProgress / 100));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[320] flex items-center justify-center bg-[#02040f]/78 px-4"
+    >
+      <div className="auth-live-shell w-full max-w-md rounded-[1.8rem] p-6 sm:p-7">
+        <div className="auth-live-stage relative flex items-center justify-center">
+          <div className="auth-live-halo" />
+          <div className="auth-live-wave" />
+          <div className="auth-live-orb auth-live-orb-outer" />
+          <div className="auth-live-orb auth-live-orb-mid" />
+          <div className="auth-live-orb auth-live-orb-inner" />
+          <div className="auth-live-arc auth-live-arc-a" />
+          <div className="auth-live-arc auth-live-arc-b" />
+          <div className="auth-live-spark auth-live-spark-a" />
+          <div className="auth-live-spark auth-live-spark-b" />
+          <div className="auth-live-spark auth-live-spark-c" />
+          <div className="auth-live-core-dot" />
+        </div>
+
+        <p className="mt-6 text-center text-[11px] uppercase tracking-[0.18em] text-cyan-100/78">Authenticating</p>
+        <p className="mt-2 text-center text-sm font-semibold text-cyan-50">{AUTH_LIVE_LOADING_STEPS[resolvedStepIndex]}</p>
+
+        <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/40 bg-cyan-100/10">
+          <div
+            className="auth-live-progress-fill h-full rounded-full bg-gradient-to-r from-cyan-200 via-fuchsia-200 to-amber-200"
+            style={{ transform: `scaleX(${progressScale})` }}
+          />
+        </div>
+        <p className="mt-2 text-center text-xs text-cyan-100/76">{Math.round(resolvedProgress)}%</p>
+      </div>
+    </motion.div>
+  );
+}
+
+function AnalysisLiveOverlay() {
+  const { progress, stepIndex } = useTimedLoadingProgress({
+    totalMs: MIN_ANALYSIS_LOADING_MS,
+    stepCount: ANALYSIS_LOADING_STEPS.length,
+    startProgress: ANALYSIS_LIVE_START_PROGRESS,
+    endProgress: ANALYSIS_LIVE_END_PROGRESS,
+  });
+
+  const progressScale = Math.min(1, Math.max(0, progress / 100));
+  const displayProgress = Math.round(progress);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-[#010613]/88 px-4"
+    >
+      <div className="analysis-live-shell w-full max-w-3xl rounded-[2rem] p-6 sm:p-8">
+        <div className="analysis-live-stage relative flex items-center justify-center">
+          <div className="analysis-live-grid" />
+          <div className="analysis-live-wave analysis-live-wave-a" />
+          <div className="analysis-live-wave analysis-live-wave-b" />
+          <div className="analysis-live-ring analysis-live-ring-outer" />
+          <div className="analysis-live-ring analysis-live-ring-mid" />
+          <div className="analysis-live-ring analysis-live-ring-inner" />
+          <div className="analysis-live-beam" />
+          <div className="analysis-live-orbit analysis-live-orbit-a" />
+          <div className="analysis-live-orbit analysis-live-orbit-b" />
+          <div className="analysis-live-orbit analysis-live-orbit-c" />
+          <div className="analysis-live-core">
+            <span className="analysis-live-core-value">{displayProgress}%</span>
+          </div>
+        </div>
+
+        <div className="relative mt-3">
+          <p className="text-center text-xs uppercase tracking-[0.2em] text-cyan-100/72">Analysis In Progress</p>
+          <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Building Your Shortlist Intelligence Report</h3>
+          <p className="mt-3 text-center text-sm text-cyan-50/74">{ANALYSIS_LOADING_STEPS[stepIndex]}</p>
+
+          <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/24 bg-cyan-100/8">
+            <div
+              className="analysis-live-progress-fill h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200"
+              style={{ transform: `scaleX(${progressScale})` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-xs text-cyan-100/66">
+            <span>{ANALYSIS_LOADING_STEPS[stepIndex]}</span>
+            <span>{displayProgress}%</span>
+          </div>
+
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            {ANALYSIS_LOADING_STEPS.map((step, index) => {
+              const activeStep = index === stepIndex;
+              return (
+                <div
+                  key={step}
+                  className={`analysis-live-step rounded-xl border px-3 py-2.5 text-sm ${
+                    activeStep ? "analysis-live-step-active border-cyan-100/52 bg-cyan-200/18 text-cyan-50" : "border-cyan-100/16 bg-cyan-100/5 text-cyan-50/72"
+                  }`}
+                >
+                  {step}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
 
 export default function UploadPage() {
   const router = useRouter();
@@ -520,8 +700,6 @@ export default function UploadPage() {
   const [analysisTrendError, setAnalysisTrendError] = useState("");
   const [analysisError, setAnalysisError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingStepIndex, setLoadingStepIndex] = useState(0);
-  const [loadingProgress, setLoadingProgress] = useState(12);
   const [showResultModal, setShowResultModal] = useState(false);
   const [activeResultTab, setActiveResultTab] = useState<ResultTabId>("summary");
   const [showRoadmapModal, setShowRoadmapModal] = useState(false);
@@ -562,11 +740,11 @@ export default function UploadPage() {
   const [authToken, setAuthToken] = useState("");
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
+  const [guestMode, setGuestMode] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
   const [authLiveLoading, setAuthLiveLoading] = useState(false);
-  const [authLiveStepIndex, setAuthLiveStepIndex] = useState(0);
-  const [authLiveProgress, setAuthLiveProgress] = useState(10);
+  const [authLiveCompletionTick, setAuthLiveCompletionTick] = useState(0);
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
   const [signupOtp, setSignupOtp] = useState("");
@@ -603,7 +781,7 @@ export default function UploadPage() {
     }
     if (payload?.auth_token) {
       setAuthToken(payload.auth_token);
-      window.localStorage.setItem("hirescore_auth_token", payload.auth_token);
+      setStoredAuthToken(payload.auth_token);
     }
     if (payload?.message) {
       setAuthInfo(payload.message);
@@ -614,6 +792,9 @@ export default function UploadPage() {
     if (typeof payload?.feedback_required === "boolean") {
       setFeedbackRequired(payload.feedback_required);
     }
+    if (typeof payload?.guest_mode === "boolean") {
+      setGuestMode(payload.guest_mode);
+    }
   };
 
   useEffect(() => {
@@ -621,41 +802,36 @@ export default function UploadPage() {
       setAuthToken("");
       setWallet(null);
       setAuthUserEmail("");
+      setGuestMode(false);
       setFeedbackRequired(false);
       setShowFeedbackModal(false);
-      window.localStorage.removeItem("hirescore_auth_token");
     };
 
-    const token = window.localStorage.getItem("hirescore_auth_token");
-    if (!token) {
-      clearSessionState();
-      return;
-    }
-
     let cancelled = false;
-    fetch(apiUrl("/auth/me"), {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        if (cancelled) return;
-        if (!response.ok) {
+    const syncAuth = async () => {
+      const session = await resolveAuthSession<AuthPayload>();
+      if (cancelled) return;
+      if (session.error) {
+        if (!session.token) {
           clearSessionState();
-          return;
         }
-        const payload = (await response.json()) as AuthPayload;
-        setAuthToken(token);
-        applyAuthPayload(payload);
-      })
-      .catch(() => {
-        if (cancelled) return;
+        return;
+      }
+      if (!session.payload) {
         clearSessionState();
-      });
+        return;
+      }
+      setAuthToken(session.token);
+      applyAuthPayload(session.payload);
+    };
+    void syncAuth();
+    const unsubscribe = addAuthChangeListener(() => {
+      void syncAuth();
+    });
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 
@@ -669,7 +845,7 @@ export default function UploadPage() {
     const authIntent = (new URLSearchParams(window.location.search).get("auth") || "").trim().toLowerCase();
     if (!authIntent) return;
     authIntentHandledRef.current = true;
-    if (authToken) return;
+    if (authToken && !guestMode) return;
     if (authIntent === "signup") {
       setAuthMode("signup");
     } else {
@@ -678,7 +854,7 @@ export default function UploadPage() {
     setAuthError("");
     setAuthInfo("");
     setShowAuthModal(true);
-  }, [authToken]);
+  }, [authToken, guestMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -703,34 +879,6 @@ export default function UploadPage() {
       cancelled = true;
     };
   }, [authHeader]);
-
-  useEffect(() => {
-    if (!loading) {
-      setLoadingStepIndex(0);
-      setLoadingProgress(12);
-      return;
-    }
-
-    const startedAt = performance.now();
-    const totalSteps = ANALYSIS_LOADING_STEPS.length;
-    const stepDuration = MIN_ANALYSIS_LOADING_MS / totalSteps;
-    let intervalId = 0;
-
-    const tick = () => {
-      const elapsed = performance.now() - startedAt;
-      const cappedElapsed = Math.min(elapsed, MIN_ANALYSIS_LOADING_MS);
-      const progress = 12 + (cappedElapsed / MIN_ANALYSIS_LOADING_MS) * 82;
-      const stepIndex = Math.min(totalSteps - 1, Math.floor(cappedElapsed / stepDuration));
-      const roundedProgress = Math.round(progress);
-      setLoadingProgress((previous) => (previous === roundedProgress ? previous : roundedProgress));
-      setLoadingStepIndex((previous) => (previous === stepIndex ? previous : stepIndex));
-    };
-
-    tick();
-    intervalId = window.setInterval(tick, 96);
-
-    return () => window.clearInterval(intervalId);
-  }, [loading]);
 
   useEffect(() => {
     if (!loading && !showResultModal && !showRoadmapModal && !showRoadmapDecisionModal && !showFeedbackModal && !showAuthModal) return;
@@ -895,23 +1043,6 @@ export default function UploadPage() {
   const runWithMinimumAuthLiveLoading = async <T,>(task: () => Promise<T>) => {
     const startedAt = performance.now();
     setAuthLiveLoading(true);
-    setAuthLiveStepIndex(0);
-    setAuthLiveProgress(10);
-
-    const totalSteps = AUTH_LIVE_LOADING_STEPS.length;
-    const stepDuration = MIN_AUTH_LIVE_LOADING_MS / totalSteps;
-    let intervalId = 0;
-    const tick = () => {
-      const elapsed = performance.now() - startedAt;
-      const cappedElapsed = Math.min(elapsed, MIN_AUTH_LIVE_LOADING_MS);
-      const progress = 10 + (cappedElapsed / MIN_AUTH_LIVE_LOADING_MS) * 85;
-      const stepIndex = Math.min(totalSteps - 1, Math.floor(cappedElapsed / stepDuration));
-      const roundedProgress = Math.round(progress);
-      setAuthLiveProgress((previous) => (previous === roundedProgress ? previous : roundedProgress));
-      setAuthLiveStepIndex((previous) => (previous === stepIndex ? previous : stepIndex));
-    };
-    tick();
-    intervalId = window.setInterval(tick, 96);
 
     try {
       return await task();
@@ -923,21 +1054,18 @@ export default function UploadPage() {
           window.setTimeout(() => resolve(), waitMs);
         });
       }
-      window.clearInterval(intervalId);
-      setAuthLiveProgress(100);
+      setAuthLiveCompletionTick((previous) => previous + 1);
       await new Promise<void>((resolve) => {
-        window.setTimeout(() => resolve(), 220);
+        window.setTimeout(() => resolve(), AUTH_LIVE_COMPLETE_PAUSE_MS);
       });
       setAuthLiveLoading(false);
-      setAuthLiveStepIndex(0);
-      setAuthLiveProgress(10);
     }
   };
 
   useEffect(() => {
     const container = googleButtonRef.current;
     if (!container) return;
-    if (!showAuthModal || authToken || signupOtpRequired || forgotPasswordMode || authLiveLoading) {
+    if (!showAuthModal || (authToken && !guestMode) || signupOtpRequired || forgotPasswordMode || authLiveLoading) {
       container.innerHTML = "";
       return;
     }
@@ -1007,7 +1135,7 @@ export default function UploadPage() {
       cancelled = true;
       container.innerHTML = "";
     };
-  }, [showAuthModal, authToken, signupOtpRequired, forgotPasswordMode, authMode, authLiveLoading, router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showAuthModal, authToken, guestMode, signupOtpRequired, forgotPasswordMode, authMode, authLiveLoading, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadPostAnalysisInsights = async (analysisResult: AnalysisResult, tokenOverride?: string) => {
     const headers = tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : authHeader;
@@ -1295,6 +1423,7 @@ export default function UploadPage() {
     setAuthToken("");
     setAuthUserEmail("");
     setWallet(null);
+    setGuestMode(false);
     setResult(null);
     setShowRoadmapDecisionModal(false);
     setRoadmapDecisionMode("first");
@@ -1325,7 +1454,7 @@ export default function UploadPage() {
     setForgotOtpRequested(false);
     setForgotOtp("");
     setForgotNewPassword("");
-    window.localStorage.removeItem("hirescore_auth_token");
+    clearStoredAuthToken();
   };
 
   const toMaybeNumber = (value: string) => {
@@ -2365,7 +2494,7 @@ export default function UploadPage() {
                 <div className="mt-4 rounded-2xl border border-amber-100/24 bg-[#24162a]/58 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      {!authToken ? (
+                      {!authToken || guestMode ? (
                         <button
                           type="button"
                           onClick={() => setShowAuthModal(true)}
@@ -2383,9 +2512,11 @@ export default function UploadPage() {
                         </button>
                       )}
                       {authToken && (
-                        <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Signed In</span>
+                        <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">
+                          {guestMode ? "Public Access" : "Signed In"}
+                        </span>
                       )}
-                      {authToken && wallet && (
+                      {authToken && wallet && !guestMode && (
                         <>
                           <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Credits: {wallet.credits}</span>
                           <span className="rounded-full border border-amber-100/24 bg-amber-100/10 px-2.5 py-1 text-amber-50/84">Reports: {remainingAnalyze}</span>
@@ -2415,7 +2546,8 @@ export default function UploadPage() {
                   </div>
                   <p className="mt-3 text-xs text-amber-100/82">Flow: Fill details, click Analyze, then read your report.</p>
                   {!authToken && <p className="mt-3 text-xs text-amber-100/82">New users get 5 free credits on signup (one full analysis).</p>}
-                  {authToken && authUserEmail && <p className="mt-2 text-xs text-amber-50/74">Signed in as: {authUserEmail}</p>}
+                  {authToken && !guestMode && authUserEmail && <p className="mt-2 text-xs text-amber-50/74">Signed in as: {authUserEmail}</p>}
+                  {authToken && guestMode && <p className="mt-2 text-xs text-amber-50/74">Public access session active. Login anytime to save work to a real account.</p>}
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-amber-100/20 bg-amber-100/[0.05] p-4">
@@ -2833,101 +2965,9 @@ export default function UploadPage() {
           </motion.div>
         )}
 
-        {authLiveLoading && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[320] flex items-center justify-center bg-[#02040f]/78 px-4"
-          >
-            <div className="auth-live-shell w-full max-w-md rounded-[1.8rem] p-6 sm:p-7">
-              <div className="auth-live-stage relative flex items-center justify-center">
-                <div className="auth-live-halo" />
-                <div className="auth-live-wave" />
-                <div className="auth-live-orb auth-live-orb-outer" />
-                <div className="auth-live-orb auth-live-orb-mid" />
-                <div className="auth-live-orb auth-live-orb-inner" />
-                <div className="auth-live-arc auth-live-arc-a" />
-                <div className="auth-live-arc auth-live-arc-b" />
-                <div className="auth-live-spark auth-live-spark-a" />
-                <div className="auth-live-spark auth-live-spark-b" />
-                <div className="auth-live-spark auth-live-spark-c" />
-                <div className="auth-live-core-dot" />
-              </div>
+        {authLiveLoading && <AuthLiveOverlay completionTick={authLiveCompletionTick} />}
 
-              <p className="mt-6 text-center text-[11px] uppercase tracking-[0.18em] text-cyan-100/78">Authenticating</p>
-              <p className="mt-2 text-center text-sm font-semibold text-cyan-50">{AUTH_LIVE_LOADING_STEPS[authLiveStepIndex]}</p>
-
-              <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/40 bg-cyan-100/10">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-fuchsia-200 to-amber-200 transition-[width] duration-280 ease-out"
-                  style={{ width: `${authLiveProgress}%` }}
-                />
-              </div>
-              <p className="mt-2 text-center text-xs text-cyan-100/76">{authLiveProgress}%</p>
-            </div>
-          </motion.div>
-        )}
-
-        {loading && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-[#010613]/88 px-4"
-          >
-            <div className="analysis-live-shell w-full max-w-3xl rounded-[2rem] p-6 sm:p-8">
-              <div className="analysis-live-stage relative flex items-center justify-center">
-                <div className="analysis-live-grid" />
-                <div className="analysis-live-wave analysis-live-wave-a" />
-                <div className="analysis-live-wave analysis-live-wave-b" />
-                <div className="analysis-live-ring analysis-live-ring-outer" />
-                <div className="analysis-live-ring analysis-live-ring-mid" />
-                <div className="analysis-live-ring analysis-live-ring-inner" />
-                <div className="analysis-live-beam" />
-                <div className="analysis-live-orbit analysis-live-orbit-a" />
-                <div className="analysis-live-orbit analysis-live-orbit-b" />
-                <div className="analysis-live-orbit analysis-live-orbit-c" />
-                <div className="analysis-live-core">
-                  <span className="analysis-live-core-value">{loadingProgress}%</span>
-                </div>
-              </div>
-
-              <div className="relative mt-3">
-                <p className="text-center text-xs uppercase tracking-[0.2em] text-cyan-100/72">Analysis In Progress</p>
-                <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Building Your Shortlist Intelligence Report</h3>
-                <p className="mt-3 text-center text-sm text-cyan-50/74">{ANALYSIS_LOADING_STEPS[loadingStepIndex]}</p>
-
-                <div className="mt-5 h-2 overflow-hidden rounded-full border border-cyan-100/24 bg-cyan-100/8">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-200 via-sky-200 to-emerald-200 transition-[width] duration-280 ease-out"
-                    style={{ width: `${loadingProgress}%` }}
-                  />
-                </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-cyan-100/66">
-                  <span>{ANALYSIS_LOADING_STEPS[loadingStepIndex]}</span>
-                  <span>{loadingProgress}%</span>
-                </div>
-
-                <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                  {ANALYSIS_LOADING_STEPS.map((step, index) => {
-                    const active = index === loadingStepIndex;
-                    return (
-                      <div
-                        key={step}
-                        className={`analysis-live-step rounded-xl border px-3 py-2.5 text-sm ${
-                          active ? "analysis-live-step-active border-cyan-100/52 bg-cyan-200/18 text-cyan-50" : "border-cyan-100/16 bg-cyan-100/5 text-cyan-50/72"
-                        }`}
-                      >
-                        {step}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
+        {loading && <AnalysisLiveOverlay />}
 
         {showResultModal && result && (
           <motion.div

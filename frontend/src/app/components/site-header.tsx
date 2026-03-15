@@ -1,530 +1,293 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { trackEvent } from "@/lib/analytics";
+import { addAuthChangeListener, clearStoredAuthToken, resolveAuthSession } from "@/lib/public-access";
 import { addUtmParams } from "@/lib/utm";
 import BrandLogo from "./brand-logo";
-import StudioLockVisual from "./studio-lock-visual";
 
 type CreditWallet = {
   credits: number;
 };
 
 type AuthPayload = {
-  user?: { email?: string };
   wallet?: CreditWallet;
-  analysis_count?: number;
-  studio_unlocked?: boolean;
+  guest_mode?: boolean;
 };
 
 type NavLink = {
   href: string;
   label: string;
-  isSection?: boolean;
-  children?: NavLink[];
+  tooltip: string;
 };
 
 const baseNavLinks: NavLink[] = [
-  { href: "/guided-flow", label: "Guided Flow" },
-  { href: "/#workflow", label: "How It Works", isSection: true },
   {
     href: "/tools",
-    label: "Tools",
-    children: [
-      { href: "/instant-fit", label: "1. Instant Fit Check" },
-      { href: "/application-copilot", label: "2. Copilot + Tracker" },
-      { href: "/interview-prep", label: "3. Interview Prep" },
-      { href: "/interview-simulator", label: "4. Interview Simulator" },
-      { href: "/dashboard", label: "5. Action Plan Dashboard" },
-      { href: "/ai-resume-studio", label: "Resume Studio" },
-      { href: "/case-studies", label: "Success Stories" },
-      { href: "/resources", label: "Guides" },
-    ],
+    label: "Product",
+    tooltip: "See HireScore product tools including analysis, resume builder, and interview practice.",
   },
-  { href: "/pricing", label: "Pricing" },
+  {
+    href: "/pricing",
+    label: "Pricing",
+    tooltip: "Compare free and paid plans with feature access.",
+  },
+  {
+    href: "/resources",
+    label: "Resources",
+    tooltip: "Read guides, case studies, and job-search playbooks.",
+  },
 ];
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
-const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
-const isLinkActive = (pathname: string, hash: string, link: NavLink) => {
-  if (link.isSection) {
-    return pathname === "/" && hash === "#workflow";
-  }
-  if (link.href === "/") {
-    return pathname === "/" && hash !== "#workflow";
-  }
-  return pathname === link.href || pathname.startsWith(`${link.href}/`);
+const getPathWithoutParams = (href: string) => href.split("?")[0].split("#")[0];
+
+const isLinkActive = (pathname: string, href: string) => {
+  const target = getPathWithoutParams(href);
+  if (target === "/") return pathname === "/";
+  return pathname === target || pathname.startsWith(`${target}/`);
 };
 
 export default function SiteHeader() {
-  const router = useRouter();
   const pathname = usePathname() || "/";
-  const [hash, setHash] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
-  const [analysisCount, setAnalysisCount] = useState(0);
-  const [studioUnlocked, setStudioUnlocked] = useState(false);
-  const [showStudioLockModal, setShowStudioLockModal] = useState(false);
-  const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [guestMode, setGuestMode] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const toolsMenuRef = useRef<HTMLDivElement | null>(null);
-  const mobileToolsPanelRef = useRef<HTMLDivElement | null>(null);
-  const portalReady = typeof window !== "undefined";
-  const navLinks = useMemo(() => baseNavLinks, []);
+
   const headerAnalyzeHref = addUtmParams("/instant-fit", {
     source: "header_nav",
     medium: "internal",
-    campaign: "nav_instant_fit",
+    campaign: "nav_start_free_analysis",
   });
   const headerAuthHref = addUtmParams("/upload?auth=login", {
     source: "header_nav",
     medium: "internal",
-    campaign: "nav_auth_entry",
+    campaign: "nav_login",
   });
-  const isToolsActive = (link: NavLink) =>
-    link.children?.some((child) => isLinkActive(pathname, hash, child)) || false;
-  const isStudioNav = (href: string) => href === "/studio" || href === "/ai-resume-studio";
-  const toolsNavLinks = navLinks.find((link) => link.children?.length)?.children || [];
-  const isToolsDropdownOpen = (link: NavLink) => (link.children ? showToolsMenu : false);
-  const closeNavigationMenus = () => {
-    setMobileMenuOpen(false);
-    setShowToolsMenu(false);
-  };
 
-  const closeToolsDropdown = () => setShowToolsMenu(false);
-
-  useEffect(() => {
-    if (!showStudioLockModal) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [showStudioLockModal]);
-
-  useEffect(() => {
-    const syncHash = () => setHash(window.location.hash || "");
-    syncHash();
-    window.addEventListener("hashchange", syncHash);
-    return () => window.removeEventListener("hashchange", syncHash);
-  }, [pathname]);
+  const navLinks = useMemo<NavLink[]>(() => {
+    if (authToken && !guestMode) {
+      return [
+        ...baseNavLinks,
+        {
+          href: "/dashboard",
+          label: "Login",
+          tooltip: "You are logged in. Open your dashboard and saved analysis history.",
+        },
+      ];
+    }
+    return [
+      ...baseNavLinks,
+      {
+        href: headerAuthHref,
+        label: "Login",
+        tooltip: "Sign in to save analyses, resume versions, and interview practice history.",
+      },
+    ];
+  }, [authToken, guestMode, headerAuthHref]);
 
   useEffect(() => {
     const syncAuth = async () => {
-      const clearSessionState = () => {
-        setAuthToken("");
-        setWallet(null);
-        setAnalysisCount(0);
-        setStudioUnlocked(false);
-        window.localStorage.removeItem("hirescore_auth_token");
-      };
-
-      const token = window.localStorage.getItem("hirescore_auth_token") || "";
-      if (!token) {
-        clearSessionState();
+      const session = await resolveAuthSession<AuthPayload>();
+      if (session.error) {
+        if (!session.token) {
+          setAuthToken("");
+          setWallet(null);
+          setGuestMode(false);
+        }
         return;
       }
-
-      try {
-        const response = await fetch(apiUrl("/auth/me"), {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          clearSessionState();
-          return;
-        }
-        const payload = (await response.json()) as AuthPayload;
-        setAuthToken(token);
-        if (payload.wallet) setWallet(payload.wallet);
-        const nextAnalysisCount = Math.max(0, Math.floor(payload.analysis_count || 0));
-        setAnalysisCount(nextAnalysisCount);
-        if (typeof payload.studio_unlocked === "boolean") {
-          setStudioUnlocked(payload.studio_unlocked);
-        } else if (typeof payload.analysis_count === "number") {
-          setStudioUnlocked(nextAnalysisCount >= 1);
-        } else {
-          setStudioUnlocked(false);
-        }
-      } catch {
-        clearSessionState();
+      if (!session.payload) {
+        setAuthToken("");
+        setWallet(null);
+        setGuestMode(false);
+        return;
       }
+      setAuthToken(session.token);
+      setWallet(session.payload.wallet || null);
+      setGuestMode(Boolean(session.payload.guest_mode));
     };
+
     void syncAuth();
+    const unsubscribe = addAuthChangeListener(() => {
+      void syncAuth();
+    });
+    return unsubscribe;
   }, [pathname]);
 
-  useEffect(() => {
-    if (!showToolsMenu) return;
-    const closeOnOutsideClick = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      const clickedInsideDesktopTools = Boolean(toolsMenuRef.current && toolsMenuRef.current.contains(target));
-      const clickedInsideMobileTools = Boolean(mobileToolsPanelRef.current && mobileToolsPanelRef.current.contains(target));
-      if (!clickedInsideDesktopTools && !clickedInsideMobileTools) {
-        setShowToolsMenu(false);
-      }
-    };
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setShowToolsMenu(false);
-      }
-    };
-    document.addEventListener("click", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("click", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [showToolsMenu]);
-
-  const handleStudioNavClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    const studioLocked = !authToken || !studioUnlocked;
-    if (!studioLocked) return;
-    event.preventDefault();
-    setShowStudioLockModal(true);
-    trackEvent("studio_nav_locked_popup_open", {
-      source: "header_nav",
-      has_token: Boolean(authToken),
-      analysis_count: analysisCount,
-    });
-  };
-
-  const handleToolsLinkClick = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
-    closeNavigationMenus();
-    closeToolsDropdown();
-    if (isStudioNav(href)) {
-      handleStudioNavClick(event);
-    }
-  };
-
-  const handleNavLinkClick = (href: string) => (event: MouseEvent<HTMLAnchorElement>) => {
-    closeNavigationMenus();
-    if (isStudioNav(href)) {
-      handleStudioNavClick(event);
-    }
+  const handleLogout = () => {
+    setAuthToken("");
+    setWallet(null);
+    setGuestMode(false);
+    setMobileMenuOpen(false);
+    clearStoredAuthToken();
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-cyan-100/12 bg-[#030c1b]/96">
-      <div className="border-b border-cyan-100/8 px-3 py-2 sm:px-6 sm:py-2.5">
-        <p className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-50/70 sm:gap-3 sm:text-[11px] sm:tracking-[0.24em]">
-          <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.9)]" />
-          Precision shortlist prediction platform for every role
-        </p>
-      </div>
-
+    <header className="sticky top-0 z-50 border-b border-slate-100/12 bg-[#031022]/95 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-3 sm:h-20 sm:px-6">
-        <Link href="/" className="group">
+        <Link href="/" className="group" title="Go to HireScore homepage">
           <BrandLogo
             intro
-            subtitle="Interview Calls Made Easier"
-            titleClassName="font-mono text-sm tracking-wide sm:text-xl"
-            subtitleClassName="text-[10px] tracking-[0.16em] sm:text-xs sm:tracking-[0.26em]"
+            subtitle="AI Job Search Companion"
+            titleClassName="text-sm tracking-wide sm:text-xl"
+            subtitleClassName="text-[10px] tracking-[0.14em] sm:text-xs sm:tracking-[0.2em]"
           />
         </Link>
 
-        <nav className="hidden items-center gap-1.5 text-sm font-medium text-cyan-50/78 xl:flex">
+        <nav className="hidden items-center gap-1.5 text-sm font-medium text-cyan-50/90 xl:flex">
           {navLinks.map((link) => {
-            const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
-            if (!link.children) {
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={handleNavLinkClick(link.href)}
-                  className={`whitespace-nowrap rounded-full border px-3 py-1.5 transition ${
-                    active
-                      ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
-                      : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            }
+            const active = isLinkActive(pathname, link.href);
+            const isLoginLink = link.label === "Login";
             return (
-              <div key={link.label} ref={toolsMenuRef} className="group relative">
-                <button
-                  type="button"
-                  onClick={() => setShowToolsMenu((prev) => !prev)}
-                  aria-expanded={isToolsDropdownOpen(link)}
-                  className={`whitespace-nowrap rounded-full border px-3 py-1.5 transition ${
-                    active
-                      ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
-                      : "border-transparent text-cyan-50/78 hover:border-cyan-100/26 hover:bg-cyan-100/8 hover:text-cyan-100"
-                  }`}
-                >
-                  {link.label}
-                </button>
-                <div
-                  className={`absolute left-0 top-full z-20 mt-2 min-w-[220px] rounded-xl border border-cyan-100/24 bg-[#05152a] p-2 shadow-[0_22px_55px_rgba(2,8,22,0.5)] transition-all duration-150 ${
-                    isToolsDropdownOpen(link)
-                      ? "visible opacity-100 pointer-events-auto"
-                      : "invisible opacity-0 pointer-events-none"
-                  }`}
-                >
-                  <div className="flex flex-col gap-1.5">
-                    {link.children.map((child) => (
-                      <Link
-                        key={`${link.label}-${child.href}-${child.label}`}
-                        href={child.href}
-                        onClick={handleToolsLinkClick(child.href)}
-                        className="whitespace-nowrap rounded-lg border border-cyan-100/20 px-3 py-2 text-sm text-cyan-50 transition hover:bg-cyan-100/16 hover:text-cyan-100"
-                      >
-                        {child.label}
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <Link
+                key={`${link.label}-${link.href}`}
+                href={link.href}
+                title={link.tooltip}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (isLoginLink && !authToken) {
+                    trackEvent("cta_auth_entry_click", {
+                      cta_location: "header_nav",
+                      cta_label: "Login",
+                    });
+                  }
+                }}
+                className={`whitespace-nowrap rounded-full border px-3 py-1.5 transition ${
+                  active
+                    ? "border-cyan-100/48 bg-cyan-200/20 text-cyan-50"
+                    : "border-transparent text-cyan-50/86 hover:border-cyan-100/30 hover:bg-cyan-100/10 hover:text-cyan-100"
+                }`}
+              >
+                {link.label}
+              </Link>
             );
           })}
         </nav>
 
         <div className="flex items-center gap-2">
-          {authToken && wallet ? (
+          {authToken && wallet && !guestMode ? (
             <>
-              <Link
-                href="/dashboard"
-                className="hidden rounded-xl border border-cyan-200/35 bg-cyan-200/14 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/22 sm:inline"
-              >
-                Dashboard
-              </Link>
-              <span className="rounded-xl border border-emerald-200/36 bg-emerald-200/14 px-2.5 py-1.5 text-xs font-semibold text-emerald-100">
+              <span className="hidden rounded-xl border border-emerald-200/38 bg-emerald-200/14 px-2.5 py-1.5 text-xs font-semibold text-emerald-100 sm:inline-flex">
                 Wallet: {wallet.credits}
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  setAuthToken("");
-                  setWallet(null);
-                  setAnalysisCount(0);
-                  setStudioUnlocked(false);
-                  setMobileMenuOpen(false);
-                  window.localStorage.removeItem("hirescore_auth_token");
-                }}
-                className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 sm:inline"
+                onClick={handleLogout}
+                className="hidden rounded-xl border border-slate-100/24 bg-transparent px-3 py-1.5 text-xs font-semibold text-slate-100/88 transition hover:bg-slate-200/10 sm:inline"
+                title="Sign out from this browser"
               >
                 Sign Out
               </button>
             </>
+          ) : guestMode ? (
+            <span className="hidden rounded-xl border border-cyan-100/24 bg-cyan-200/10 px-3 py-1.5 text-xs font-semibold text-cyan-50/88 lg:inline-flex">
+              Public Access
+            </span>
           ) : (
-            <>
-              <Link
-                href={headerAuthHref}
-                onClick={() => {
-                  trackEvent("cta_auth_entry_click", {
-                    cta_location: "header",
-                    cta_label: "Sign Up / Login",
-                  });
-                }}
-                className="hidden rounded-xl border border-cyan-100/28 bg-transparent px-3 py-1.5 text-xs font-semibold text-cyan-50/86 transition hover:bg-cyan-100/10 lg:inline-flex"
-              >
-                Sign Up / Login
-              </Link>
-              <Link
-                href={headerAnalyzeHref}
-                onClick={() => {
-                  trackEvent("cta_instant_fit_click", {
-                    cta_location: "header",
-                    cta_label: "Instant Fit Check (Free)",
-                  });
-                }}
-                className="rounded-xl border border-cyan-200/45 bg-gradient-to-r from-cyan-300/20 via-cyan-200/18 to-amber-100/12 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_18px_rgba(80,223,255,0.22)] transition hover:brightness-110 sm:px-4 sm:py-2 sm:text-sm"
-              >
-                <span className="sm:hidden">Instant Fit</span>
-                <span className="hidden sm:inline">Instant Fit Check (Free)</span>
-              </Link>
-            </>
+            <Link
+              href={headerAuthHref}
+              onClick={() => {
+                trackEvent("cta_auth_entry_click", {
+                  cta_location: "header",
+                  cta_label: "Login",
+                });
+              }}
+              title="Sign in to save analyses and resume versions."
+              className="hidden rounded-xl border border-slate-100/24 bg-transparent px-3 py-1.5 text-xs font-semibold text-slate-100/90 transition hover:bg-slate-200/10 lg:inline-flex"
+            >
+              Login
+            </Link>
           )}
+
+          <Link
+            href={headerAnalyzeHref}
+            onClick={() => {
+              trackEvent("cta_instant_fit_click", {
+                cta_location: "header",
+                cta_label: "Start free analysis",
+              });
+            }}
+            title="Start a free analysis by entering your target role and uploading your resume."
+            className="rounded-xl border border-cyan-200/45 bg-cyan-300/18 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-300/28 sm:px-4 sm:py-2 sm:text-sm"
+          >
+            <span className="sm:hidden">Start free</span>
+            <span className="hidden sm:inline">Start free analysis</span>
+          </Link>
+
           <button
             type="button"
-            onClick={() => {
-              setMobileMenuOpen((prev) => !prev);
-              setShowToolsMenu(false);
-            }}
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
             aria-expanded={mobileMenuOpen}
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-cyan-100/28 bg-cyan-100/8 px-3 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/14 xl:hidden"
+            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-slate-100/24 bg-slate-100/8 px-3 text-xs font-semibold text-slate-100 transition hover:bg-slate-100/14 xl:hidden"
           >
             {mobileMenuOpen ? "Close" : "Menu"}
           </button>
         </div>
       </div>
 
-      <div className={`border-t border-cyan-100/8 px-3 py-2 xl:hidden ${mobileMenuOpen ? "block" : "hidden"}`}>
-        <nav className="mx-auto grid w-full max-w-7xl grid-cols-2 gap-1.5 text-xs text-cyan-50/80">
-          {navLinks.map((link) => {
-            const active = link.children ? isToolsActive(link) : isLinkActive(pathname, hash, link);
-            if (!link.children) {
+      {mobileMenuOpen && (
+        <div className="border-t border-slate-100/10 px-3 py-3 xl:hidden">
+          <nav className="mx-auto grid w-full max-w-7xl grid-cols-2 gap-1.5 text-xs text-slate-100/90">
+            {navLinks.map((link) => {
+              const active = isLinkActive(pathname, link.href);
+              const isLoginLink = link.label === "Login";
               return (
                 <Link
-                  key={link.href}
+                  key={`mobile-${link.label}-${link.href}`}
                   href={link.href}
-                  onClick={handleNavLinkClick(link.href)}
+                  title={link.tooltip}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    if (isLoginLink && !authToken) {
+                      trackEvent("cta_auth_entry_click", {
+                        cta_location: "header_mobile_menu",
+                        cta_label: "Login",
+                      });
+                    }
+                  }}
                   className={`inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-1.5 text-center transition ${
                     active
                       ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                      : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
+                      : "border-slate-100/20 bg-slate-100/6 text-slate-100/88 hover:bg-slate-100/12"
                   }`}
                 >
                   {link.label}
                 </Link>
               );
-            }
-            return (
+            })}
+
+            {authToken ? (
               <button
-                key={link.label}
                 type="button"
-                onClick={() => setShowToolsMenu((prev) => !prev)}
-                aria-expanded={isToolsDropdownOpen(link)}
-                className={`col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-1.5 transition ${
-                  active
-                    ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                    : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
-                }`}
+                onClick={handleLogout}
+                className="col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-slate-100/20 bg-transparent px-3 py-1.5 text-center font-semibold text-slate-100/92 transition hover:bg-slate-100/12"
+                title="Sign out from this browser"
               >
-                {link.label}
+                Sign Out
               </button>
-            );
-          })}
-          {!authToken && (
+            ) : null}
+
             <Link
-              href={headerAuthHref}
+              href={headerAnalyzeHref}
               onClick={() => {
                 setMobileMenuOpen(false);
-                trackEvent("cta_auth_entry_click", {
+                trackEvent("cta_instant_fit_click", {
                   cta_location: "header_mobile_menu",
-                  cta_label: "Sign Up / Login",
+                  cta_label: "Start free analysis",
                 });
               }}
-              className="col-span-2 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 text-center font-semibold text-emerald-100 transition hover:bg-emerald-200/24"
+              title="Start a free analysis by entering your target role and uploading your resume."
+              className="col-span-2 inline-flex min-h-[42px] items-center justify-center rounded-lg border border-cyan-200/45 bg-cyan-300/18 px-3 py-1.5 text-center font-semibold text-cyan-50 transition hover:bg-cyan-300/28"
             >
-              Sign Up / Login
+              Start free analysis
             </Link>
-          )}
-          {authToken && (
-            <button
-              type="button"
-              onClick={() => {
-                setAuthToken("");
-                setWallet(null);
-                setAnalysisCount(0);
-                setStudioUnlocked(false);
-                setMobileMenuOpen(false);
-                window.localStorage.removeItem("hirescore_auth_token");
-              }}
-              className="col-span-1 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-cyan-100/20 bg-transparent px-3 py-1.5 text-center font-semibold text-cyan-100/90 transition hover:bg-cyan-100/12"
-            >
-              Sign Out
-            </button>
-          )}
-          {authToken && (
-            <Link
-              href="/dashboard"
-              onClick={() => setMobileMenuOpen(false)}
-              className="col-span-1 inline-flex min-h-[40px] items-center justify-center rounded-lg border border-emerald-200/30 bg-emerald-200/14 px-3 py-1.5 text-center font-semibold text-emerald-100"
-            >
-              Wallet {wallet?.credits ?? 0}
-            </Link>
-          )}
-        </nav>
-        {showToolsMenu && toolsNavLinks.length > 0 && (
-          <div ref={mobileToolsPanelRef} className="mx-auto mt-2 grid w-full max-w-7xl gap-1.5 sm:grid-cols-2">
-            {toolsNavLinks.map((child) => {
-              const childActive = isLinkActive(pathname, hash, child);
-              return (
-                <Link
-                  key={`mobile-tool-${child.label}`}
-                  href={child.href}
-                  onClick={(event) => {
-                    handleToolsLinkClick(child.href)(event);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`inline-flex min-h-[40px] items-center justify-center rounded-lg border px-3 py-2 text-center transition ${
-                    childActive
-                      ? "border-cyan-100/46 bg-cyan-200/20 text-cyan-50"
-                      : "border-cyan-100/18 bg-cyan-100/6 text-cyan-50/80 hover:bg-cyan-100/12"
-                  }`}
-                >
-                  {child.label}
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {portalReady
-        ? createPortal(
-            <AnimatePresence>
-              {showStudioLockModal && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[1400] flex min-h-dvh items-center justify-center bg-[#020915]/58 px-4 py-6 backdrop-blur-[6px]"
-                  onClick={(event) => {
-                    if (event.target !== event.currentTarget) return;
-                    setShowStudioLockModal(false);
-                  }}
-                >
-                  <motion.section
-                    initial={{ opacity: 0, y: 18, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.97 }}
-                    className="relative my-auto w-full max-w-lg overflow-hidden rounded-[1.8rem] border border-cyan-100/24 bg-[#081826]/96 p-6 shadow-[0_24px_70px_rgba(2,8,20,0.55)]"
-                  >
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(125,211,252,0.08),rgba(8,24,38,0)_42%,rgba(253,230,138,0.08))]" />
-
-                    <div className="relative">
-                      <StudioLockVisual compact />
-                      <p className="text-center text-xs uppercase tracking-[0.18em] text-cyan-100/72">Resume Studio Gate</p>
-                      <h3 className="mt-2 text-center text-2xl font-semibold text-cyan-50 sm:text-3xl">Let&apos;s Analyze Your Skills First</h3>
-                      <p className="mt-3 text-center text-sm text-cyan-50/80">
-                        Complete your first analysis on the Analysis page to unlock AI Resume Studio.
-                      </p>
-                      <p className="mt-2 text-center text-xs text-cyan-100/72">
-                        Analysis runs completed: <span className="font-semibold text-cyan-50">{analysisCount}</span>
-                      </p>
-
-                      <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowStudioLockModal(false);
-                            trackEvent("studio_nav_locked_popup_analyze_click", {
-                              source: "header_nav",
-                              analysis_count: analysisCount,
-                            });
-                            router.push("/upload");
-                          }}
-                          className="rounded-xl border border-cyan-100/35 bg-cyan-200/18 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/26"
-                        >
-                          Go To Analysis
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowStudioLockModal(false)}
-                          className="rounded-xl border border-cyan-100/22 bg-transparent px-4 py-2.5 text-sm font-semibold text-cyan-50/86 transition hover:bg-cyan-100/8"
-                        >
-                          Not Now
-                        </button>
-                      </div>
-                    </div>
-                  </motion.section>
-                </motion.div>
-              )}
-            </AnimatePresence>,
-            document.body
-          )
-        : null}
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

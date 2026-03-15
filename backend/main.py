@@ -378,6 +378,17 @@ PUBLIC_INSTANT_SHARE_TTL_SECONDS = max(
     60 * 60, min(120 * 24 * 60 * 60, int((os.getenv("PUBLIC_INSTANT_SHARE_TTL_SECONDS") or "1209600").strip()))
 )
 APPLICATION_COPILOT_TRACK_STATUSES = {"saved", "applied", "interview", "offer", "rejected"}
+PUBLIC_ACCESS_RUNTIME_SETTING_KEY = "public_feature_access_enabled"
+PUBLIC_ACCESS_GUEST_PREFIX = "public-access"
+PUBLIC_ACCESS_GUEST_TOKEN_TTL_HOURS = max(
+    6,
+    min(24 * 90, int((os.getenv("PUBLIC_ACCESS_GUEST_TOKEN_TTL_HOURS") or "336").strip())),
+)
+PUBLIC_ACCESS_GUEST_CREDITS = max(
+    1000,
+    min(10_000_000, int((os.getenv("PUBLIC_ACCESS_GUEST_CREDITS") or "500000").strip())),
+)
+PUBLIC_ACCESS_GUEST_PLAN = "elite"
 
 
 class AuthRequest(BaseModel):
@@ -450,6 +461,10 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 
+class AdminRuntimeSettingsUpdateRequest(BaseModel):
+    public_feature_access_enabled: bool | None = None
+
+
 class AdminImpersonateRequest(BaseModel):
     reason: str | None = None
 
@@ -458,6 +473,10 @@ class GuestChatSessionRequest(BaseModel):
     guest_key: str | None = None
     name: str | None = None
     email: str | None = None
+
+
+class PublicAccessSessionRequest(BaseModel):
+    guest_key: str | None = None
 
 
 class ChatMessageCreateRequest(BaseModel):
@@ -2215,6 +2234,15 @@ def init_auth_db() -> None:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS app_runtime_settings (
+                        setting_key TEXT PRIMARY KEY,
+                        value_json TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT NOT NULL DEFAULT ''")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_tier TEXT NOT NULL DEFAULT 'free'")
                 cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 1")
@@ -2454,6 +2482,15 @@ def init_auth_db() -> None:
                         quick_win_counts_json TEXT NOT NULL DEFAULT '{}',
                         missing_skill_counts_json TEXT NOT NULL DEFAULT '{}',
                         model_success_json TEXT NOT NULL DEFAULT '{}',
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS app_runtime_settings (
+                        setting_key TEXT PRIMARY KEY,
+                        value_json TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     )
                     """
@@ -3473,11 +3510,19 @@ def has_feedback_submission(user_id: int) -> bool:
 
 
 def feedback_required_for_user(user_id: int, analyze_count: int | None = None) -> bool:
+    if public_feature_access_enabled():
+        user = fetch_user_by_id(user_id)
+        if is_public_access_guest_user(user):
+            return False
     effective_count = max(0, int(analyze_count)) if analyze_count is not None else get_analyze_count(user_id)
     return effective_count >= 1 and not has_feedback_submission(user_id)
 
 
 def require_studio_access(user_id: int) -> None:
+    if public_feature_access_enabled():
+        user = fetch_user_by_id(user_id)
+        if is_public_access_guest_user(user):
+            return
     analyze_count = get_analyze_count(user_id)
     if studio_unlocked_for_user(user_id, analyze_count):
         return
@@ -3558,7 +3603,8 @@ def wallet_payload(credits: int) -> dict[str, Any]:
 def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> dict[str, Any]:
     user_id = int(user_row["id"])
     analyze_count = get_analyze_count(user_id)
-    studio_unlocked = studio_unlocked_for_user(user_id, analyze_count)
+    is_public_guest = is_public_access_guest_user(user_row)
+    studio_unlocked = True if is_public_guest and public_feature_access_enabled() else studio_unlocked_for_user(user_id, analyze_count)
     email_verified = is_email_verified(user_row)
     payload: dict[str, Any] = {
         "user": {
@@ -3571,8 +3617,9 @@ def auth_response_payload(user_row: sqlite3.Row, token: str | None = None) -> di
         "wallet": wallet_payload(int(user_row["credits"])),
         "analysis_count": analyze_count,
         "studio_unlocked": studio_unlocked,
-        "feedback_required": feedback_required_for_user(user_id, analyze_count),
+        "feedback_required": False if is_public_guest and public_feature_access_enabled() else feedback_required_for_user(user_id, analyze_count),
         "email_verified": email_verified,
+        "guest_mode": is_public_guest,
     }
     if token:
         payload["auth_token"] = token
@@ -3595,6 +3642,8 @@ def require_authenticated_user(request: Request, explicit_auth_token: str | None
     user = fetch_user_by_id(int(payload.get("uid", 0)))
     if not user:
         raise HTTPException(status_code=401, detail="Account not found. Please log in again.")
+    if is_public_access_guest_user(user) and not public_feature_access_enabled():
+        raise HTTPException(status_code=401, detail="Public access session expired. Please refresh and continue.")
     if not is_email_verified(user):
         raise HTTPException(status_code=401, detail="Email is not verified. Complete OTP verification to continue.")
 
@@ -3723,6 +3772,14 @@ def credit_error(user_row: sqlite3.Row, message: str, status_code: int = 402) ->
 
 
 def debit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    if public_feature_access_enabled():
+        user = fetch_user_by_id(user_id)
+        if is_public_access_guest_user(user):
+            effective_credits = max(int(user["credits"] or 0), PUBLIC_ACCESS_GUEST_CREDITS) if user else PUBLIC_ACCESS_GUEST_CREDITS
+            return {
+                "transaction_id": 0,
+                "wallet": wallet_payload(effective_credits),
+            }
     with AUTH_DB_LOCK:
         connection = auth_db_connection()
         try:
@@ -3812,6 +3869,168 @@ def credit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] 
 
 
 init_auth_db()
+
+
+def runtime_setting_value(setting_key: str, default: Any = None) -> Any:
+    normalized_key = safe_text(setting_key)
+    if not normalized_key:
+        return default
+    connection = auth_db_connection()
+    try:
+        row = connection.execute(
+            """
+            SELECT value_json
+            FROM app_runtime_settings
+            WHERE setting_key = ?
+            LIMIT 1
+            """,
+            (normalized_key,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        return default
+    try:
+        return json.loads(safe_text(row["value_json"]))
+    except Exception:
+        return default
+
+
+def set_runtime_setting_value(setting_key: str, value: Any) -> Any:
+    normalized_key = safe_text(setting_key)
+    if not normalized_key:
+        raise HTTPException(status_code=400, detail="Invalid runtime setting key.")
+    encoded_value = json.dumps(value, separators=(",", ":"), sort_keys=True)
+    now_iso = now_utc_iso()
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            existing = cursor.execute(
+                """
+                SELECT setting_key
+                FROM app_runtime_settings
+                WHERE setting_key = ?
+                LIMIT 1
+                """,
+                (normalized_key,),
+            ).fetchone()
+            if existing:
+                cursor.execute(
+                    """
+                    UPDATE app_runtime_settings
+                    SET value_json = ?, updated_at = ?
+                    WHERE setting_key = ?
+                    """,
+                    (encoded_value, now_iso, normalized_key),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO app_runtime_settings (setting_key, value_json, updated_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (normalized_key, encoded_value, now_iso),
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+    return value
+
+
+def public_feature_access_enabled() -> bool:
+    return bool(runtime_setting_value(PUBLIC_ACCESS_RUNTIME_SETTING_KEY, False))
+
+
+def normalize_public_access_key(value: str | None) -> str:
+    normalized = re.sub(r"[^a-z0-9_-]", "", safe_text(value).lower())[:72]
+    if len(normalized) >= 8:
+        return normalized
+    return secrets.token_hex(8)
+
+
+def public_access_email_for_key(guest_key: str) -> str:
+    fingerprint = hashlib.sha256(f"{PUBLIC_ACCESS_GUEST_PREFIX}:{guest_key}:{AUTH_TOKEN_SECRET}".encode("utf-8")).hexdigest()[:24]
+    return f"{PUBLIC_ACCESS_GUEST_PREFIX}-{fingerprint}{GUEST_SYSTEM_EMAIL_SUFFIX}"
+
+
+def is_public_access_guest_email(email: str | None) -> bool:
+    normalized = normalize_email(safe_text(email))
+    return normalized.startswith(f"{PUBLIC_ACCESS_GUEST_PREFIX}-") and normalized.endswith(GUEST_SYSTEM_EMAIL_SUFFIX)
+
+
+def is_public_access_guest_user(user_row: sqlite3.Row | None) -> bool:
+    if not user_row:
+        return False
+    return is_public_access_guest_email(str(user_row["email"]))
+
+
+def get_or_create_public_access_user(guest_key: str) -> sqlite3.Row:
+    email = public_access_email_for_key(guest_key)
+    existing = fetch_user_by_email(email)
+    if existing:
+        with AUTH_DB_LOCK:
+            connection = auth_db_connection()
+            try:
+                cursor = connection.cursor()
+                begin_write_transaction(cursor)
+                next_credits = max(int(existing["credits"] or 0), PUBLIC_ACCESS_GUEST_CREDITS)
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET full_name = ?, plan_tier = ?, credits = ?, email_verified = 1
+                    WHERE id = ?
+                    """,
+                    ("Guest Access", PUBLIC_ACCESS_GUEST_PLAN, next_credits, int(existing["id"])),
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            finally:
+                connection.close()
+        refreshed = fetch_user_by_email(email)
+        if refreshed:
+            return refreshed
+        return existing
+
+    password_salt = secrets.token_hex(16)
+    password_hash = hash_password(secrets.token_urlsafe(18), password_salt)
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO users (full_name, email, password_hash, password_salt, plan_tier, credits, created_at, email_verified)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                    """,
+                    (
+                        "Guest Access",
+                        email,
+                        password_hash,
+                        password_salt,
+                        PUBLIC_ACCESS_GUEST_PLAN,
+                        PUBLIC_ACCESS_GUEST_CREDITS,
+                        now_utc_iso(),
+                    ),
+                )
+                connection.commit()
+            except DB_INTEGRITY_ERRORS:
+                connection.rollback()
+        finally:
+            connection.close()
+
+    user = fetch_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=500, detail="Unable to create public access session.")
+    return user
 
 
 def normalize_experience_years(value: float | None) -> float | None:
@@ -8481,6 +8700,33 @@ def auth_me(request: Request, auth_token: str | None = None) -> dict[str, Any]:
     return auth_response_payload(user)
 
 
+@app.post("/auth/public-access-session")
+def public_access_session(data: PublicAccessSessionRequest | None = None) -> dict[str, Any]:
+    if not public_feature_access_enabled():
+        raise HTTPException(status_code=403, detail="Public feature access is currently disabled.")
+
+    guest_key = normalize_public_access_key(data.guest_key if data else None)
+    user = get_or_create_public_access_user(guest_key)
+    auth_token = create_auth_token(
+        int(user["id"]),
+        str(user["email"]),
+        ttl_seconds=PUBLIC_ACCESS_GUEST_TOKEN_TTL_HOURS * 3600,
+    )
+    key_fingerprint = hashlib.sha256(guest_key.encode("utf-8")).hexdigest()[:12]
+    log_analytics_event(
+        "auth",
+        "public_access_session_started",
+        user_id=int(user["id"]),
+        meta={"guest_key_fingerprint": key_fingerprint},
+    )
+    payload = auth_response_payload(user, auth_token)
+    payload["guest_mode"] = True
+    payload["guest_key"] = guest_key
+    payload["token_expires_hours"] = PUBLIC_ACCESS_GUEST_TOKEN_TTL_HOURS
+    payload["public_feature_access_enabled"] = True
+    return payload
+
+
 @app.get("/feature-flags")
 def feature_flags(request: Request, auth_token: str | None = None) -> dict[str, Any]:
     user_id: int | None = None
@@ -11998,6 +12244,7 @@ def build_feature_flags(user_id: int | None = None) -> dict[str, Any]:
         "onboarding_copy_variant": "A",
         "roadmap_prompt_variant": "A",
         "pricing_cta_variant": "A",
+        "public_feature_access_enabled": public_feature_access_enabled(),
     }
     if AB_FLAGS_JSON:
         try:
@@ -17259,6 +17506,45 @@ def admin_analytics(request: Request) -> dict[str, Any]:
         return collect_admin_analytics_summary(connection)
     finally:
         connection.close()
+
+
+@app.get("/admin/runtime-settings")
+def admin_runtime_settings(request: Request) -> dict[str, Any]:
+    require_admin_access(request)
+    return {
+        "runtime_settings": {
+            "public_feature_access_enabled": public_feature_access_enabled(),
+        }
+    }
+
+
+@app.post("/admin/runtime-settings")
+def admin_update_runtime_settings(data: AdminRuntimeSettingsUpdateRequest, request: Request) -> dict[str, Any]:
+    require_admin_access(request)
+
+    updated = False
+    if data.public_feature_access_enabled is not None:
+        set_runtime_setting_value(PUBLIC_ACCESS_RUNTIME_SETTING_KEY, bool(data.public_feature_access_enabled))
+        updated = True
+
+    settings_payload = {
+        "public_feature_access_enabled": public_feature_access_enabled(),
+    }
+    if updated:
+        admin_actor = admin_actor_from_request(request)
+        log_analytics_event(
+            "admin",
+            "runtime_settings_updated",
+            meta={
+                "admin_identifier": admin_actor["identifier"],
+                "admin_auth_mode": admin_actor["auth_mode"],
+                **settings_payload,
+            },
+        )
+    return {
+        "runtime_settings": settings_payload,
+        "updated": updated,
+    }
 
 
 @app.get("/admin/events")

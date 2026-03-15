@@ -107,17 +107,6 @@ type AdminChatUser = {
   credits: number;
 };
 
-type AdminImpersonationPayload = {
-  auth_token?: string;
-  expires_in_minutes?: number;
-  user?: {
-    id?: number;
-    name?: string;
-    email?: string;
-    plan?: string;
-  };
-};
-
 type RowEditorState = {
   name: string;
   email: string;
@@ -130,16 +119,14 @@ type RowEditorState = {
 
 type AdminLoadScope = "users" | "support" | "activity" | "all";
 type AdminAuthMode = "token" | "api_key";
+type AdminRuntimeSettings = {
+  public_feature_access_enabled: boolean;
+};
 
 const apiUrl = (path: string) => {
   const normalizedPath = `/${path.replace(/^\/+/, "")}`;
   if (normalizedPath === "/") return "/api/admin-proxy/admin/auth/login";
   return `/api/admin-proxy${normalizedPath}`;
-};
-const userAuthApiUrl = (path: string) => {
-  const normalizedPath = `/${path.replace(/^\/+/, "")}`;
-  const base = (process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in").replace(/\/+$/, "");
-  return `${base}${normalizedPath}`;
 };
 const AUTH_REQUEST_TIMEOUT_MS = 70000;
 const DEFAULT_ADMIN_ANALYTICS: AdminAnalytics = {
@@ -160,6 +147,9 @@ const DEFAULT_ADMIN_ANALYTICS: AdminAnalytics = {
   interview_simulator_runs_total: 0,
   interview_simulator_users_total: 0,
   interview_simulator_users: [],
+};
+const DEFAULT_RUNTIME_SETTINGS: AdminRuntimeSettings = {
+  public_feature_access_enabled: false,
 };
 
 const defaultRowEditor = (): RowEditorState => ({
@@ -191,11 +181,6 @@ export default function AdminPage() {
   const [adminToken, setAdminToken] = useState("");
   const [adminApiKey, setAdminApiKey] = useState("");
   const [adminAuthMode, setAdminAuthMode] = useState<AdminAuthMode>("token");
-  const [userLoginEmail, setUserLoginEmail] = useState("");
-  const [userLoginPassword, setUserLoginPassword] = useState("");
-  const [userLoginLoading, setUserLoginLoading] = useState(false);
-  const [userLoginError, setUserLoginError] = useState("");
-  const [userLoginSuccess, setUserLoginSuccess] = useState("");
 
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -206,6 +191,7 @@ export default function AdminPage() {
   const [planFilter, setPlanFilter] = useState<(typeof planOptions)[number]>("all");
 
   const [analytics, setAnalytics] = useState<AdminAnalytics>(DEFAULT_ADMIN_ANALYTICS);
+  const [runtimeSettings, setRuntimeSettings] = useState<AdminRuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [events, setEvents] = useState<AdminEvent[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<AdminFeedback[]>([]);
@@ -219,12 +205,12 @@ export default function AdminPage() {
   const [chatModerationKey, setChatModerationKey] = useState<string | null>(null);
   const [activityTab, setActivityTab] = useState<"feedback" | "events" | "credits">("feedback");
   const [workspaceTab, setWorkspaceTab] = useState<"users" | "support" | "activity">("users");
-  const [impersonatingUserId, setImpersonatingUserId] = useState<number | null>(null);
 
   const [rowEditors, setRowEditors] = useState<Record<number, RowEditorState>>({});
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
   const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
   const [exportingKey, setExportingKey] = useState<string | null>(null);
+  const [runtimeSettingsSaving, setRuntimeSettingsSaving] = useState(false);
   const [hasLoadedSupport, setHasLoadedSupport] = useState(false);
   const [hasLoadedActivity, setHasLoadedActivity] = useState(false);
   const restoredTokenRef = useRef("");
@@ -358,8 +344,9 @@ export default function AdminPage() {
             }))
           : Promise.resolve(null);
 
-        const [analyticsResult, usersResult, chatsResult, activityResult] = await Promise.allSettled([
+        const [analyticsResult, runtimeSettingsResult, usersResult, chatsResult, activityResult] = await Promise.allSettled([
           adminFetch<AdminAnalytics>("/admin/analytics", undefined, effectiveCredential, effectiveMode),
+          adminFetch<{ runtime_settings?: AdminRuntimeSettings }>("/admin/runtime-settings", undefined, effectiveCredential, effectiveMode),
           usersPromise,
           chatsPromise,
           activityPromise,
@@ -400,6 +387,9 @@ export default function AdminPage() {
         if (analyticsResult.status === "rejected" && isAuthFailure(analyticsResult.reason)) {
           throw toError(analyticsResult.reason);
         }
+        if (runtimeSettingsResult.status === "rejected" && isAuthFailure(runtimeSettingsResult.reason)) {
+          throw toError(runtimeSettingsResult.reason);
+        }
 
         const usersData = usersResult.status === "fulfilled" && usersResult.value ? usersResult.value.users || [] : null;
         const activityData = activityResult.status === "fulfilled" && activityResult.value ? activityResult.value : null;
@@ -408,6 +398,11 @@ export default function AdminPage() {
           setAnalytics(analyticsResult.value || DEFAULT_ADMIN_ANALYTICS);
         } else {
           warnings.push("Analytics");
+        }
+        if (runtimeSettingsResult.status === "fulfilled") {
+          setRuntimeSettings(runtimeSettingsResult.value.runtime_settings || DEFAULT_RUNTIME_SETTINGS);
+        } else {
+          warnings.push("Runtime settings");
         }
         if (usersData) {
           setUsers(usersData);
@@ -470,6 +465,36 @@ export default function AdminPage() {
     },
     [adminAuthMode, adminApiKey, adminToken, workspaceTab, search, planFilter, adminFetch],
   );
+
+  const togglePublicFeatureAccess = async (enabled: boolean) => {
+    const previous = runtimeSettings;
+    setRuntimeSettings((current) => ({
+      ...current,
+      public_feature_access_enabled: enabled,
+    }));
+    setRuntimeSettingsSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const payload = await adminFetch<{ runtime_settings?: AdminRuntimeSettings }>("/admin/runtime-settings", {
+        method: "POST",
+        body: JSON.stringify({
+          public_feature_access_enabled: enabled,
+        }),
+      });
+      setRuntimeSettings(payload.runtime_settings || { public_feature_access_enabled: enabled });
+      setSuccess(
+        enabled
+          ? "Public access enabled. All users can use product features without login."
+          : "Public access disabled. Login is required again for protected features.",
+      );
+    } catch (err) {
+      setRuntimeSettings(previous);
+      setError(err instanceof Error ? err.message : "Unable to update runtime settings.");
+    } finally {
+      setRuntimeSettingsSaving(false);
+    }
+  };
 
   useEffect(() => {
     const mode: AdminAuthMode = adminAuthMode === "api_key" ? "api_key" : "token";
@@ -557,84 +582,6 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : "Unable to login.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleUserDashboardLogin = async () => {
-    const email = userLoginEmail.trim().toLowerCase();
-    const password = userLoginPassword;
-    if (!email || !password) {
-      setUserLoginError("Enter email and password to continue.");
-      setUserLoginSuccess("");
-      return;
-    }
-    setUserLoginLoading(true);
-    setUserLoginError("");
-    setUserLoginSuccess("");
-    try {
-      const payload = await fetchJsonWithWakeAndRetry<{ auth_token?: string; user?: { email?: string } }>({
-        apiUrl: userAuthApiUrl,
-        path: "/auth/login",
-        init: {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        },
-        timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
-        parseError: async (response) => {
-          const parsed = (await response.json().catch(() => null)) as { detail?: string } | null;
-          return parsed?.detail || "Unable to login right now.";
-        },
-        abortErrorMessage: "Login is taking longer than expected. Please try again.",
-      });
-      if (!payload?.auth_token) {
-        throw new Error("Invalid login response.");
-      }
-      window.localStorage.setItem("hirescore_auth_token", payload.auth_token);
-      setUserLoginSuccess(`Welcome back${payload.user?.email ? `, ${payload.user.email}` : ""}. Redirecting to dashboard...`);
-      window.setTimeout(() => {
-        window.location.href = "/dashboard";
-      }, 250);
-    } catch (err) {
-      setUserLoginError(err instanceof Error ? err.message : "Unable to login.");
-    } finally {
-      setUserLoginLoading(false);
-    }
-  };
-
-  const handleAdminImpersonationLogin = async (user: AdminUser) => {
-    if (user.id <= 0) return;
-    const confirmed = window.confirm(`Open ${user.email} dashboard as this user?`);
-    if (!confirmed) return;
-
-    const row = getRowEditor(user.id);
-    const reason = row.reason.trim() || "admin_support_dark_login";
-    setImpersonatingUserId(user.id);
-    setRowBusy((prev) => ({ ...prev, [user.id]: true }));
-    setError("");
-    setSuccess("");
-    try {
-      const payload = await adminFetch<AdminImpersonationPayload>(`/admin/users/${user.id}/impersonate`, {
-        method: "POST",
-        body: JSON.stringify({ reason }),
-      });
-      if (!payload?.auth_token) {
-        throw new Error("Unable to create user session.");
-      }
-
-      window.localStorage.setItem("hirescore_auth_token", payload.auth_token);
-      const ttl = Number(payload.expires_in_minutes || 0);
-      const ttlText = Number.isFinite(ttl) && ttl > 0 ? ` Token expires in ${ttl} min.` : "";
-      setSuccess(`Dark login active for ${payload.user?.email || user.email}.${ttlText}`);
-      const opened = window.open("/dashboard", "_blank", "noopener,noreferrer");
-      if (!opened) {
-        window.location.href = "/dashboard";
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to open user dashboard.");
-    } finally {
-      setImpersonatingUserId(null);
-      setRowBusy((prev) => ({ ...prev, [user.id]: false }));
     }
   };
 
@@ -958,6 +905,8 @@ export default function AdminPage() {
                   setAdminPassword("");
                   setAdminApiKey("");
                   setAdminAuthMode("token");
+                  setRuntimeSettings(DEFAULT_RUNTIME_SETTINGS);
+                  setRuntimeSettingsSaving(false);
                   setError("");
                   setSuccess("");
                   setAdminToken("");
@@ -967,7 +916,6 @@ export default function AdminPage() {
                   setChatReplyText("");
                   setHasLoadedSupport(false);
                   setHasLoadedActivity(false);
-                  setImpersonatingUserId(null);
                   window.localStorage.removeItem("hirescore_admin_token");
                   window.localStorage.removeItem("hirescore_admin_api_key");
                   window.localStorage.removeItem("hirescore_admin_auth_mode");
@@ -980,50 +928,6 @@ export default function AdminPage() {
 
             {error && <p className="mt-3 rounded-xl border border-rose-200/26 bg-rose-300/12 px-3 py-2 text-xs text-rose-100">{error}</p>}
             {success && <p className="mt-3 rounded-xl border border-emerald-200/26 bg-emerald-300/12 px-3 py-2 text-xs text-emerald-100">{success}</p>}
-          </aside>
-
-          <aside className="mt-4 w-full rounded-[2rem] border border-slate-200/14 bg-gradient-to-b from-[#070d1c]/96 via-[#080f20]/90 to-[#111827]/86 p-6 shadow-[0_20px_52px_rgba(8,15,36,0.45)] sm:p-7">
-            <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/72">User Dashboard Login</p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-50 sm:text-2xl">Dark login for all users</h2>
-            <p className="mt-2 text-sm text-slate-300/78">Users can sign in here and jump directly to their dashboard.</p>
-
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <input
-                type="email"
-                value={userLoginEmail}
-                onChange={(event) => setUserLoginEmail(event.target.value)}
-                placeholder="Email"
-                autoComplete="email"
-                className="rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-cyan-300/60"
-              />
-              <input
-                type="password"
-                value={userLoginPassword}
-                onChange={(event) => setUserLoginPassword(event.target.value)}
-                placeholder="Password"
-                autoComplete="current-password"
-                className="rounded-xl border border-slate-200/16 bg-[#090f1e] px-3.5 py-3 text-sm text-slate-100 placeholder:text-slate-400/60 outline-none transition focus:border-cyan-300/60"
-              />
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void handleUserDashboardLogin()}
-                disabled={userLoginLoading}
-                className="rounded-xl border border-cyan-200/36 bg-cyan-300/14 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/22 disabled:opacity-60"
-              >
-                {userLoginLoading ? "Signing in..." : "Login to Dashboard"}
-              </button>
-              <a
-                href="/upload"
-                className="rounded-xl border border-slate-200/20 bg-slate-700/18 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-700/28"
-              >
-                New User Signup
-              </a>
-            </div>
-
-            {userLoginError ? <p className="mt-3 rounded-xl border border-rose-200/24 bg-rose-300/12 px-3 py-2 text-xs text-rose-100">{userLoginError}</p> : null}
-            {userLoginSuccess ? <p className="mt-3 rounded-xl border border-emerald-200/24 bg-emerald-300/12 px-3 py-2 text-xs text-emerald-100">{userLoginSuccess}</p> : null}
           </aside>
         </section>
       </main>
@@ -1086,6 +990,8 @@ export default function AdminPage() {
                   setAdminAuthMode("token");
                   setConnected(false);
                   setAnalytics(DEFAULT_ADMIN_ANALYTICS);
+                  setRuntimeSettings(DEFAULT_RUNTIME_SETTINGS);
+                  setRuntimeSettingsSaving(false);
                   setUsers([]);
                   setEvents([]);
                   setFeedbackRows([]);
@@ -1096,7 +1002,6 @@ export default function AdminPage() {
                   setChatReplyText("");
                   setHasLoadedSupport(false);
                   setHasLoadedActivity(false);
-                  setImpersonatingUserId(null);
                   setError("");
                   setSuccess("");
                   window.localStorage.removeItem("hirescore_admin_token");
@@ -1181,6 +1086,51 @@ export default function AdminPage() {
                     {exportingKey === "tx-csv" ? "Downloading..." : "Credits CSV"}
                   </button>
                 </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-cyan-200/14 bg-cyan-400/[0.05] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/72">Runtime Access</p>
+                    <h3 className="mt-1 text-lg font-semibold text-white">All Features Without Login</h3>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={runtimeSettings.public_feature_access_enabled}
+                    onClick={() => void togglePublicFeatureAccess(!runtimeSettings.public_feature_access_enabled)}
+                    disabled={!canLoad || runtimeSettingsSaving}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60 ${
+                      runtimeSettings.public_feature_access_enabled
+                        ? "border-emerald-200/36 bg-emerald-300/16 text-emerald-100"
+                        : "border-slate-200/18 bg-slate-700/18 text-slate-200/84"
+                    }`}
+                  >
+                    <span
+                      className={`relative h-5 w-9 rounded-full transition ${
+                        runtimeSettings.public_feature_access_enabled ? "bg-emerald-300/55" : "bg-slate-500/55"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${
+                          runtimeSettings.public_feature_access_enabled ? "left-[18px]" : "left-0.5"
+                        }`}
+                      />
+                    </span>
+                    {runtimeSettingsSaving
+                      ? "Saving..."
+                      : runtimeSettings.public_feature_access_enabled
+                        ? "Enabled"
+                        : "Disabled"}
+                  </button>
+                </div>
+                <p className="mt-3 text-sm text-slate-200/78">
+                  When enabled, HireScore auto-creates a public guest session so users can run Upload, Studio, Dashboard, JD Match,
+                  Application Copilot, and Interview Copilot without signing in first.
+                </p>
+                <p className="mt-2 text-xs text-slate-300/70">
+                  Turning it off immediately expires those public guest sessions and restores normal login requirements.
+                </p>
               </div>
             </div>
 
@@ -1400,14 +1350,6 @@ export default function AdminPage() {
                           </div>
 
                           <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void handleAdminImpersonationLogin(user)}
-                              disabled={busy}
-                              className="rounded-xl border border-violet-300/35 bg-violet-300/14 px-3 py-2 text-xs font-semibold text-violet-100 transition hover:bg-violet-300/24 disabled:opacity-60"
-                            >
-                              {impersonatingUserId === user.id ? "Opening Dashboard..." : "Dark Login"}
-                            </button>
                             <button
                               type="button"
                               onClick={() => void runUserUpdate(user.id)}

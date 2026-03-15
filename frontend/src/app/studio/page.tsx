@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import StudioLockVisual from "@/app/components/studio-lock-visual";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
+import { addAuthChangeListener, clearStoredAuthToken, resolveAuthSession, setStoredAuthToken } from "@/lib/public-access";
 import { addUtmParams } from "@/lib/utm";
 import { trackEvent } from "@/lib/analytics";
 
@@ -38,6 +39,7 @@ type AuthPayload = {
   analysis_count?: number;
   studio_unlocked?: boolean;
   feedback_required?: boolean;
+  guest_mode?: boolean;
   otp_required?: boolean;
   message?: string;
   otp_expires_minutes?: number;
@@ -175,6 +177,7 @@ export default function StudioPage() {
   const [authToken, setAuthToken] = useState("");
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
+  const [guestMode, setGuestMode] = useState(false);
   const [analysisCount, setAnalysisCount] = useState(0);
   const [studioUnlocked, setStudioUnlocked] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
@@ -213,56 +216,54 @@ export default function StudioPage() {
     }
     if (payload?.auth_token) {
       setAuthToken(payload.auth_token);
-      window.localStorage.setItem("hirescore_auth_token", payload.auth_token);
+      setStoredAuthToken(payload.auth_token);
     }
     if (payload?.message) setAuthInfo(payload.message);
     if (payload?.otp_required) setSignupOtpRequired(true);
+    if (typeof payload?.guest_mode === "boolean") {
+      setGuestMode(payload.guest_mode);
+    }
   };
 
   useEffect(() => {
     let cancelled = false;
-    const token = window.localStorage.getItem("hirescore_auth_token");
-    if (!token) {
-      setAuthSyncReady(true);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setAuthToken(token);
-    fetch(apiUrl("/auth/me"), {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then(async (response) => {
-        if (response.status === 401) {
-          if (cancelled) return;
+    const syncAuth = async () => {
+      const session = await resolveAuthSession<AuthPayload>();
+      if (cancelled) return;
+      if (session.error) {
+        if (!session.token) {
           setAuthToken("");
           setWallet(null);
           setAuthUserEmail("");
+          setGuestMode(false);
           setAnalysisCount(0);
           setStudioUnlocked(false);
-          window.localStorage.removeItem("hirescore_auth_token");
-          return;
         }
-        if (!response.ok) {
-          return;
-        }
-        const payload = (await response.json()) as AuthPayload;
-        if (cancelled) return;
-        applyAuthPayload(payload);
-      })
-      .catch(() => {
-        // Do not clear auth token on transient connectivity failures.
-      })
-      .finally(() => {
-        if (cancelled) return;
         setAuthSyncReady(true);
-      });
+        return;
+      }
+      if (!session.payload) {
+        setAuthToken("");
+        setWallet(null);
+        setAuthUserEmail("");
+        setGuestMode(false);
+        setAnalysisCount(0);
+        setStudioUnlocked(false);
+        setAuthSyncReady(true);
+        return;
+      }
+      setAuthToken(session.token);
+      applyAuthPayload(session.payload);
+      setAuthSyncReady(true);
+    };
+    void syncAuth();
+    const unsubscribe = addAuthChangeListener(() => {
+      void syncAuth();
+    });
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 
@@ -465,7 +466,7 @@ export default function StudioPage() {
   useEffect(() => {
     const container = googleButtonRef.current;
     if (!container) return;
-    if (authToken || signupOtpRequired || forgotPasswordMode) {
+    if ((authToken && !guestMode) || signupOtpRequired || forgotPasswordMode) {
       container.innerHTML = "";
       return;
     }
@@ -530,7 +531,7 @@ export default function StudioPage() {
       cancelled = true;
       container.innerHTML = "";
     };
-  }, [authToken, signupOtpRequired, forgotPasswordMode, authMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authToken, guestMode, signupOtpRequired, forgotPasswordMode, authMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAuthSubmit = async () => {
     const email = authEmail.trim();
@@ -621,6 +622,7 @@ export default function StudioPage() {
     setAuthToken("");
     setAuthUserEmail("");
     setWallet(null);
+    setGuestMode(false);
     setAnalysisCount(0);
     setStudioUnlocked(false);
     setShowStudioGateModal(false);
@@ -634,7 +636,7 @@ export default function StudioPage() {
     setForgotOtpRequested(false);
     setForgotOtp("");
     setForgotNewPassword("");
-    window.localStorage.removeItem("hirescore_auth_token");
+    clearStoredAuthToken();
   };
 
   const assignOptimizedResume = (value: string) => {
@@ -1081,14 +1083,18 @@ export default function StudioPage() {
                 </div>
                 <div className="rounded-2xl border border-cyan-100/18 bg-[#08233f]/72 p-4">
                   <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/72">AI Draft Runs</p>
-                  <p className="mt-2 text-lg font-semibold text-cyan-50">{authToken && wallet ? remainingGeneration : "-"}</p>
-                  <p className="mt-1 text-xs text-cyan-100/68">{authToken && wallet ? "Available with current wallet" : "Sign in to view usage"}</p>
+                  <p className="mt-2 text-lg font-semibold text-cyan-50">
+                    {guestMode ? "Unlocked" : authToken && wallet ? remainingGeneration : "-"}
+                  </p>
+                  <p className="mt-1 text-xs text-cyan-100/68">
+                    {guestMode ? "Public access session active" : authToken && wallet ? "Available with current wallet" : "Sign in to view usage"}
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="rounded-[1.6rem] border border-cyan-100/24 bg-[#081d35]/88 p-4 shadow-[inset_0_0_0_1px_rgba(181,236,255,0.08)] sm:p-5">
-              {authToken && wallet ? (
+              {authToken && wallet && !guestMode ? (
                 <>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -1156,6 +1162,11 @@ export default function StudioPage() {
                 </>
               ) : (
                 <>
+                  {guestMode && (
+                    <div className="rounded-2xl border border-cyan-100/20 bg-cyan-100/8 px-4 py-3 text-sm text-cyan-50/82">
+                      Public access is active. Resume Studio is unlocked without login, and you can still sign in below to save work to a real account.
+                    </div>
+                  )}
                   <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/72">Sign In To Use AI Actions</p>
                   <p className="mt-2 text-sm text-cyan-50/76">
                     {forgotPasswordMode

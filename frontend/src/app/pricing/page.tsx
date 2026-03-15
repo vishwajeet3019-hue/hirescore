@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
 import { renderGoogleSignInButton } from "@/lib/google-sso";
 import { trackBeginCheckout, trackPurchase, trackSignup } from "@/lib/analytics";
+import { addAuthChangeListener, clearStoredAuthToken, resolveAuthSession, setStoredAuthToken } from "@/lib/public-access";
 import { addUtmParams } from "@/lib/utm";
 import TrackedLink from "../components/tracked-link";
 
@@ -42,6 +43,7 @@ type AuthPayload = {
   user?: AuthUser;
   wallet?: CreditWallet;
   feedback_required?: boolean;
+  guest_mode?: boolean;
   otp_required?: boolean;
   message?: string;
   otp_expires_minutes?: number;
@@ -159,6 +161,7 @@ export default function PricingPage() {
   const [authToken, setAuthToken] = useState("");
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [wallet, setWallet] = useState<CreditWallet | null>(null);
+  const [guestMode, setGuestMode] = useState(false);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({});
   const [authLoading, setAuthLoading] = useState(false);
   const [googleAuthLoading, setGoogleAuthLoading] = useState(false);
@@ -217,10 +220,11 @@ export default function PricingPage() {
     if (payload?.user?.email) setAuthUserEmail(payload.user.email);
     if (payload?.auth_token) {
       setAuthToken(payload.auth_token);
-      window.localStorage.setItem("hirescore_auth_token", payload.auth_token);
+      setStoredAuthToken(payload.auth_token);
     }
     if (payload?.message) setAuthInfo(payload.message);
     if (payload?.otp_required) setSignupOtpRequired(true);
+    if (typeof payload?.guest_mode === "boolean") setGuestMode(payload.guest_mode);
   };
 
   const parseApiError = async (response: Response) => {
@@ -371,33 +375,43 @@ export default function PricingPage() {
   }, [razorpayEnabled, paymentGateway]);
 
   useEffect(() => {
-    const token = window.localStorage.getItem("hirescore_auth_token");
-    if (!token) return;
-    setAuthToken(token);
-    fetch(apiUrl("/auth/me"), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(async (response) => {
-        if (response.status === 401) {
+    let cancelled = false;
+    const syncAuth = async () => {
+      const session = await resolveAuthSession<AuthPayload>();
+      if (cancelled) return;
+      if (session.error) {
+        if (!session.token) {
           setAuthToken("");
           setWallet(null);
           setAuthUserEmail("");
-          window.localStorage.removeItem("hirescore_auth_token");
-          return;
+          setGuestMode(false);
         }
-        if (!response.ok) return;
-        const payload = (await response.json()) as AuthPayload;
-        applyAuthPayload(payload);
-      })
-      .catch(() => {
-        // Keep local session when network/backends are temporarily unavailable.
-      });
+        return;
+      }
+      if (!session.payload) {
+        setAuthToken("");
+        setWallet(null);
+        setAuthUserEmail("");
+        setGuestMode(false);
+        return;
+      }
+      setAuthToken(session.token);
+      applyAuthPayload(session.payload);
+    };
+    void syncAuth();
+    const unsubscribe = addAuthChangeListener(() => {
+      void syncAuth();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     const container = googleButtonRef.current;
     if (!container) return;
-    if (authToken || signupOtpRequired || forgotPasswordMode) {
+    if ((authToken && !guestMode) || signupOtpRequired || forgotPasswordMode) {
       container.innerHTML = "";
       return;
     }
@@ -465,7 +479,7 @@ export default function PricingPage() {
       cancelled = true;
       container.innerHTML = "";
     };
-  }, [authToken, signupOtpRequired, forgotPasswordMode, authMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authToken, guestMode, signupOtpRequired, forgotPasswordMode, authMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAuthSubmit = async () => {
     const email = authEmail.trim();
@@ -699,7 +713,7 @@ export default function PricingPage() {
   };
 
   const prefetchRazorpayCheckout = (packageId: string) => {
-    if (!authToken || !authHeader) return;
+    if (!authToken || !authHeader || guestMode) return;
     if (!paymentEnabled || paymentGateway !== "razorpay") return;
     if (preparedCheckoutRef.current[packageId]) return;
     if (checkoutPrefetchInFlightRef.current[packageId]) return;
@@ -720,7 +734,7 @@ export default function PricingPage() {
   };
 
   const handleCheckout = async (packageId: string) => {
-    if (!authToken || !authHeader) {
+    if (!authToken || !authHeader || guestMode) {
       setAuthError("Login required before purchasing credits.");
       return;
     }
@@ -762,6 +776,7 @@ export default function PricingPage() {
     setAuthToken("");
     setAuthUserEmail("");
     setWallet(null);
+    setGuestMode(false);
     setAuthError("");
     setAuthInfo("");
     setSignupOtpRequired(false);
@@ -770,7 +785,7 @@ export default function PricingPage() {
     setForgotOtpRequested(false);
     setForgotOtp("");
     setForgotNewPassword("");
-    window.localStorage.removeItem("hirescore_auth_token");
+    clearStoredAuthToken();
   };
 
   return (
@@ -897,7 +912,7 @@ export default function PricingPage() {
 
         <article className="neon-panel rounded-3xl p-5 sm:p-6">
           <p className="text-xs uppercase tracking-[0.15em] text-cyan-100/70">Wallet Access</p>
-          {authToken && wallet ? (
+          {authToken && wallet && !guestMode ? (
             <div className="mt-3 space-y-3">
               <p className="text-sm font-semibold text-cyan-50">{authUserEmail || "Signed in"}</p>
               <div className="flex flex-wrap gap-2 text-xs text-cyan-50/74">
@@ -928,6 +943,11 @@ export default function PricingPage() {
             </div>
           ) : (
             <>
+              {guestMode && (
+                <div className="mt-3 rounded-2xl border border-cyan-100/20 bg-cyan-100/8 px-4 py-3 text-sm text-cyan-50/82">
+                  Public access is active. All product features are unlocked without login, but purchases still require a real account.
+                </div>
+              )}
               <p className="mt-2 text-sm text-cyan-50/76">
                 {forgotPasswordMode
                   ? "Reset password via email OTP."

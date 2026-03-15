@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
+import { addAuthChangeListener, resolveAuthSession } from "@/lib/public-access";
 import { addUtmParams } from "@/lib/utm";
 import TrackedLink from "../components/tracked-link";
 
@@ -131,41 +132,40 @@ export default function JdMatcherClient() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const syncAuth = async () => {
-      const token = window.localStorage.getItem("hirescore_auth_token") || "";
-      if (!token) {
+      const session = await resolveAuthSession<AuthPayload>();
+      if (cancelled) return;
+      const token = session.token || "";
+      if (session.error) {
+        if (!token) {
+          setAuthToken("");
+          setWallet(null);
+          setAuthEmail("");
+        }
+        setAuthError(session.error.message);
+        return;
+      }
+      if (!token || !session.payload) {
         setAuthToken("");
         setWallet(null);
         setAuthEmail("");
         setAuthError("Login required to run JD match.");
         return;
       }
-
-      try {
-        const response = await fetch(apiUrl("/auth/me"), {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          window.localStorage.removeItem("hirescore_auth_token");
-          setAuthToken("");
-          setWallet(null);
-          setAuthEmail("");
-          setAuthError("Session expired. Login again to continue.");
-          return;
-        }
-        const payload = (await response.json()) as AuthPayload;
-        setAuthToken(token);
-        setWallet(payload.wallet || null);
-        setAuthEmail(payload.user?.email || "");
-        setAuthError("");
-      } catch {
-        setAuthError("Unable to verify your session right now.");
-      }
+      setAuthToken(token);
+      setWallet(session.payload.wallet || null);
+      setAuthEmail(session.payload.user?.email || "");
+      setAuthError("");
     };
     void syncAuth();
+    const unsubscribe = addAuthChangeListener(() => {
+      void syncAuth();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   const parseApiError = async (response: Response) => {
