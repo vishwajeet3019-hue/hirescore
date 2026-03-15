@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import StudioLockVisual from "@/app/components/studio-lock-visual";
@@ -11,8 +10,6 @@ import { renderGoogleSignInButton } from "@/lib/google-sso";
 import { addAuthChangeListener, clearStoredAuthToken, resolveAuthSession, setStoredAuthToken } from "@/lib/public-access";
 import { addUtmParams } from "@/lib/utm";
 import { trackEvent } from "@/lib/analytics";
-
-type ResumeTemplateId = "quantum" | "executive" | "minimal" | "dublin" | "slate" | "metro";
 
 type CreditWallet = {
   credits: number;
@@ -44,74 +41,6 @@ type AuthPayload = {
   message?: string;
   otp_expires_minutes?: number;
 };
-
-type ResumeTemplate = {
-  id: ResumeTemplateId;
-  name: string;
-  description: string;
-  badge: string;
-  panelClass: string;
-  previewSrc: string;
-  previewScaleClass?: string;
-};
-
-const RESUME_TEMPLATES: ResumeTemplate[] = [
-  {
-    id: "metro",
-    name: "Metro Prime",
-    description: "Modern two-column professional format with clear role and skill separation.",
-    badge: "Modern",
-    panelClass: "border-indigo-100/32 bg-gradient-to-br from-indigo-200/15 via-cyan-100/7 to-slate-100/8",
-    previewSrc: "/template-previews/metro-overview.png",
-    previewScaleClass: "scale-[1.42]",
-  },
-  {
-    id: "dublin",
-    name: "Dublin Profile",
-    description: "Clean single-column profile with bold teal highlights and compact bio header.",
-    badge: "Corporate",
-    panelClass: "border-emerald-100/36 bg-gradient-to-br from-emerald-200/18 via-cyan-100/10 to-sky-100/8",
-    previewSrc: "/template-previews/dublin-overview.png",
-    previewScaleClass: "scale-[1.38]",
-  },
-  {
-    id: "slate",
-    name: "Slate Sidebar",
-    description: "Two-column premium layout with deep teal achievement rail.",
-    badge: "Showcase",
-    panelClass: "border-teal-100/40 bg-gradient-to-br from-teal-300/20 via-cyan-200/8 to-slate-100/8",
-    previewSrc: "/template-previews/slate-overview.png",
-    previewScaleClass: "scale-[1.34]",
-  },
-  {
-    id: "quantum",
-    name: "Quantum Grid",
-    description: "Bold modern style for technical and product applications.",
-    badge: "Tech",
-    panelClass: "border-cyan-100/40 bg-gradient-to-br from-cyan-300/20 via-cyan-200/10 to-sky-200/8",
-    previewSrc: "/template-previews/quantum-overview.png",
-    previewScaleClass: "scale-[1.4]",
-  },
-  {
-    id: "executive",
-    name: "Executive Edge",
-    description: "Premium business-forward structure with concise hierarchy.",
-    badge: "Premium",
-    panelClass: "border-amber-100/38 bg-gradient-to-br from-amber-100/15 via-amber-50/8 to-cyan-100/8",
-    previewSrc: "/template-previews/executive-overview.png",
-    previewScaleClass: "scale-[1.34]",
-  },
-  {
-    id: "minimal",
-    name: "Minimal Flow",
-    description: "Clean ATS-friendly format for broad recruiter readability.",
-    badge: "ATS",
-    panelClass: "border-cyan-100/24 bg-cyan-100/6",
-    previewSrc: "/template-previews/minimal-overview.png",
-    previewScaleClass: "scale-[1.38]",
-  },
-];
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() || "";
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
@@ -130,6 +59,8 @@ const PLACEHOLDER_CANDIDATE_NAMES = new Set([
   "optimized resume",
   "resume",
 ]);
+const ATS_STANDARD_TEMPLATE_ID = "ats_standard";
+const ATS_STANDARD_TEMPLATE_FILE_SUFFIX = "ats-standard";
 
 export default function StudioPage() {
   const router = useRouter();
@@ -163,7 +94,6 @@ export default function StudioPage() {
   const [editableResume, setEditableResume] = useState("");
   const [composedDraft, setComposedDraft] = useState("");
 
-  const [selectedTemplate, setSelectedTemplate] = useState<ResumeTemplateId | null>("minimal");
   const [generationError, setGenerationError] = useState("");
   const [templateError, setTemplateError] = useState("");
   const [building, setBuilding] = useState(false);
@@ -941,11 +871,6 @@ export default function StudioPage() {
   };
 
   const handleDownloadResume = () => {
-    if (!selectedTemplate) {
-      setTemplateError("Select a template before downloading.");
-      return;
-    }
-
     const content = editableResume.trim();
     if (!content) {
       setTemplateError("Generate or compose resume content before downloading.");
@@ -961,7 +886,7 @@ export default function StudioPage() {
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${safeName}-${selectedTemplate}.txt`;
+    link.download = `${safeName}-resume.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -971,16 +896,12 @@ export default function StudioPage() {
 
   const handleDownloadPdf = async () => {
     if (!authToken || !authHeader) {
-      setTemplateError("Login required to download PDF templates.");
+      setTemplateError("Login required to download the ATS-standard PDF.");
       return;
     }
     if (!ensureStudioUnlockedForTemplate()) return;
-    if (!selectedTemplate) {
-      setTemplateError("Select a template before downloading PDF.");
-      return;
-    }
     if (!canUsePdfTemplate) {
-      setTemplateError(`Need ${wallet?.pricing.template_pdf_download || 20} credits to download PDF template.`);
+      setTemplateError(`Need ${wallet?.pricing.template_pdf_download || 20} credits to download the ATS-standard PDF.`);
       return;
     }
 
@@ -1001,7 +922,7 @@ export default function StudioPage() {
         },
         body: JSON.stringify({
           name: resolveCandidateName(content),
-          template: selectedTemplate,
+          template: ATS_STANDARD_TEMPLATE_ID,
           resume_text: content,
         }),
       });
@@ -1018,7 +939,7 @@ export default function StudioPage() {
 
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = `${safeName}-${selectedTemplate}.pdf`;
+      link.download = `${safeName}-${ATS_STANDARD_TEMPLATE_FILE_SUFFIX}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1111,7 +1032,7 @@ export default function StudioPage() {
                       AI Generate: {wallet.pricing.ai_resume_generation} credits/run
                     </div>
                     <div className="rounded-xl border border-cyan-100/20 bg-cyan-100/8 px-3 py-2">
-                      PDF Export: {wallet.pricing.template_pdf_download} credits/export
+                      ATS PDF Export: {wallet.pricing.template_pdf_download} credits/export
                     </div>
                     <div className="rounded-xl border border-cyan-100/20 bg-cyan-100/8 px-3 py-2 sm:col-span-2">
                       Remaining AI draft runs: {remainingGeneration}
@@ -1815,46 +1736,33 @@ export default function StudioPage() {
                   disabled={building || !authToken || !canUsePdfTemplate}
                   className="rounded-xl border border-cyan-100/35 bg-cyan-100/10 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/16 disabled:cursor-not-allowed disabled:opacity-55"
                 >
-                  {building ? "Preparing..." : !authToken ? "Login For PDF" : canUsePdfTemplate ? "Download Template PDF" : "Need More Credits"}
+                  {building ? "Preparing..." : !authToken ? "Login For PDF" : canUsePdfTemplate ? "Download ATS PDF" : "Need More Credits"}
                 </button>
               </div>
             </div>
 
             <div className="mb-5 rounded-2xl border border-cyan-100/20 bg-cyan-100/5 p-4">
-              <p className="mb-3 text-sm font-semibold text-cyan-100">Choose Template Style</p>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {RESUME_TEMPLATES.map((template) => {
-                  const active = selectedTemplate === template.id;
-                  return (
-                    <button
-                      type="button"
-                      key={template.id}
-                      onClick={() => {
-                        setSelectedTemplate(template.id);
-                        setTemplateError("");
-                      }}
-                      className={`rounded-2xl border p-4 text-left transition ${template.panelClass} ${
-                        active ? "ring-1 ring-cyan-100/65" : "hover:brightness-110"
-                      }`}
-                    >
-                      <div className="mb-3 overflow-hidden rounded-xl border border-cyan-100/20 bg-slate-100/92 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]">
-                        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[10px]">
-                          <Image
-                            src={template.previewSrc}
-                            alt={`${template.name} preview`}
-                            fill
-                            className={`object-cover object-top transition-transform duration-300 ${template.previewScaleClass || "scale-[1.35]"}`}
-                            sizes="(max-width: 768px) 100vw, 33vw"
-                          />
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-900/28 via-slate-900/8 to-transparent" />
-                        </div>
-                      </div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/70">{template.badge}</p>
-                      <p className="mt-2 text-base font-semibold text-cyan-50">{template.name}</p>
-                      <p className="mt-2 text-sm text-cyan-50/72">{template.description}</p>
-                    </button>
-                  );
-                })}
+              <p className="mb-2 text-sm font-semibold text-cyan-100">ATS Standard PDF</p>
+              <p className="max-w-3xl text-sm leading-relaxed text-cyan-50/74">
+                Every PDF export now uses one recruiter-safe layout designed for ATS parsing, consistent section hierarchy, and clean
+                industry-standard formatting.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-cyan-100/20 bg-[#08233f]/68 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/70">Parsing</p>
+                  <p className="mt-2 text-sm font-semibold text-cyan-50">Single-column reading order</p>
+                  <p className="mt-2 text-xs leading-relaxed text-cyan-50/68">Avoids decorative sidebars and keeps text extraction dependable.</p>
+                </div>
+                <div className="rounded-2xl border border-cyan-100/20 bg-[#08233f]/68 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/70">Standards</p>
+                  <p className="mt-2 text-sm font-semibold text-cyan-50">Conventional recruiter structure</p>
+                  <p className="mt-2 text-xs leading-relaxed text-cyan-50/68">Uses clear headings, readable spacing, and widely accepted resume ordering.</p>
+                </div>
+                <div className="rounded-2xl border border-cyan-100/20 bg-[#08233f]/68 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/70">Delivery</p>
+                  <p className="mt-2 text-sm font-semibold text-cyan-50">One polished PDF output</p>
+                  <p className="mt-2 text-xs leading-relaxed text-cyan-50/68">No template switching, just one clean format ready for most applications.</p>
+                </div>
               </div>
               {templateError && <p className="mt-3 text-sm text-amber-200">{templateError}</p>}
             </div>

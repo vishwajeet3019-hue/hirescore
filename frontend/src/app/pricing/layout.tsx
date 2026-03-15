@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Pricing and Credits",
   description:
-    "Compare HireScore AI credit packages and feature usage costs for resume analysis, JD matching, AI generation, and template downloads.",
+    "Compare HireScore AI credit packages and feature usage costs for resume analysis, JD matching, AI generation, and ATS PDF downloads.",
   alternates: {
     canonical: "/pricing",
   },

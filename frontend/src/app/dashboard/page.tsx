@@ -681,7 +681,7 @@ export default function DashboardPage() {
                 <div className="mt-4 space-y-2 rounded-2xl border border-amber-100/24 bg-[#2b2516]/45 p-4 text-sm text-amber-50/86">
                   <p>Analyze cost: {wallet?.pricing.analyze ?? 0} credits</p>
                   <p>Resume AI build: {wallet?.pricing.ai_resume_generation ?? 0} credits</p>
-                  <p>PDF download: {wallet?.pricing.template_pdf_download ?? 0} credits</p>
+                  <p>ATS PDF download: {wallet?.pricing.template_pdf_download ?? 0} credits</p>
                 </div>
                 <TrackedLink
                   href={dashboardPricingHref}

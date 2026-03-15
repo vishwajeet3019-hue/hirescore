@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Resume Studio",
   description:
-    "Build, polish, and export ATS-friendly resumes with AI assistance and premium templates in HireScore Resume Studio.",
+    "Build, polish, and export ATS-friendly resumes with AI assistance and one standards-focused PDF in HireScore Resume Studio.",
   alternates: {
     canonical: "/studio",
   },

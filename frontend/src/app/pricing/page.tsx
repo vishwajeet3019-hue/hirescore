@@ -142,9 +142,9 @@ const creditRules = [
     description: "Generate or enhance resume content in Improve Resume Next and download as TXT.",
   },
   {
-    title: "Template PDF Download",
+    title: "ATS PDF Download",
     value: "20 Credits",
-    description: "Export your final resume as a styled PDF template from Improve Resume Next.",
+    description: "Export your final resume as one ATS-safe PDF that follows recruiter-friendly industry formatting.",
   },
 ];
 
@@ -930,7 +930,7 @@ export default function PricingPage() {
                   AI Resume: {wallet.pricing.ai_resume_generation} credits
                 </span>
                 <span className="rounded-lg border border-cyan-100/20 bg-cyan-100/8 px-2.5 py-1.5">
-                  Template PDF: {wallet.pricing.template_pdf_download} credits
+                  ATS PDF: {wallet.pricing.template_pdf_download} credits
                 </span>
               </div>
               <button

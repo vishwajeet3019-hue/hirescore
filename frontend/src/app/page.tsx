@@ -40,7 +40,7 @@ const valueCards = [
   },
   {
     title: "Build, Improve, Export",
-    description: "Create resumes inside the platform, improve with AI, and download polished templates.",
+    description: "Create resumes inside the platform, improve with AI, and download one polished ATS-ready PDF.",
   },
 ];
 
@@ -55,7 +55,7 @@ const workflowSteps = [
   },
   {
     title: "Build Winning Resume",
-    description: "Use guided suggestions to build and export a premium recruiter-ready resume.",
+    description: "Use guided suggestions to build and export one recruiter-ready ATS-standard resume.",
   },
 ];
 
@@ -99,7 +99,7 @@ const successStories = [
   {
     title: "Higher Conversion In 30 Days",
     person: "Arjun M. • Delhi NCR",
-    summary: "Used premium templates and targeted suggestions to optimize each application batch.",
+    summary: "Used one clean ATS-ready format and targeted suggestions to optimize each application batch.",
     outcome: "More recruiter replies from the same application volume",
   },
 ];
@@ -208,7 +208,7 @@ export default function Home() {
       name: "India",
     },
     description:
-      "AI-powered resume analyzer and builder with role-fit scoring, shortlist prediction, and template exports.",
+      "AI-powered resume analyzer and builder with role-fit scoring, shortlist prediction, and ATS-ready PDF export.",
     offers: {
       "@type": "Offer",
       price: "0",

@@ -209,6 +209,8 @@ CREDIT_COSTS: dict[str, int] = {
     "ai_resume_generation": 15,
     "template_pdf_download": 20,
 }
+ATS_STANDARD_RESUME_TEMPLATE_KEY = "ats_standard"
+ATS_STANDARD_RESUME_TEMPLATE_FILE_SUFFIX = "ats-standard"
 
 PAYMENT_CREDIT_PACKS: dict[str, dict[str, Any]] = {
     "starter_50": {"label": "Starter 50", "credits": 50, "amount_inr": 199},
@@ -687,7 +689,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 8,
         "generation_limit": 1,
         "pdf_polish_limit": 0,
-        "allowed_templates": ["minimal"],
+        "allowed_templates": [ATS_STANDARD_RESUME_TEMPLATE_KEY],
         "can_upload_pdf": False,
         "can_ai_enhance": False,
         "can_jd_match": True,
@@ -698,7 +700,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 80,
         "generation_limit": 15,
         "pdf_polish_limit": 6,
-        "allowed_templates": ["minimal", "executive", "dublin", "metro"],
+        "allowed_templates": [ATS_STANDARD_RESUME_TEMPLATE_KEY],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
         "can_jd_match": True,
@@ -709,7 +711,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 320,
         "generation_limit": 90,
         "pdf_polish_limit": 40,
-        "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate", "metro"],
+        "allowed_templates": [ATS_STANDARD_RESUME_TEMPLATE_KEY],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
         "can_jd_match": True,
@@ -720,7 +722,7 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
         "suggest_limit": 1200,
         "generation_limit": 320,
         "pdf_polish_limit": 160,
-        "allowed_templates": ["minimal", "executive", "quantum", "dublin", "slate", "metro"],
+        "allowed_templates": [ATS_STANDARD_RESUME_TEMPLATE_KEY],
         "can_upload_pdf": True,
         "can_ai_enhance": True,
         "can_jd_match": True,
@@ -730,6 +732,10 @@ PLAN_RULES: dict[str, dict[str, Any]] = {
 BYPASS_PLAN_AS = BYPASS_PLAN_AS if BYPASS_PLAN_AS in PLAN_RULES else "elite"
 
 USAGE_TRACKER: dict[str, dict[str, int]] = {}
+
+
+def canonical_resume_template_name(_template: str | None = None) -> str:
+    return ATS_STANDARD_RESUME_TEMPLATE_KEY
 
 
 STOPWORDS = {
@@ -8176,10 +8182,9 @@ def draw_slate_sidebar_content(pdf: canvas.Canvas, parsed: dict[str, Any], sideb
             return
 
 
-def render_resume_pdf_bytes(name: str, template: str, resume_text: str) -> bytes:
-    template_key = safe_text(template).lower() or "minimal"
-    if template_key not in {"minimal", "executive", "quantum", "dublin", "slate", "metro"}:
-        template_key = "minimal"
+def render_resume_pdf_bytes(name: str, _template: str, resume_text: str) -> bytes:
+    # All PDF exports now use one ATS-safe layout; legacy template requests are intentionally ignored.
+    template_key = "minimal"
 
     sanitized_resume = sanitize_resume_output(resume_text)
     parsed = parse_resume_sections_smart(name, sanitized_resume)
@@ -18423,7 +18428,7 @@ def export_resume_pdf_job_payload_for_user(
     if not resume_text:
         raise HTTPException(status_code=400, detail="Resume text is required for PDF export.")
 
-    template_name = safe_text(data.template).lower() or "minimal"
+    template_name = canonical_resume_template_name(data.template)
     debit = debit_credits(
         user_id,
         "template_pdf_download",
@@ -18443,7 +18448,7 @@ def export_resume_pdf_job_payload_for_user(
         raise HTTPException(status_code=500, detail="Unable to generate PDF right now.") from exc
 
     safe_name = sanitize_download_name(data.name)
-    file_name = f"{safe_name}-{template_name}.pdf"
+    file_name = f"{safe_name}-{ATS_STANDARD_RESUME_TEMPLATE_FILE_SUFFIX}.pdf"
     return {
         "file_name": file_name,
         "media_type": "application/pdf",
@@ -18590,7 +18595,7 @@ def export_resume_pdf(data: ResumeExportRequest, request: Request) -> StreamingR
     if not resume_text:
         raise HTTPException(status_code=400, detail="Resume text is required for PDF export.")
 
-    template_name = safe_text(data.template).lower() or "minimal"
+    template_name = canonical_resume_template_name(data.template)
     debit = debit_credits(
         user_id,
         "template_pdf_download",
@@ -18611,7 +18616,7 @@ def export_resume_pdf(data: ResumeExportRequest, request: Request) -> StreamingR
 
     safe_name = sanitize_download_name(data.name)
     headers = {
-        "Content-Disposition": f'attachment; filename="{safe_name}-{template_name}.pdf"',
+        "Content-Disposition": f'attachment; filename="{safe_name}-{ATS_STANDARD_RESUME_TEMPLATE_FILE_SUFFIX}.pdf"',
         "X-HireScore-Credits-Remaining": str(debit["wallet"]["credits"]),
     }
     return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
