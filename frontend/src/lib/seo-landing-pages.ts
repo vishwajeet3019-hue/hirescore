@@ -2774,6 +2774,170 @@ export const seoLandingPages: SeoLandingPage[] = [
       },
     ],
   },
+  {
+    slug: "resume-for-ai-jobs-india",
+    keyword: "resume for ai jobs india",
+    title: "Resume for AI Jobs in India",
+    metaDescription:
+      "Create a high-impact resume for AI jobs in India with project depth, model outcomes, and ATS-ready skill positioning.",
+    h1: "Resume for AI Jobs in India",
+    intro:
+      "AI hiring in India is growing fast, but shortlisting is strict. Recruiters look for applied problem-solving, model impact, and production-ready execution. This guide helps you present AI, ML, and GenAI work with clear business relevance.",
+    roleFocus: "AI Jobs India",
+    searchIntent: "Increase shortlist probability for AI, ML, and GenAI roles in India.",
+    painPoints: [
+      "Resumes list models and libraries but not real-world outcomes.",
+      "Projects miss measurable impact such as accuracy gains or business value.",
+      "Candidates do not differentiate research-style work from production impact.",
+    ],
+    whatYouGet: [
+      "An India-focused AI resume structure that highlights practical value.",
+      "A framework to present model quality, deployment, and product outcomes.",
+      "Keyword guidance for AI engineer, ML engineer, and applied scientist tracks.",
+    ],
+    actionPlan: [
+      "Prioritize 2-3 AI projects with problem statement, method, and measurable outcomes.",
+      "Add evidence of deployment, monitoring, or workflow integration where possible.",
+      "Tailor summary and skills to each target role family before applying.",
+    ],
+    faqs: [
+      {
+        question: "Should I mention model accuracy in AI resume?",
+        answer: "Yes, but always pair accuracy with business impact such as quality lift, time saved, or conversion improvement.",
+      },
+      {
+        question: "Do AI recruiters prefer research or production projects?",
+        answer: "Both matter, but production-ready projects with clear impact often shortlist faster for industry roles.",
+      },
+      {
+        question: "Can freshers get AI interviews with strong projects?",
+        answer: "Yes. Strong projects with clear problem framing and results can compensate for limited work experience.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-gcc-jobs-india",
+    keyword: "resume for gcc jobs india",
+    title: "Resume for GCC Jobs in India",
+    metaDescription:
+      "Optimize your resume for GCC jobs in India with global-quality storytelling, ownership proof, and role-fit keywords.",
+    h1: "Resume for GCC Jobs in India",
+    intro:
+      "Global Capability Centers in India look for candidates who can execute at global standards with cross-functional collaboration and strong communication. This guide helps you position your resume for GCC hiring pipelines.",
+    roleFocus: "GCC Jobs India",
+    searchIntent: "Improve interview conversion for GCC roles across engineering, analytics, and operations.",
+    painPoints: [
+      "Resume does not reflect global process maturity or cross-team collaboration.",
+      "Impact bullets are task-heavy and lack measurable business outcomes.",
+      "Candidates miss role-specific keyword alignment for GCC job descriptions.",
+    ],
+    whatYouGet: [
+      "A GCC-ready resume framework focused on ownership and measurable impact.",
+      "Rewrite patterns for stakeholder communication and global delivery signals.",
+      "Keyword guidance for multinational hiring standards in India.",
+    ],
+    actionPlan: [
+      "Rewrite top bullets to show ownership, outcomes, and cross-functional collaboration.",
+      "Highlight process, quality, and delivery consistency with concrete metrics.",
+      "Align summary and skills to GCC-specific role descriptions before submission.",
+    ],
+    faqs: [
+      {
+        question: "What do GCC recruiters scan first on resume?",
+        answer: "They usually scan for role-fit, measurable outcomes, communication quality, and global collaboration readiness.",
+      },
+      {
+        question: "Should I mention multinational stakeholder exposure?",
+        answer: "Yes. Cross-region collaboration is a strong signal for many GCC roles.",
+      },
+      {
+        question: "How is GCC resume different from startup resume?",
+        answer: "GCC resumes should balance speed with process discipline, quality standards, and structured communication.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-fintech-jobs-india",
+    keyword: "resume for fintech jobs india",
+    title: "Resume for Fintech Jobs in India",
+    metaDescription:
+      "Build a stronger resume for fintech jobs in India with domain-relevant impact metrics, compliance awareness, and ATS keyword fit.",
+    h1: "Resume for Fintech Jobs in India",
+    intro:
+      "Fintech recruiters in India prioritize candidates who understand risk, reliability, and user trust. This guide helps you frame your resume for payments, lending, banking-tech, and wealth-tech roles.",
+    roleFocus: "Fintech Jobs India",
+    searchIntent: "Increase shortlist chances for fintech hiring across product and engineering teams.",
+    painPoints: [
+      "Resume does not show domain understanding of financial workflows.",
+      "Project bullets lack metrics on reliability, fraud reduction, or user outcomes.",
+      "Candidates miss compliance and security context in achievements.",
+    ],
+    whatYouGet: [
+      "A fintech-focused resume checklist aligned to Indian hiring expectations.",
+      "A structure to show trust, speed, and risk-aware execution outcomes.",
+      "Keyword guidance for payments, lending, and finance-platform roles.",
+    ],
+    actionPlan: [
+      "Highlight outcomes tied to reliability, conversion, fraud, or operational efficiency.",
+      "Add relevant compliance, security, or audit collaboration context where applicable.",
+      "Tailor resume versions for product fintech vs regulated enterprise fintech roles.",
+    ],
+    faqs: [
+      {
+        question: "Should fintech resumes include compliance terms?",
+        answer: "Yes, when relevant. Mentioning compliance and risk awareness improves credibility in regulated domains.",
+      },
+      {
+        question: "What metrics matter most for fintech resumes?",
+        answer: "Transaction success rate, failure reduction, fraud prevention impact, and latency or reliability improvements are strong signals.",
+      },
+      {
+        question: "Can non-finance background candidates target fintech roles?",
+        answer: "Yes. Emphasize transferable outcomes and show fast domain learning with relevant projects.",
+      },
+    ],
+  },
+  {
+    slug: "resume-for-saas-jobs-india",
+    keyword: "resume for saas jobs india",
+    title: "Resume for SaaS Jobs in India",
+    metaDescription:
+      "Create a conversion-ready resume for SaaS jobs in India with product metrics, customer impact, and role-specific positioning.",
+    h1: "Resume for SaaS Jobs in India",
+    intro:
+      "SaaS hiring in India favors candidates who can connect product work to user adoption and revenue outcomes. This guide helps you position your resume for product-led companies and B2B SaaS teams.",
+    roleFocus: "SaaS Jobs India",
+    searchIntent: "Get more callbacks for SaaS roles in product, growth, engineering, and customer success.",
+    painPoints: [
+      "Resumes describe tasks without adoption, retention, or revenue impact.",
+      "Candidates do not show customer-centric execution and iteration depth.",
+      "Role keywords are generic and not aligned to SaaS hiring language.",
+    ],
+    whatYouGet: [
+      "A SaaS-focused resume structure that highlights product and customer outcomes.",
+      "A framework to rewrite bullets with growth, retention, and efficiency metrics.",
+      "Keyword guidance for SaaS engineering, product, growth, and success roles.",
+    ],
+    actionPlan: [
+      "Quantify outcomes linked to adoption, retention, conversion, or expansion.",
+      "Show cross-functional collaboration between product, engineering, and GTM teams.",
+      "Customize summary and top bullets for each SaaS role family before applying.",
+    ],
+    faqs: [
+      {
+        question: "Which metrics should I include for SaaS resume?",
+        answer: "Adoption rate, activation, retention, expansion, churn reduction, and workflow efficiency are high-signal metrics.",
+      },
+      {
+        question: "Do SaaS recruiters care about customer context?",
+        answer: "Yes. Showing customer problem understanding and measurable outcomes improves shortlist quality.",
+      },
+      {
+        question: "Should I maintain separate SaaS resume versions?",
+        answer: "Yes. Keep role-specific variants for product, engineering, growth, and customer success tracks.",
+      },
+    ],
+  },
 ];
 
 export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
@@ -2873,6 +3037,19 @@ export const indianJobSeekerKeywordClusters: KeywordCluster[] = [
       "resume for distributed teams",
       "startup hiring resume checklist",
       "global remote jobs from india resume",
+    ],
+  },
+  {
+    label: "Industry Specific Search",
+    phrases: [
+      "resume for ai jobs india",
+      "resume for ml engineer jobs india",
+      "resume for gcc jobs india",
+      "resume for multinational capability center jobs",
+      "resume for fintech jobs india",
+      "payments domain resume format",
+      "resume for saas jobs india",
+      "b2b saas resume checklist",
     ],
   },
 ];
@@ -3547,6 +3724,46 @@ const keywordVariantsBySlug: Record<string, string[]> = {
     "job switch resume coimbatore",
     "resume for product jobs coimbatore",
     "coimbatore hiring resume checklist",
+  ],
+  "resume-for-ai-jobs-india": [
+    "resume for ai jobs india",
+    "ai engineer resume format india",
+    "resume for machine learning jobs india",
+    "genai resume keywords for jobs",
+    "ai ml project resume examples",
+    "resume for applied ai engineer",
+    "job switch resume for ai roles",
+    "india ai hiring resume checklist",
+  ],
+  "resume-for-gcc-jobs-india": [
+    "resume for gcc jobs india",
+    "resume for global capability center jobs",
+    "gcc software engineer resume format",
+    "multinational captive center resume tips",
+    "resume for global business services roles",
+    "job switch resume for gcc companies",
+    "india gcc hiring resume checklist",
+    "resume for cross functional global teams",
+  ],
+  "resume-for-fintech-jobs-india": [
+    "resume for fintech jobs india",
+    "fintech software engineer resume format",
+    "payments domain resume keywords",
+    "resume for lending platform jobs",
+    "fintech product resume checklist",
+    "job switch resume fintech india",
+    "resume for banking tech jobs",
+    "india fintech hiring resume tips",
+  ],
+  "resume-for-saas-jobs-india": [
+    "resume for saas jobs india",
+    "saas company resume format india",
+    "b2b saas resume keywords",
+    "resume for product led growth roles",
+    "saas customer success resume checklist",
+    "job switch resume saas india",
+    "resume for subscription business jobs",
+    "india saas hiring resume tips",
   ],
 };
 
