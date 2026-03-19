@@ -3995,6 +3995,8 @@ def set_runtime_setting_value(setting_key: str, value: Any) -> Any:
 
 
 def public_feature_access_enabled() -> bool:
+    if FOCUSED_MATCHER_MODE:
+        return True
     return bool(runtime_setting_value(PUBLIC_ACCESS_RUNTIME_SETTING_KEY, False))
 
 
