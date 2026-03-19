@@ -7,6 +7,7 @@ const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.rep
 
 const AUTH_TOKEN_STORAGE_KEY = "hirescore_auth_token";
 const PUBLIC_ACCESS_GUEST_KEY_STORAGE_KEY = "hirescore_public_access_guest_key";
+const PUBLIC_ACCESS_NAME_STORAGE_KEY = "hirescore_public_access_name";
 const AUTH_CHANGE_EVENT = "hirescore-auth-changed";
 const FEATURE_FLAG_CACHE_TTL_MS = 5_000;
 
@@ -127,6 +128,21 @@ export const clearStoredAuthToken = () => {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   dispatchAuthChange();
+};
+
+export const getStoredPublicAccessName = () => {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(PUBLIC_ACCESS_NAME_STORAGE_KEY) || "";
+};
+
+export const setStoredPublicAccessName = (name: string) => {
+  if (typeof window === "undefined") return;
+  const normalized = name.trim();
+  if (normalized) {
+    window.localStorage.setItem(PUBLIC_ACCESS_NAME_STORAGE_KEY, normalized);
+  } else {
+    window.localStorage.removeItem(PUBLIC_ACCESS_NAME_STORAGE_KEY);
+  }
 };
 
 export const addAuthChangeListener = (listener: () => void) => {

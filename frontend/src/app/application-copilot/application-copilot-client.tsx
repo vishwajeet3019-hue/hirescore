@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
+import { getStoredPublicAccessName, resolveAuthSession, setStoredPublicAccessName } from "@/lib/public-access";
 
 type MatcherPayload = {
   role: string;
@@ -30,16 +32,90 @@ type ApiErrorPayload = {
   detail?: string | { message?: string };
 };
 
+type AuthSessionPayload = {
+  auth_token?: string;
+  guest_mode?: boolean;
+  user?: {
+    name?: string;
+    email?: string;
+  };
+};
+
+type JobTrackPayload = {
+  job_track?: {
+    id?: number;
+    status?: string;
+    match_percentage?: number;
+    updated_at?: string;
+  };
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "https://api.hirescore.in";
 const REQUEST_TIMEOUT_MS = 70_000;
 const apiUrl = (path: string) => `${API_BASE_URL.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
 const fieldClass =
-  "w-full rounded-[1.4rem] border border-[#d8ccb9] bg-[#fffaf3] px-4 py-3 text-sm text-[#203528] outline-none transition focus:border-[#8fa08b] focus:bg-white";
-const textAreaClass = `${fieldClass} min-h-[180px] resize-y leading-relaxed`;
+  "w-full rounded-[1.5rem] border border-black/10 bg-white px-4 py-3 text-sm text-[#111111] outline-none transition focus:border-black focus:bg-white";
+const textAreaClass = `${fieldClass} min-h-[176px] resize-y leading-relaxed`;
+
+const normalizeInsight = (value: string) =>
+  value
+    .replace(/^\s*[-*]\s*/, "")
+    .replace(/^\s*\d+[\.\)]\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const sentenceCase = (value: string) => {
+  const cleaned = normalizeInsight(value);
+  if (!cleaned) return "";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+};
+
+const normalizeCandidateName = (value: string) => value.replace(/\s+/g, " ").trim();
+
+const isPlaceholderGuestName = (value: string) => {
+  const normalized = normalizeCandidateName(value).toLowerCase();
+  return !normalized || normalized === "guest access";
+};
+
+const statusForSavedTrack = (score: number) => (score < 70 ? "rejected" : "saved");
+
+const possessiveName = (value: string) => {
+  const normalized = normalizeCandidateName(value);
+  if (!normalized) return "your";
+  return normalized.endsWith("s") ? `${normalized}'` : `${normalized}'s`;
+};
+
+const statusToneForScore = (score: number) => {
+  if (score < 70) {
+    return {
+      label: "Likely Rejected ❌",
+      badgeClass: "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]",
+      accentClass: "text-[#b91c1c]",
+      borderClass: "border-[#fecaca]",
+      backgroundClass: "bg-[#fff5f5]",
+    };
+  }
+  if (score < 84) {
+    return {
+      label: "Borderline ⚠️",
+      badgeClass: "border-[#fcd34d] bg-[#fffbeb] text-[#b45309]",
+      accentClass: "text-[#b45309]",
+      borderClass: "border-[#fcd34d]",
+      backgroundClass: "bg-[#fffaf0]",
+    };
+  }
+  return {
+    label: "Strong Match ✅",
+    badgeClass: "border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]",
+    accentClass: "text-[#15803d]",
+    borderClass: "border-[#bbf7d0]",
+    backgroundClass: "bg-[#f7fff8]",
+  };
+};
 
 export default function ApplicationCopilotClient() {
-  const [role, setRole] = useState("");
+  const [candidateName, setCandidateName] = useState("");
   const [resumeText, setResumeText] = useState("");
   const [jdInput, setJdInput] = useState("");
   const [resumeUploadedFileName, setResumeUploadedFileName] = useState("");
@@ -49,6 +125,9 @@ export default function ApplicationCopilotClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<MatcherPayload | null>(null);
+  const [guestSessionToken, setGuestSessionToken] = useState("");
+  const [workspaceNote, setWorkspaceNote] = useState("");
+  const [savedTrackId, setSavedTrackId] = useState<number | null>(null);
 
   const resumeFileInputRef = useRef<HTMLInputElement | null>(null);
   const jdFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -56,6 +135,30 @@ export default function ApplicationCopilotClient() {
   useEffect(() => {
     void warmBackend(apiUrl);
   }, []);
+
+  const bootstrapGuestWorkspace = useCallback(async () => {
+    const session = await resolveAuthSession<AuthSessionPayload>();
+    const token = session.token?.trim() || "";
+    if (token) {
+      setGuestSessionToken(token);
+    }
+
+    const resolvedName = normalizeCandidateName(session.payload?.user?.name || "");
+    if (resolvedName && !isPlaceholderGuestName(resolvedName)) {
+      setCandidateName((current) => current || resolvedName);
+      setStoredPublicAccessName(resolvedName);
+    }
+
+    return token;
+  }, []);
+
+  useEffect(() => {
+    const storedName = normalizeCandidateName(getStoredPublicAccessName());
+    if (storedName) {
+      setCandidateName(storedName);
+    }
+    void bootstrapGuestWorkspace();
+  }, [bootstrapGuestWorkspace]);
 
   const parseApiError = useCallback(async (response: Response) => {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
@@ -67,6 +170,70 @@ export default function ApplicationCopilotClient() {
     }
     return `Request failed (${response.status})`;
   }, []);
+
+  const syncGuestProfileName = useCallback(
+    async (authToken: string, name: string) => {
+      const normalizedName = normalizeCandidateName(name);
+      if (!authToken || normalizedName.length < 2) return normalizedName;
+
+      const payload = await fetchJsonWithWakeAndRetry<AuthSessionPayload>({
+        apiUrl,
+        path: "/auth/profile",
+        init: {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            name: normalizedName,
+          }),
+        },
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Saving your name is taking longer than expected. Please try again.",
+      });
+
+      const resolvedName = normalizeCandidateName(payload.user?.name || normalizedName);
+      if (resolvedName) {
+        setStoredPublicAccessName(resolvedName);
+        setCandidateName(resolvedName);
+      }
+      return resolvedName;
+    },
+    [parseApiError],
+  );
+
+  const saveScoreCheckToDashboard = useCallback(
+    async (authToken: string, payload: MatcherPayload) => {
+      if (!authToken) return null;
+
+      const score = Math.max(0, Math.min(100, Math.round(payload.match_percentage || 0)));
+      const saved = await fetchJsonWithWakeAndRetry<JobTrackPayload>({
+        apiUrl,
+        path: "/application-copilot/job-tracks",
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            role: payload.role || "Target role",
+            industry: payload.industry || "General",
+            status: statusForSavedTrack(score),
+            copilot_payload: payload,
+          }),
+        },
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        parseError: parseApiError,
+        abortErrorMessage: "Saving your score check is taking longer than expected. Please try again.",
+      });
+
+      return saved.job_track?.id || null;
+    },
+    [parseApiError],
+  );
 
   const extractTextFromUpload = useCallback(
     async (file: File, context: "resume" | "jd") => {
@@ -135,6 +302,11 @@ export default function ApplicationCopilotClient() {
   };
 
   const handleRunMatcher = async () => {
+    const normalizedName = normalizeCandidateName(candidateName);
+    if (normalizedName.length < 2) {
+      setError("Enter your name so we can save this score to your dashboard.");
+      return;
+    }
     if (resumeText.trim().length < 24) {
       setError("Resume content is required. Paste the text or upload a file.");
       return;
@@ -147,8 +319,25 @@ export default function ApplicationCopilotClient() {
     setError("");
     setLoading(true);
     setResult(null);
+    setWorkspaceNote("");
+    setSavedTrackId(null);
 
     try {
+      setStoredPublicAccessName(normalizedName);
+
+      let authToken = guestSessionToken.trim();
+      if (!authToken) {
+        authToken = await bootstrapGuestWorkspace();
+      }
+      if (authToken) {
+        setGuestSessionToken(authToken);
+        try {
+          await syncGuestProfileName(authToken, normalizedName);
+        } catch {
+          setWorkspaceNote("Score ready. We could not save your name yet, but the guest score check will still run.");
+        }
+      }
+
       const payload = await fetchJsonWithWakeAndRetry<MatcherPayload>({
         apiUrl,
         path: "/analysis/application-copilot",
@@ -159,65 +348,112 @@ export default function ApplicationCopilotClient() {
           },
           body: JSON.stringify({
             industry: "General",
-            role: role.trim() || "Target role",
+            role: "Target role",
             company: "",
             resume_text: resumeText.trim(),
             job_description: jdInput.trim(),
+            auth_token: authToken || undefined,
           }),
         },
         timeoutMs: REQUEST_TIMEOUT_MS,
         parseError: parseApiError,
-        abortErrorMessage: "Resume matching is taking longer than expected. Please try again.",
+        abortErrorMessage: "Resume scoring is taking longer than expected. Please try again.",
       });
 
-      setResult({
+      const nextResult = {
         ...payload,
-        role: role.trim() || payload.role || "Target role",
+        role: payload.role || "Target role",
         industry: payload.industry || "General",
-      });
+      };
+      setResult(nextResult);
+
+      if (authToken) {
+        try {
+          const trackId = await saveScoreCheckToDashboard(authToken, nextResult);
+          setSavedTrackId(trackId);
+          setWorkspaceNote(`Saved to ${possessiveName(normalizedName)} dashboard. No signup needed.`);
+        } catch {
+          setWorkspaceNote(`Score ready. We could not save this run to ${possessiveName(normalizedName)} dashboard just yet.`);
+        }
+      } else {
+        setWorkspaceNote(`Score ready. We'll connect it to ${possessiveName(normalizedName)} dashboard as soon as the guest workspace is available.`);
+      }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to run the matcher right now.");
+      setError(requestError instanceof Error ? requestError.message : "Unable to run the score check right now.");
+      setWorkspaceNote("");
     } finally {
       setLoading(false);
     }
   };
 
   const canRunMatcher =
+    normalizeCandidateName(candidateName).length >= 2 &&
     resumeText.trim().length >= 24 &&
     jdInput.trim().length >= 24 &&
     !resumeFileUploading &&
     !jdFileUploading &&
     !loading;
 
-  const metricCards = useMemo(
-    () => [
-      { label: "Resume match", value: result?.match_percentage || 0 },
-      { label: "Critical coverage", value: result?.jd_match?.critical_coverage || 0 },
-      { label: "Must-have coverage", value: result?.jd_match?.must_have_coverage || 0 },
-      { label: "JD relevance", value: result?.jd_match?.jd_relevance || 0 },
-    ],
-    [result],
-  );
+  const score = Math.max(0, Math.min(100, Math.round(result?.match_percentage || 0)));
+  const statusTone = statusToneForScore(score);
 
-  const suggestions = useMemo(() => {
-    const nextSuggestions: string[] = [];
-    for (const item of result?.resume_improvements || []) {
-      const clean = item.trim();
-      if (clean && !nextSuggestions.includes(clean)) {
-        nextSuggestions.push(clean);
+  const topReasons = useMemo(() => {
+    if (!result) return [];
+
+    const reasons: string[] = [];
+    const normalizedInsights = [...(result.feedback || []), ...(result.resume_improvements || [])]
+      .map(sentenceCase)
+      .filter(Boolean);
+
+    if ((result.missing_skills || []).length > 0) {
+      reasons.push(`Missing required skills (${result.missing_skills.slice(0, 2).join(", ")})`);
+    } else {
+      reasons.push("Missing key skills for this job description");
+    }
+
+    const experienceReason =
+      normalizedInsights.find((line) => /experience|year|seniority|senior|junior|required level|qualification/i.test(line)) ||
+      "Experience below job requirement";
+    reasons.push(experienceReason);
+
+    const tailoringReason =
+      normalizedInsights.find((line) => /tailor|tailored|job description|jd|keyword|alignment|relevance|position|role fit/i.test(line)) ||
+      "Resume not tailored to job description";
+    reasons.push(tailoringReason);
+
+    const uniqueReasons: string[] = [];
+    for (const reason of reasons) {
+      if (!reason) continue;
+      if (!uniqueReasons.includes(reason)) {
+        uniqueReasons.push(reason);
       }
     }
-    for (const item of result?.feedback || []) {
-      const clean = item.trim();
-      if (clean && !nextSuggestions.includes(clean)) {
-        nextSuggestions.push(clean);
-      }
+
+    return uniqueReasons.slice(0, 3);
+  }, [result]);
+
+  const lockedPlanLines = useMemo(() => {
+    if (!result) {
+      return [
+        "Rewrite your strongest bullets around the job description.",
+        "Add evidence for the missing hard skills recruiters expect.",
+        "Move role-specific keywords higher in the resume.",
+      ];
     }
-    return nextSuggestions.slice(0, 8);
+
+    const lines = [...(result.resume_improvements || []), ...(result.feedback || [])]
+      .map(sentenceCase)
+      .filter(Boolean);
+
+    return (lines.length > 0 ? lines : [
+      "Rewrite your strongest bullets around the job description.",
+      "Add evidence for the missing hard skills recruiters expect.",
+      "Move role-specific keywords higher in the resume.",
+    ]).slice(0, 3);
   }, [result]);
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[0.96fr_1.04fr]">
+    <section className="grid gap-6 lg:grid-cols-[0.94fr_1.06fr]">
       <input
         ref={resumeFileInputRef}
         type="file"
@@ -241,194 +477,178 @@ export default function ApplicationCopilotClient() {
         }}
       />
 
-      <section className="surface-panel rounded-[2rem] p-6 sm:p-7">
-        <p className="text-[11px] uppercase tracking-[0.18em] text-[#7a846e]">Input</p>
-        <h2 className="mt-3 text-2xl font-semibold text-[#203528]">Paste your resume and the job description</h2>
-        <p className="mt-3 text-sm leading-relaxed text-[#52604d]">
-          The matcher is temporarily free. Upload PDF, TXT, or image files, or paste the content directly.
+      <section className="editorial-panel rounded-[2rem] p-6 sm:p-7">
+        <p className="inline-flex rounded-full bg-black px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+          Input
+        </p>
+        <h2 className="mt-3 text-2xl font-semibold tracking-[-0.02em] text-[#111111]">
+          Upload your resume and paste the job description
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-black/66">
+          Enter your name once, then get your score and save it to your dashboard without signup.
         </p>
 
-        <div className="mt-5 space-y-4">
-          <input
-            value={role}
-            onChange={(event) => setRole(event.target.value)}
-            placeholder="Target role (optional)"
-            className={fieldClass}
-          />
+        <div className="mt-6 space-y-5">
+          <div className="rounded-[1.6rem] border border-black/8 bg-white/88 p-4">
+            <label className="mb-2 block text-sm font-semibold text-[#111111]">Your name</label>
+            <input
+              type="text"
+              value={candidateName}
+              onChange={(event) => setCandidateName(event.target.value)}
+              placeholder="Enter your name"
+              className={fieldClass}
+              autoComplete="name"
+            />
+            <p className="mt-2 text-xs text-black/52">We use this only to label your guest dashboard and saved score checks.</p>
+          </div>
 
-          <div className="space-y-2">
+          <div className="rounded-[1.6rem] border border-black/8 bg-white/88 p-4">
+            <label className="mb-2 block text-sm font-semibold text-[#111111]">Resume</label>
             <textarea
               value={resumeText}
               onChange={(event) => setResumeText(event.target.value)}
               placeholder="Paste your resume text here."
               className={textAreaClass}
             />
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => resumeFileInputRef.current?.click()}
                 disabled={resumeFileUploading || loading}
-                className="rounded-full border border-[#d8ccb9] bg-white px-4 py-2 text-sm font-semibold text-[#203528] transition hover:bg-[#f7efe3] disabled:opacity-60"
+                className="rounded-full border border-black bg-black px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1a1a1a] disabled:opacity-60"
               >
                 {resumeFileUploading ? "Extracting resume..." : "Upload resume"}
               </button>
-              {resumeUploadedFileName ? <span className="text-xs text-[#677463]">Loaded: {resumeUploadedFileName}</span> : null}
+              {resumeUploadedFileName ? <span className="text-xs text-black/52">Loaded: {resumeUploadedFileName}</span> : null}
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-[1.6rem] border border-black/8 bg-white/88 p-4">
+            <label className="mb-2 block text-sm font-semibold text-[#111111]">Job description</label>
             <textarea
               value={jdInput}
               onChange={(event) => setJdInput(event.target.value)}
               placeholder="Paste the job description here."
               className={textAreaClass}
             />
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => jdFileInputRef.current?.click()}
                 disabled={jdFileUploading || loading}
-                className="rounded-full border border-[#d8ccb9] bg-white px-4 py-2 text-sm font-semibold text-[#203528] transition hover:bg-[#f7efe3] disabled:opacity-60"
+                className="rounded-full border border-black bg-black px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1a1a1a] disabled:opacity-60"
               >
                 {jdFileUploading ? "Extracting JD..." : "Upload JD"}
               </button>
-              {jdUploadedFileName ? <span className="text-xs text-[#677463]">Loaded: {jdUploadedFileName}</span> : null}
+              {jdUploadedFileName ? <span className="text-xs text-black/52">Loaded: {jdUploadedFileName}</span> : null}
             </div>
           </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
+        <div className="mt-7">
           <button
             type="button"
             onClick={() => void handleRunMatcher()}
             disabled={!canRunMatcher}
-            className="rounded-full bg-[#355e46] px-6 py-3 text-sm font-semibold text-[#f8f4ec] shadow-[0_18px_28px_rgba(53,94,70,0.18)] transition hover:bg-[#2d503c] disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center rounded-full border border-black bg-black px-7 py-4 text-base font-semibold text-white shadow-[0_20px_34px_rgba(17,17,17,0.12)] transition hover:-translate-y-0.5 hover:bg-[#1a1a1a] disabled:opacity-60 sm:w-auto"
           >
-            {loading ? "Running matcher..." : "Run Resume Matcher"}
+            {loading ? "Checking your resume..." : "Check My Resume Score (Free)"}
           </button>
-          <p className="text-xs text-[#677463]">You will get a score, missing skills, and shortlist-focused suggestions.</p>
+          <p className="mt-3 text-sm font-medium text-black/58">Takes 30 seconds • No signup required</p>
+          <p className="mt-2 text-sm text-black/52">Your resume is private and not stored</p>
         </div>
 
-        {error ? <p className="mt-4 text-sm text-[#a04e34]">{error}</p> : null}
+        {error ? <p className="mt-4 text-sm text-[#b91c1c]">{error}</p> : null}
+        {!error && workspaceNote ? <p className="mt-4 text-sm text-black/62">{workspaceNote}</p> : null}
       </section>
 
-      <section className="surface-panel rounded-[2rem] p-6 sm:p-7">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-[#7a846e]">Output</p>
-            <h2 className="mt-3 text-2xl font-semibold text-[#203528]">Score and suggestions</h2>
-          </div>
-        </div>
+      <section className="editorial-panel rounded-[2rem] p-6 sm:p-7">
+        <p className="inline-flex rounded-full bg-black px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+          Result
+        </p>
+        <h2 className="mt-3 text-2xl font-semibold tracking-[-0.02em] text-[#111111]">See the decision first</h2>
+        <p className="mt-3 text-sm leading-relaxed text-black/66">
+          The first result answers the core question: likely rejected, borderline, or strong match.
+        </p>
 
         {loading ? (
-          <div className="mt-6 space-y-4">
-            <div className="rounded-[1.6rem] border border-[#ddd0ba] bg-[#fffaf3] p-5">
-              <div className="loading-bar h-4 w-24" />
-              <div className="loading-bar mt-4 h-12 w-36" />
-              <div className="loading-bar mt-4 h-4 w-full" />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {[0, 1, 2, 3].map((index) => (
-                <div key={index} className="rounded-[1.4rem] border border-[#ddd0ba] bg-[#fffaf3] p-4">
-                  <div className="loading-bar h-3 w-24" />
-                  <div className="loading-bar mt-4 h-8 w-20" />
-                </div>
-              ))}
-            </div>
-            <div className="rounded-[1.4rem] border border-[#ddd0ba] bg-[#fffaf3] p-4">
-              <div className="loading-bar h-3 w-28" />
-              <div className="mt-4 space-y-2">
-                <div className="loading-bar h-3" />
-                <div className="loading-bar h-3 w-[88%]" />
-                <div className="loading-bar h-3 w-[72%]" />
-              </div>
+          <div className="mt-6 rounded-[1.8rem] border border-black/10 bg-[linear-gradient(180deg,#ffffff_0%,#f7f7f4_100%)] p-6">
+            <div className="loading-bar h-4 w-28" />
+            <div className="loading-bar mt-5 h-16 w-40" />
+            <div className="loading-bar mt-5 h-10 w-44" />
+            <div className="mt-6 space-y-3">
+              <div className="loading-bar h-14" />
+              <div className="loading-bar h-14 w-[92%]" />
+              <div className="loading-bar h-14 w-[85%]" />
             </div>
           </div>
         ) : result ? (
-          <div className="mt-6 space-y-4">
-            <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
-              <div className="accent-panel rounded-[1.6rem] p-5">
-                <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Resume match</p>
-                <p className="mt-3 text-5xl font-semibold text-[#203528]">
-                  {Math.max(0, Math.min(100, Math.round(result.match_percentage || 0)))}%
-                </p>
+          <div className={`fade-up-card mt-6 rounded-[1.8rem] border ${statusTone.borderClass} ${statusTone.backgroundClass} p-6 shadow-[0_24px_48px_rgba(17,17,17,0.05)]`}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-[#111111]">Your Hiring Score</p>
+                <p className="mt-4 text-6xl font-semibold tracking-[-0.05em] text-[#111111] sm:text-7xl">{score}/100</p>
               </div>
 
-              <div className="rounded-[1.6rem] border border-[#ddd0ba] bg-[#fffaf3] p-5">
-                <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Summary</p>
-                <p className="mt-3 text-sm leading-relaxed text-[#52604d]">
-                  {result.jd_match?.alignment_summary || "Your score is ready along with the gaps and suggestions to improve the application."}
-                </p>
-              </div>
+              <span className={`inline-flex rounded-full border px-4 py-2 text-sm font-semibold ${statusTone.badgeClass}`}>
+                {statusTone.label}
+              </span>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {metricCards.map((metric) => (
-                <article key={metric.label} className="rounded-[1.4rem] border border-[#ddd0ba] bg-[#fffaf3] p-4">
-                  <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">{metric.label}</p>
-                  <p className="mt-3 text-2xl font-semibold text-[#203528]">{Math.max(0, Math.min(100, Math.round(metric.value || 0)))}%</p>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#ece2d2]">
-                    <div
-                      className="h-full rounded-full bg-[#355e46] transition-all duration-500"
-                      style={{ width: `${Math.max(0, Math.min(100, metric.value || 0))}%` }}
-                    />
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <article className="rounded-[1.6rem] border border-[#ddd0ba] bg-[#fffaf3] p-5">
-                <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Matched skills</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {(result.matched_skills || []).length > 0 ? (
-                    result.matched_skills.slice(0, 18).map((skill) => (
-                      <span key={`matched-${skill}`} className="rounded-full bg-[#e6efe8] px-3 py-1.5 text-xs font-medium text-[#274837]">
-                        {skill}
-                      </span>
-                    ))
-                  ) : (
-                    <p className="text-sm text-[#677463]">No matched skills were surfaced for this input.</p>
-                  )}
-                </div>
-              </article>
-
-              <article className="rounded-[1.6rem] border border-[#ddd0ba] bg-[#fffaf3] p-5">
-                <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Missing skills</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {(result.missing_skills || []).length > 0 ? (
-                    result.missing_skills.slice(0, 18).map((skill) => (
-                      <span key={`missing-${skill}`} className="rounded-full bg-[#f4e0d5] px-3 py-1.5 text-xs font-medium text-[#9b4f35]">
-                        {skill}
-                      </span>
-                    ))
-                  ) : (
-                    <p className="text-sm text-[#677463]">No major missing skills were surfaced for this input.</p>
-                  )}
-                </div>
-              </article>
-            </div>
-
-            <article className="rounded-[1.6rem] border border-[#ddd0ba] bg-[#fffaf3] p-5">
-              <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Suggestions</p>
+            <div className="mt-7">
+              <p className="text-xs uppercase tracking-[0.16em] text-black/54">Top Reasons</p>
               <ol className="mt-4 space-y-3">
-                {suggestions.length > 0 ? (
-                  suggestions.map((item, index) => (
-                    <li key={`suggestion-${index}`} className="rounded-[1.2rem] border border-[#eadfce] bg-white px-4 py-3 text-sm leading-relaxed text-[#203528]">
-                      <span className="mr-2 font-semibold text-[#355e46]">{index + 1}.</span>
-                      {item}
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-sm text-[#677463]">Suggestions will appear here after the matcher runs.</li>
-                )}
+                {topReasons.map((reason, index) => (
+                  <li
+                    key={reason}
+                    className="flex items-start gap-3 rounded-[1.15rem] border border-black/8 bg-white px-4 py-3 text-sm leading-relaxed text-[#111111]"
+                  >
+                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black text-[11px] font-semibold text-white">
+                      0{index + 1}
+                    </span>
+                    <span>{reason}</span>
+                  </li>
+                ))}
               </ol>
-            </article>
+            </div>
+
+            <div className="relative mt-6 overflow-hidden rounded-[1.5rem] border border-black/8 bg-[#f6f6f6] p-5">
+              <div className="space-y-3 blur-[6px] opacity-50 select-none">
+                {lockedPlanLines.map((line, index) => (
+                  <div key={`${line}-${index}`} className="rounded-[1rem] bg-white px-4 py-3 text-sm text-black/72">
+                    {line}
+                  </div>
+                ))}
+              </div>
+
+              <div className="absolute inset-0 bg-gradient-to-t from-[#f6f6f6] via-[#f6f6f6]/94 to-transparent" />
+              <div className="absolute inset-x-4 bottom-4 rounded-[1.15rem] border border-black/10 bg-white/96 px-4 py-3 shadow-[0_12px_24px_rgba(17,17,17,0.06)]">
+                <p className="text-sm font-semibold text-[#111111]">Open the full improvement plan in dashboard</p>
+                <p className="mt-1 text-xs text-black/52">Your score check is saved first, then you can continue from there.</p>
+              </div>
+            </div>
+
+            <p className="mt-5 text-sm font-medium text-black/64">
+              {workspaceNote || "This score check runs without signup. We only capture your name so your dashboard stays organized."}
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center rounded-full border border-black bg-black px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#1a1a1a]"
+              >
+                Open Dashboard
+              </Link>
+              <p className="text-xs text-black/52">
+                {savedTrackId
+                  ? `Saved as score check #${savedTrackId} in ${possessiveName(candidateName)} dashboard.`
+                  : `Saved under ${possessiveName(candidateName)} dashboard once the guest workspace is ready.`}
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="mt-6 rounded-[1.6rem] border border-[#ddd0ba] bg-[#fffaf3] p-5">
-            <p className="text-sm leading-relaxed text-[#52604d]">
-              Run the matcher to see the score, the missing skills, and the suggestions to improve this application.
+          <div className="mt-6 rounded-[1.8rem] border border-black/10 bg-[linear-gradient(180deg,#ffffff_0%,#f7f7f4_100%)] p-6">
+            <p className="text-sm leading-relaxed text-black/66">
+              Upload your resume and paste the job description to see whether this application looks likely to be rejected or shortlisted.
             </p>
           </div>
         )}

@@ -480,6 +480,12 @@ class GuestChatSessionRequest(BaseModel):
 
 class PublicAccessSessionRequest(BaseModel):
     guest_key: str | None = None
+    name: str | None = None
+
+
+class AuthProfileUpdateRequest(BaseModel):
+    name: str | None = None
+    auth_token: str | None = None
 
 
 class ChatMessageCreateRequest(BaseModel):
@@ -3097,6 +3103,22 @@ def normalize_guest_contact_name(value: str | None) -> str:
     return normalized[:80]
 
 
+def normalize_profile_name(value: str | None, *, empty_error: str = "Enter your name.") -> str:
+    normalized = re.sub(r"\s+", " ", safe_text(value)).strip()
+    if len(normalized) < 2:
+        raise HTTPException(status_code=400, detail=empty_error)
+    return normalized[:80]
+
+
+def normalize_optional_profile_name(value: str | None) -> str:
+    normalized = re.sub(r"\s+", " ", safe_text(value)).strip()
+    if not normalized:
+        return ""
+    if len(normalized) < 2:
+        raise HTTPException(status_code=400, detail="Enter your name.")
+    return normalized[:80]
+
+
 def normalize_guest_contact_email(value: str | None) -> str:
     normalized = normalize_email(safe_text(value))
     if not normalized or "@" not in normalized or " " in normalized:
@@ -3999,8 +4021,9 @@ def is_public_access_guest_user(user_row: sqlite3.Row | None) -> bool:
     return is_public_access_guest_email(str(user_row["email"]))
 
 
-def get_or_create_public_access_user(guest_key: str) -> sqlite3.Row:
+def get_or_create_public_access_user(guest_key: str, name: str | None = None) -> sqlite3.Row:
     email = public_access_email_for_key(guest_key)
+    provided_name = normalize_optional_profile_name(name)
     existing = fetch_user_by_email(email)
     if existing:
         with AUTH_DB_LOCK:
@@ -4009,13 +4032,14 @@ def get_or_create_public_access_user(guest_key: str) -> sqlite3.Row:
                 cursor = connection.cursor()
                 begin_write_transaction(cursor)
                 next_credits = max(int(existing["credits"] or 0), PUBLIC_ACCESS_GUEST_CREDITS)
+                next_name = provided_name or safe_text(existing["full_name"]) or "Guest Access"
                 cursor.execute(
                     """
                     UPDATE users
                     SET full_name = ?, plan_tier = ?, credits = ?, email_verified = 1
                     WHERE id = ?
                     """,
-                    ("Guest Access", PUBLIC_ACCESS_GUEST_PLAN, next_credits, int(existing["id"])),
+                    (next_name, PUBLIC_ACCESS_GUEST_PLAN, next_credits, int(existing["id"])),
                 )
                 connection.commit()
             except Exception:
@@ -4042,7 +4066,7 @@ def get_or_create_public_access_user(guest_key: str) -> sqlite3.Row:
                     VALUES (?, ?, ?, ?, ?, ?, ?, 1)
                     """,
                     (
-                        "Guest Access",
+                        provided_name or "Guest Access",
                         email,
                         password_hash,
                         password_salt,
@@ -8735,7 +8759,7 @@ def public_access_session(data: PublicAccessSessionRequest | None = None) -> dic
         raise HTTPException(status_code=403, detail="Public feature access is currently disabled.")
 
     guest_key = normalize_public_access_key(data.guest_key if data else None)
-    user = get_or_create_public_access_user(guest_key)
+    user = get_or_create_public_access_user(guest_key, data.name if data else None)
     auth_token = create_auth_token(
         int(user["id"]),
         str(user["email"]),
@@ -8754,6 +8778,41 @@ def public_access_session(data: PublicAccessSessionRequest | None = None) -> dic
     payload["token_expires_hours"] = PUBLIC_ACCESS_GUEST_TOKEN_TTL_HOURS
     payload["public_feature_access_enabled"] = True
     return payload
+
+
+@app.patch("/auth/profile")
+def auth_profile_update(data: AuthProfileUpdateRequest, request: Request) -> dict[str, Any]:
+    user = require_authenticated_user(request, data.auth_token)
+
+    if data.name is None:
+        return auth_response_payload(user)
+
+    name = normalize_profile_name(data.name)
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            cursor.execute("UPDATE users SET full_name = ? WHERE id = ?", (name, int(user["id"])))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    refreshed = fetch_user_by_id(int(user["id"]))
+    if not refreshed:
+        raise HTTPException(status_code=500, detail="Unable to refresh profile right now.")
+
+    log_analytics_event(
+        "auth",
+        "profile_name_updated",
+        user_id=int(refreshed["id"]),
+        meta={"guest_mode": is_public_access_guest_user(refreshed)},
+    )
+    return auth_response_payload(refreshed)
 
 
 @app.get("/feature-flags")
@@ -8785,6 +8844,7 @@ def dashboard_bootstrap(
     connection = auth_db_connection()
     try:
         reports = collect_analysis_reports_for_user(connection, user_id, safe_reports_limit)
+        job_tracks = fetch_application_job_tracks_for_user(connection, user_id, limit=12)
         roadmaps = fetch_goal_roadmaps_for_user(connection, user_id, limit=safe_roadmap_limit)
         roadmap = roadmaps[0] if roadmaps else None
         analysis_comparison = build_analysis_comparison_payload(connection, user_id)
@@ -8799,6 +8859,7 @@ def dashboard_bootstrap(
     return {
         "auth": auth_response_payload(user),
         "reports": reports,
+        "job_tracks": job_tracks,
         "roadmap": roadmap,
         "roadmaps": roadmaps,
         "analysis_comparison": analysis_comparison,
@@ -10475,21 +10536,9 @@ def application_copilot_job_tracks(request: Request, auth_token: str | None = No
     safe_limit = int(clamp_float(float(limit), 1.0, 120.0))
     connection = auth_db_connection()
     try:
-        rows = connection.execute(
-            """
-            SELECT id, user_id, role, industry, company, status, match_percentage,
-                   matched_skills_json, missing_skills_json, feedback_json, next_steps_json,
-                   payload_json, created_at, updated_at
-            FROM application_job_tracks
-            WHERE user_id = ?
-            ORDER BY updated_at DESC, id DESC
-            LIMIT ?
-            """,
-            (int(user["id"]), safe_limit),
-        ).fetchall()
+        tracks = fetch_application_job_tracks_for_user(connection, int(user["id"]), safe_limit)
     finally:
         connection.close()
-    tracks = [serialize_application_job_track_row(row) for row in rows]
     return {
         "job_tracks": tracks,
         "count": len(tracks),
@@ -11515,6 +11564,23 @@ def serialize_application_job_track_row(row: Any) -> dict[str, Any]:
         "updated_at": safe_text((row.get("updated_at") if isinstance(row, dict) else row["updated_at"])),
         "copilot_payload": payload if isinstance(payload, dict) else {},
     }
+
+
+def fetch_application_job_tracks_for_user(connection: AuthDBConnection, user_id: int, limit: int) -> list[dict[str, Any]]:
+    safe_limit = int(clamp_float(float(limit), 1.0, 120.0))
+    rows = connection.execute(
+        """
+        SELECT id, user_id, role, industry, company, status, match_percentage,
+               matched_skills_json, missing_skills_json, feedback_json, next_steps_json,
+               payload_json, created_at, updated_at
+        FROM application_job_tracks
+        WHERE user_id = ?
+        ORDER BY updated_at DESC, id DESC
+        LIMIT ?
+        """,
+        (int(user_id), safe_limit),
+    ).fetchall()
+    return [serialize_application_job_track_row(row) for row in rows]
 
 
 def serialize_analysis_report_row(row: Any) -> dict[str, Any]:

@@ -4,6 +4,7 @@ import AppChrome from "./components/app-chrome";
 import AnalyticsBootstrap from "./components/analytics-bootstrap";
 import AnalyticsPageviewTracker from "./components/analytics-pageview";
 import MotionProvider from "./components/motion-provider";
+import PublicAccessBootstrap from "./components/public-access-bootstrap";
 import "./globals.css";
 
 const GOOGLE_SITE_VERIFICATION = process.env.GOOGLE_SITE_VERIFICATION?.trim();
@@ -95,6 +96,7 @@ export default function RootLayout({
       <body className="antialiased">
         <AnalyticsBootstrap />
         <AnalyticsPageviewTracker />
+        <PublicAccessBootstrap />
         <MotionProvider>
           <AppChrome>{children}</AppChrome>
         </MotionProvider>

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import { addAuthChangeListener, resolveAuthSession } from "@/lib/public-access";
+import { addAuthChangeListener, getStoredPublicAccessName, resolveAuthSession } from "@/lib/public-access";
 import { addUtmParams } from "@/lib/utm";
 import TrackedLink from "../components/tracked-link";
 
@@ -19,10 +19,12 @@ type CreditWallet = {
 
 type AuthPayload = {
   user?: {
+    name?: string;
     email?: string;
     created_at?: string;
   };
   wallet?: CreditWallet;
+  guest_mode?: boolean;
 };
 
 type FeatureFlags = {
@@ -39,6 +41,18 @@ type AnalysisReportSummary = {
   overall_score: number | null;
   shortlist_prediction: string;
   created_at: string;
+};
+
+type ApplicationJobTrack = {
+  id: number;
+  role: string;
+  industry: string;
+  company?: string;
+  status: string;
+  match_percentage: number;
+  missing_skills?: string[];
+  feedback?: string[];
+  updated_at: string;
 };
 
 type GoalRoadmapMilestone = {
@@ -138,6 +152,7 @@ type RoleBenchmark = {
 type DashboardBootstrapPayload = {
   auth?: AuthPayload;
   reports?: AnalysisReportSummary[];
+  job_tracks?: ApplicationJobTrack[];
   roadmap?: GoalRoadmap | null;
   roadmaps?: GoalRoadmap[];
   analysis_comparison?: AnalysisComparison;
@@ -185,12 +200,28 @@ const downloadFilename = (response: Response, fallback: string) => {
   return match?.[1] ? decodeURIComponent(match[1].replace(/\"/g, "")) : fallback;
 };
 
+const formatPossessiveName = (value: string) => {
+  const normalized = value.trim();
+  if (!normalized) return "Your";
+  return normalized.endsWith("s") ? `${normalized}'` : `${normalized}'s`;
+};
+
+const trackStatusTone = (status: string) => {
+  const normalized = (status || "").toLowerCase();
+  if (normalized === "rejected") return "border-rose-200/38 bg-rose-200/12 text-rose-100";
+  if (normalized === "applied" || normalized === "offer" || normalized === "interview") {
+    return "border-emerald-200/38 bg-emerald-200/14 text-emerald-100";
+  }
+  return "border-amber-200/38 bg-amber-200/12 text-amber-100";
+};
+
 export default function DashboardPage() {
   const [token, setToken] = useState("");
-  const [email, setEmail] = useState("");
-  const [wallet, setWallet] = useState<CreditWallet | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [guestMode, setGuestMode] = useState(false);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({});
   const [reports, setReports] = useState<AnalysisReportSummary[]>([]);
+  const [jobTracks, setJobTracks] = useState<ApplicationJobTrack[]>([]);
   const [reportsError, setReportsError] = useState("");
   const [analysisComparison, setAnalysisComparison] = useState<AnalysisComparison | null>(null);
   const [weeklyCoach, setWeeklyCoach] = useState<WeeklyExecutionCoach | null>(null);
@@ -207,26 +238,23 @@ export default function DashboardPage() {
   const [roadmapCelebration, setRoadmapCelebration] = useState<RoadmapCelebration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const dashboardRunAnalysisHref = addUtmParams("/upload", {
+  const dashboardRunAnalysisHref = addUtmParams("/application-copilot?entry=score-check", {
     source: "dashboard",
     medium: "internal",
     campaign: "dashboard",
   });
-  const dashboardPricingHref = addUtmParams("/pricing", {
+  const dashboardApplicationCopilotHref = addUtmParams("/application-copilot?entry=score-check", {
     source: "dashboard",
     medium: "internal",
     campaign: "dashboard",
   });
-  const dashboardStudioHref = addUtmParams("/studio", {
-    source: "dashboard",
-    medium: "internal",
-    campaign: "dashboard",
-  });
-  const dashboardApplicationCopilotHref = addUtmParams("/application-copilot", {
-    source: "dashboard",
-    medium: "internal",
-    campaign: "dashboard",
-  });
+
+  useEffect(() => {
+    const storedName = getStoredPublicAccessName().trim();
+    if (storedName) {
+      setDisplayName((current) => current || storedName);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -242,7 +270,7 @@ export default function DashboardPage() {
       const authToken = session.token || "";
       if (!authToken) {
         setLoading(false);
-        setError("Login required to open dashboard.");
+        setError("Unable to start your guest dashboard right now.");
         return;
       }
       setToken(authToken);
@@ -252,20 +280,22 @@ export default function DashboardPage() {
             Authorization: `Bearer ${authToken}`,
           },
         });
-        if (!response.ok) throw new Error("Session expired. Please login again.");
+        if (!response.ok) throw new Error("Unable to load your dashboard right now.");
         const payload = (await response.json()) as DashboardBootstrapPayload;
         const authPayload = payload.auth || {};
         const reportsPayload = Array.isArray(payload.reports) ? payload.reports : [];
+        const jobTrackPayload = Array.isArray(payload.job_tracks) ? payload.job_tracks : [];
         const roadmapTracks = Array.isArray(payload.roadmaps)
           ? payload.roadmaps
           : payload.roadmap
             ? [payload.roadmap]
             : [];
 
-        setEmail(authPayload.user?.email || "");
-        setWallet(authPayload.wallet || null);
+        setDisplayName(authPayload.user?.name || getStoredPublicAccessName() || "Guest");
+        setGuestMode(Boolean(authPayload.guest_mode));
         setFeatureFlags(payload.feature_flags || {});
         setReports(reportsPayload);
+        setJobTracks(jobTrackPayload);
         setReportsError("");
         setRoadmaps(roadmapTracks);
         setSelectedRoadmapId(roadmapTracks[0]?.id ?? null);
@@ -303,7 +333,7 @@ export default function DashboardPage() {
 
   const handleDownloadReport = async (reportId: number) => {
     if (!token) {
-      setError("Login required to download reports.");
+      setError("Unable to download reports until your guest dashboard is ready.");
       return;
     }
     setReportsError("");
@@ -336,7 +366,7 @@ export default function DashboardPage() {
 
   const handleToggleRoadmapMilestone = async (milestoneId: string, completed: boolean) => {
     if (!token) {
-      setError("Login required to update roadmap.");
+      setError("Unable to update roadmap until your guest dashboard is ready.");
       return;
     }
     const activeRoadmap = roadmaps.find((item) => item.id === selectedRoadmapId) || roadmaps[0];
@@ -405,7 +435,7 @@ export default function DashboardPage() {
 
   const handleSaveMilestoneEvidence = async (milestoneId: string) => {
     if (!token) {
-      setError("Login required to update roadmap evidence.");
+      setError("Unable to update roadmap evidence until your guest dashboard is ready.");
       return;
     }
     const activeRoadmap = roadmaps.find((item) => item.id === selectedRoadmapId) || roadmaps[0];
@@ -508,7 +538,6 @@ export default function DashboardPage() {
     const sign = normalized > 0 ? "+" : "";
     return `${sign}${normalized}${suffix}`;
   };
-  const estimatedRunsLeft = wallet ? Math.floor(wallet.credits / Math.max(1, wallet.pricing.analyze)) : 0;
   const roadmapProgress = activeRoadmap?.progress_percent ?? 0;
   const premiumNudgeText = roleBenchmark
     ? `Top ${Math.max(1, 100 - roleBenchmark.percentile)}% gap left to dominate your bracket.`
@@ -596,10 +625,10 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
       <section className="mx-auto max-w-[1320px]">
-        <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/72">Post-Login Experience</p>
-        <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">HireScore Growth Cockpit</h1>
+        <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/72">{guestMode ? "Guest Dashboard" : "Dashboard"}</p>
+        <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">{formatPossessiveName(displayName)} dashboard</h1>
         <p className="mt-2 max-w-3xl text-sm text-cyan-50/72">
-          Built to persuade action: clear momentum, clear execution, clear ROI.
+          No signup required. Your score checks, next steps, and saved progress live here under your name.
         </p>
 
         {loading && <p className="mt-5 text-sm text-cyan-100/76">Loading your dashboard...</p>}
@@ -610,10 +639,10 @@ export default function DashboardPage() {
             <TrackedLink
               href={dashboardRunAnalysisHref}
               eventName="cta_check_my_score_click"
-              eventParams={{ cta_location: "dashboard_error", cta_label: "Go To Analyze + Login" }}
+              eventParams={{ cta_location: "dashboard_error", cta_label: "Go To Score Checker" }}
               className="mt-3 inline-flex rounded-xl border border-cyan-100/35 bg-cyan-200/16 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/24"
             >
-              Go To Analyze + Login
+              Go To Score Checker
             </TrackedLink>
           </div>
         )}
@@ -622,29 +651,31 @@ export default function DashboardPage() {
           <>
             <div className="mt-6 grid gap-4 xl:grid-cols-12">
               <section className="xl:col-span-8 rounded-[2rem] border border-cyan-100/26 bg-[linear-gradient(130deg,rgba(8,33,58,0.95)_0%,rgba(9,25,44,0.94)_56%,rgba(40,29,16,0.82)_100%)] p-5 shadow-[0_28px_65px_rgba(2,8,22,0.45)] sm:p-7">
-                <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Improve your profile to get more interview calls.</h2>
-                <p className="mt-1 break-all text-xs uppercase tracking-[0.12em] text-cyan-100/74">Profile: {email || "User"}</p>
+                <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Keep improving before you apply.</h2>
+                <p className="mt-1 break-all text-xs uppercase tracking-[0.12em] text-cyan-100/74">
+                  Workspace: {displayName || "Guest"} {guestMode ? "• guest access" : ""}
+                </p>
                 <p className="mt-2 text-sm text-cyan-50/74">
                   {nextMilestone
                     ? `Next highest-impact move: ${nextMilestone.title}`
-                    : "Start a fresh analysis to unlock your next growth track."}
+                    : "Run a fresh score check to keep this workspace up to date."}
                 </p>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
                   <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Wallet</p>
-                    <p className="mt-1 text-3xl font-semibold text-emerald-100">{wallet?.credits ?? 0}</p>
-                    <p className="text-xs text-cyan-100/64">Credits available</p>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Score Checks</p>
+                    <p className="mt-1 text-3xl font-semibold text-emerald-100">{jobTracks.length}</p>
+                    <p className="text-xs text-cyan-100/64">Saved under your name</p>
+                  </article>
+                  <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Reports</p>
+                    <p className="mt-1 text-3xl font-semibold text-cyan-50">{reports.length}</p>
+                    <p className="text-xs text-cyan-100/64">Saved downloads</p>
                   </article>
                   <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
                     <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Roadmap</p>
                     <p className="mt-1 text-3xl font-semibold text-cyan-50">{roadmapProgress}%</p>
                     <p className="text-xs text-cyan-100/64">Execution complete</p>
-                  </article>
-                  <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Runs Left</p>
-                    <p className="mt-1 text-3xl font-semibold text-cyan-50">{estimatedRunsLeft}</p>
-                    <p className="text-xs text-cyan-100/64">At {wallet?.pricing.analyze ?? 0} credits/run</p>
                   </article>
                 </div>
 
@@ -665,39 +696,33 @@ export default function DashboardPage() {
                     )}
                   </article>
                   <article className="rounded-2xl border border-amber-100/22 bg-amber-100/10 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-amber-100/80">Upgrade Signal</p>
-                    <p className="mt-1 text-sm font-semibold text-amber-50">More runs = sharper positioning = higher shortlist odds.</p>
-                    <p className="mt-1 text-xs text-amber-100/74">{premiumNudgeText}</p>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-amber-100/80">Guest Access</p>
+                    <p className="mt-1 text-sm font-semibold text-amber-50">No account wall. Just keep checking and improving.</p>
+                    <p className="mt-1 text-xs text-amber-100/74">
+                      {guestMode ? "Your score checks are being saved in guest mode." : premiumNudgeText}
+                    </p>
                   </article>
                 </div>
               </section>
 
               <aside className="xl:col-span-4 rounded-[2rem] border border-amber-100/28 bg-[linear-gradient(160deg,rgba(51,35,12,0.72),rgba(16,23,36,0.96))] p-5 shadow-[0_28px_65px_rgba(2,8,22,0.45)] sm:p-6">
-                <p className="text-xs uppercase tracking-[0.14em] text-amber-100/76">Premium Advantage</p>
-                <h3 className="mt-2 text-2xl font-semibold text-amber-50">Increase Interview Velocity</h3>
+                <p className="text-xs uppercase tracking-[0.14em] text-amber-100/76">Guest Workspace</p>
+                <h3 className="mt-2 text-2xl font-semibold text-amber-50">Everything stays under {displayName || "your name"}</h3>
                 <p className="mt-2 text-sm text-amber-50/82">
-                  Purchase credits to run focused analyses weekly, keep roadmap momentum, and improve callback conversion faster.
+                  Run a score check, come back later, and keep your saved results in one place without signing up.
                 </p>
                 <div className="mt-4 space-y-2 rounded-2xl border border-amber-100/24 bg-[#2b2516]/45 p-4 text-sm text-amber-50/86">
-                  <p>Analyze cost: {wallet?.pricing.analyze ?? 0} credits</p>
-                  <p>Resume AI build: {wallet?.pricing.ai_resume_generation ?? 0} credits</p>
-                  <p>ATS PDF download: {wallet?.pricing.template_pdf_download ?? 0} credits</p>
+                  <p>Name on workspace: {displayName || "Guest"}</p>
+                  <p>Saved score checks: {jobTracks.length}</p>
+                  <p>Saved reports: {reports.length}</p>
                 </div>
-                <TrackedLink
-                  href={dashboardPricingHref}
-                  eventName="cta_view_premium_plans_click"
-                  eventParams={{ cta_location: "dashboard_sidebar", cta_label: "Upgrade Credits Now" }}
-                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-amber-100/42 bg-amber-200/22 px-4 py-3 text-sm font-semibold text-amber-50 transition hover:bg-amber-200/30"
-                >
-                  Upgrade Credits Now
-                </TrackedLink>
                 <TrackedLink
                   href={dashboardRunAnalysisHref}
                   eventName="cta_check_my_score_click"
-                  eventParams={{ cta_location: "dashboard_sidebar", cta_label: "Run Analysis First" }}
-                  className="mt-2 inline-flex w-full items-center justify-center rounded-xl border border-cyan-100/32 bg-cyan-100/10 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
+                  eventParams={{ cta_location: "dashboard_sidebar", cta_label: "Run Another Score Check" }}
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-cyan-100/32 bg-cyan-100/10 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
                 >
-                  Run Analysis First
+                  Run Another Score Check
                 </TrackedLink>
               </aside>
             </div>
@@ -706,29 +731,29 @@ export default function DashboardPage() {
               <TrackedLink
                 href={dashboardRunAnalysisHref}
                 eventName="cta_check_my_score_click"
-                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Run New Analysis" }}
+                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Run New Score Check" }}
                 className="rounded-2xl border border-cyan-100/28 bg-[#0a223d]/80 px-4 py-4 text-left transition hover:bg-[#0e2b4c]"
               >
-                <p className="text-sm font-semibold text-cyan-50">Run New Analysis</p>
-                <p className="mt-1 text-xs text-cyan-100/72">Get fresh shortlist and callback intelligence.</p>
+                <p className="text-sm font-semibold text-cyan-50">Run New Score Check</p>
+                <p className="mt-1 text-xs text-cyan-100/72">Get a fresh shortlist decision and updated rejection reasons.</p>
               </TrackedLink>
               <TrackedLink
-                href={dashboardStudioHref}
-                eventName="cta_studio_open"
-                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Resume Studio" }}
+                href="#recent-score-checks"
+                eventName="cta_dashboard_recent_checks_open"
+                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Saved Score Checks" }}
                 className="rounded-2xl border border-cyan-100/28 bg-[#0a223d]/80 px-4 py-4 text-left transition hover:bg-[#0e2b4c]"
               >
-                <p className="text-sm font-semibold text-cyan-50">Resume Studio</p>
-                <p className="mt-1 text-xs text-cyan-100/72">Apply fixes with guided resume writing workflows.</p>
+                <p className="text-sm font-semibold text-cyan-50">Saved Score Checks</p>
+                <p className="mt-1 text-xs text-cyan-100/72">Jump to the score history already saved in this dashboard.</p>
               </TrackedLink>
               <TrackedLink
                 href={dashboardApplicationCopilotHref}
                 eventName="cta_application_copilot_open"
-                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Application Copilot" }}
+                eventParams={{ cta_location: "dashboard_tiles", cta_label: "Resume Match" }}
                 className="rounded-2xl border border-cyan-100/28 bg-[#0a223d]/80 px-4 py-4 text-left transition hover:bg-[#0e2b4c]"
               >
-                <p className="text-sm font-semibold text-cyan-50">Application Copilot</p>
-                <p className="mt-1 text-xs text-cyan-100/72">Run JD match, resume fixes, and interview prep in one flow.</p>
+                <p className="text-sm font-semibold text-cyan-50">Resume Match</p>
+                <p className="mt-1 text-xs text-cyan-100/72">Open the score checker and improve the same resume against a job description.</p>
               </TrackedLink>
               <button
                 type="button"
@@ -755,6 +780,66 @@ export default function DashboardPage() {
                 <p className="mt-1 text-xs text-cyan-100/72">Download past analysis reports instantly.</p>
               </button>
             </div>
+
+            <section
+              id="recent-score-checks"
+              className="mt-6 scroll-mt-24 rounded-[2rem] border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(8,29,55,0.84),rgba(5,18,36,0.82))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Recent Score Checks</p>
+                  <h2 className="mt-2 text-xl font-semibold text-cyan-50">Saved under {displayName || "your name"}</h2>
+                  <p className="mt-1 text-sm text-cyan-50/70">Every matcher run shows up here without asking for signup.</p>
+                </div>
+                <TrackedLink
+                  href={dashboardApplicationCopilotHref}
+                  eventName="cta_application_copilot_open"
+                  eventParams={{ cta_location: "dashboard_recent_score_checks", cta_label: "Run Score Check" }}
+                  className="inline-flex rounded-xl border border-cyan-100/32 bg-cyan-100/10 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
+                >
+                  Run Score Check
+                </TrackedLink>
+              </div>
+
+              {!jobTracks.length ? (
+                <p className="mt-4 text-sm text-cyan-50/70">No score checks saved yet. Run one to start your dashboard history.</p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {jobTracks.slice(0, 6).map((track) => (
+                    <article
+                      key={track.id}
+                      className="flex flex-col gap-3 rounded-xl border border-cyan-100/16 bg-[#041634]/55 p-4 sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-cyan-50">{track.role || "Target role"}</p>
+                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${trackStatusTone(track.status)}`}>
+                            {track.status || "saved"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-cyan-50/72">
+                          {track.industry || "General"} • Score {track.match_percentage}/100 • Updated {formatReportDate(track.updated_at)}
+                        </p>
+                        <p className="mt-2 text-xs text-cyan-50/70">
+                          {(track.feedback && track.feedback[0]) ||
+                            (track.missing_skills && track.missing_skills.length
+                              ? `Missing skills: ${track.missing_skills.slice(0, 2).join(", ")}`
+                              : "Open the matcher again to improve this application.")}
+                        </p>
+                      </div>
+                      <TrackedLink
+                        href={dashboardApplicationCopilotHref}
+                        eventName="cta_application_copilot_open"
+                        eventParams={{ cta_location: "dashboard_recent_score_checks", cta_label: "Improve Resume" }}
+                        className="inline-flex rounded-xl border border-cyan-100/32 bg-cyan-100/10 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/18"
+                      >
+                        Improve Resume
+                      </TrackedLink>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
 
             <section className="mt-6 grid gap-4 lg:grid-cols-3">
               <article className={cardClass}>
@@ -1079,10 +1164,10 @@ export default function DashboardPage() {
           <section className="mt-6 rounded-[2rem] border border-amber-100/28 bg-[linear-gradient(145deg,rgba(45,33,14,0.78),rgba(13,20,33,0.92))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]">
             <p className="text-xs uppercase tracking-[0.14em] text-amber-100/76">Saved Analysis Reports</p>
             <h2 className="mt-2 text-xl font-semibold text-amber-50">Offer Intelligence Archive</h2>
-            <p className="mt-1 text-sm text-cyan-50/70">Each analysis and completed interview simulator report is auto-saved to your account dashboard.</p>
+            <p className="mt-1 text-sm text-cyan-50/70">Completed analysis reports are saved here for easy download later.</p>
             {reportsError && <p className="mt-3 text-xs text-amber-100">{reportsError}</p>}
             {!reports.length ? (
-              <p className="mt-4 text-sm text-cyan-50/70">No reports saved yet. Run analysis or complete an interview simulation while signed in to see reports here.</p>
+              <p className="mt-4 text-sm text-cyan-50/70">No reports saved yet. Run more score checks to build your dashboard history.</p>
             ) : (
               <div className="mt-4 space-y-3">
                 {reports.map((report) => (
