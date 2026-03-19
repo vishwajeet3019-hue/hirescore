@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchJsonWithWakeAndRetry, warmBackend } from "@/lib/backend-warm";
-import { getStoredPublicAccessName, resolveAuthSession, setStoredPublicAccessName } from "@/lib/public-access";
+import { resolveAuthSession } from "@/lib/public-access";
 
 type MatcherPayload = {
   role: string;
@@ -71,20 +71,7 @@ const sentenceCase = (value: string) => {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 };
 
-const normalizeCandidateName = (value: string) => value.replace(/\s+/g, " ").trim();
-
-const isPlaceholderGuestName = (value: string) => {
-  const normalized = normalizeCandidateName(value).toLowerCase();
-  return !normalized || normalized === "guest access";
-};
-
 const statusForSavedTrack = (score: number) => (score < 70 ? "rejected" : "saved");
-
-const possessiveName = (value: string) => {
-  const normalized = normalizeCandidateName(value);
-  if (!normalized) return "your";
-  return normalized.endsWith("s") ? `${normalized}'` : `${normalized}'s`;
-};
 
 const statusToneForScore = (score: number) => {
   if (score < 70) {
@@ -115,7 +102,6 @@ const statusToneForScore = (score: number) => {
 };
 
 export default function ApplicationCopilotClient() {
-  const [candidateName, setCandidateName] = useState("");
   const [resumeText, setResumeText] = useState("");
   const [jdInput, setJdInput] = useState("");
   const [resumeUploadedFileName, setResumeUploadedFileName] = useState("");
@@ -142,21 +128,10 @@ export default function ApplicationCopilotClient() {
     if (token) {
       setGuestSessionToken(token);
     }
-
-    const resolvedName = normalizeCandidateName(session.payload?.user?.name || "");
-    if (resolvedName && !isPlaceholderGuestName(resolvedName)) {
-      setCandidateName((current) => current || resolvedName);
-      setStoredPublicAccessName(resolvedName);
-    }
-
     return token;
   }, []);
 
   useEffect(() => {
-    const storedName = normalizeCandidateName(getStoredPublicAccessName());
-    if (storedName) {
-      setCandidateName(storedName);
-    }
     void bootstrapGuestWorkspace();
   }, [bootstrapGuestWorkspace]);
 
@@ -170,39 +145,6 @@ export default function ApplicationCopilotClient() {
     }
     return `Request failed (${response.status})`;
   }, []);
-
-  const syncGuestProfileName = useCallback(
-    async (authToken: string, name: string) => {
-      const normalizedName = normalizeCandidateName(name);
-      if (!authToken || normalizedName.length < 2) return normalizedName;
-
-      const payload = await fetchJsonWithWakeAndRetry<AuthSessionPayload>({
-        apiUrl,
-        path: "/auth/profile",
-        init: {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({
-            name: normalizedName,
-          }),
-        },
-        timeoutMs: REQUEST_TIMEOUT_MS,
-        parseError: parseApiError,
-        abortErrorMessage: "Saving your name is taking longer than expected. Please try again.",
-      });
-
-      const resolvedName = normalizeCandidateName(payload.user?.name || normalizedName);
-      if (resolvedName) {
-        setStoredPublicAccessName(resolvedName);
-        setCandidateName(resolvedName);
-      }
-      return resolvedName;
-    },
-    [parseApiError],
-  );
 
   const saveScoreCheckToDashboard = useCallback(
     async (authToken: string, payload: MatcherPayload) => {
@@ -302,11 +244,6 @@ export default function ApplicationCopilotClient() {
   };
 
   const handleRunMatcher = async () => {
-    const normalizedName = normalizeCandidateName(candidateName);
-    if (normalizedName.length < 2) {
-      setError("Enter your name so we can save this score to your dashboard.");
-      return;
-    }
     if (resumeText.trim().length < 24) {
       setError("Resume content is required. Paste the text or upload a file.");
       return;
@@ -323,19 +260,12 @@ export default function ApplicationCopilotClient() {
     setSavedTrackId(null);
 
     try {
-      setStoredPublicAccessName(normalizedName);
-
       let authToken = guestSessionToken.trim();
       if (!authToken) {
         authToken = await bootstrapGuestWorkspace();
       }
       if (authToken) {
         setGuestSessionToken(authToken);
-        try {
-          await syncGuestProfileName(authToken, normalizedName);
-        } catch {
-          setWorkspaceNote("Score ready. We could not save your name yet, but the guest score check will still run.");
-        }
       }
 
       const payload = await fetchJsonWithWakeAndRetry<MatcherPayload>({
@@ -371,12 +301,12 @@ export default function ApplicationCopilotClient() {
         try {
           const trackId = await saveScoreCheckToDashboard(authToken, nextResult);
           setSavedTrackId(trackId);
-          setWorkspaceNote(`Saved to ${possessiveName(normalizedName)} dashboard. No signup needed.`);
+          setWorkspaceNote("Saved to your dashboard. No signup needed.");
         } catch {
-          setWorkspaceNote(`Score ready. We could not save this run to ${possessiveName(normalizedName)} dashboard just yet.`);
+          setWorkspaceNote("Score ready. We could not save this run to your dashboard just yet.");
         }
       } else {
-        setWorkspaceNote(`Score ready. We'll connect it to ${possessiveName(normalizedName)} dashboard as soon as the guest workspace is available.`);
+        setWorkspaceNote("Score ready. We'll connect it to your dashboard as soon as the guest workspace is available.");
       }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to run the score check right now.");
@@ -387,7 +317,6 @@ export default function ApplicationCopilotClient() {
   };
 
   const canRunMatcher =
-    normalizeCandidateName(candidateName).length >= 2 &&
     resumeText.trim().length >= 24 &&
     jdInput.trim().length >= 24 &&
     !resumeFileUploading &&
@@ -485,23 +414,10 @@ export default function ApplicationCopilotClient() {
           Upload your resume and paste the job description
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-black/66">
-          Enter your name once, then get your score and save it to your dashboard without signup.
+          Get your score first, then continue from your dashboard without signup.
         </p>
 
         <div className="mt-6 space-y-5">
-          <div className="rounded-[1.6rem] border border-black/8 bg-white/88 p-4">
-            <label className="mb-2 block text-sm font-semibold text-[#111111]">Your name</label>
-            <input
-              type="text"
-              value={candidateName}
-              onChange={(event) => setCandidateName(event.target.value)}
-              placeholder="Enter your name"
-              className={fieldClass}
-              autoComplete="name"
-            />
-            <p className="mt-2 text-xs text-black/52">We use this only to label your guest dashboard and saved score checks.</p>
-          </div>
-
           <div className="rounded-[1.6rem] border border-black/8 bg-white/88 p-4">
             <label className="mb-2 block text-sm font-semibold text-[#111111]">Resume</label>
             <textarea
@@ -629,7 +545,7 @@ export default function ApplicationCopilotClient() {
             </div>
 
             <p className="mt-5 text-sm font-medium text-black/64">
-              {workspaceNote || "This score check runs without signup. We only capture your name so your dashboard stays organized."}
+              {workspaceNote || "This score check runs without signup. Your guest dashboard is ready automatically."}
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <Link
@@ -640,8 +556,8 @@ export default function ApplicationCopilotClient() {
               </Link>
               <p className="text-xs text-black/52">
                 {savedTrackId
-                  ? `Saved as score check #${savedTrackId} in ${possessiveName(candidateName)} dashboard.`
-                  : `Saved under ${possessiveName(candidateName)} dashboard once the guest workspace is ready.`}
+                  ? `Saved as score check #${savedTrackId} in your dashboard.`
+                  : "Saved to your dashboard once the guest workspace is ready."}
               </p>
             </div>
           </div>

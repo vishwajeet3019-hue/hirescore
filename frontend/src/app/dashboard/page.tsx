@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import { addAuthChangeListener, getStoredPublicAccessName, resolveAuthSession } from "@/lib/public-access";
+import { addAuthChangeListener, resolveAuthSession } from "@/lib/public-access";
 import { addUtmParams } from "@/lib/utm";
 import TrackedLink from "../components/tracked-link";
 
@@ -200,12 +200,6 @@ const downloadFilename = (response: Response, fallback: string) => {
   return match?.[1] ? decodeURIComponent(match[1].replace(/\"/g, "")) : fallback;
 };
 
-const formatPossessiveName = (value: string) => {
-  const normalized = value.trim();
-  if (!normalized) return "Your";
-  return normalized.endsWith("s") ? `${normalized}'` : `${normalized}'s`;
-};
-
 const trackStatusTone = (status: string) => {
   const normalized = (status || "").toLowerCase();
   if (normalized === "rejected") return "border-rose-200/38 bg-rose-200/12 text-rose-100";
@@ -217,7 +211,6 @@ const trackStatusTone = (status: string) => {
 
 export default function DashboardPage() {
   const [token, setToken] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [guestMode, setGuestMode] = useState(false);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({});
   const [reports, setReports] = useState<AnalysisReportSummary[]>([]);
@@ -248,13 +241,6 @@ export default function DashboardPage() {
     medium: "internal",
     campaign: "dashboard",
   });
-
-  useEffect(() => {
-    const storedName = getStoredPublicAccessName().trim();
-    if (storedName) {
-      setDisplayName((current) => current || storedName);
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -291,7 +277,6 @@ export default function DashboardPage() {
             ? [payload.roadmap]
             : [];
 
-        setDisplayName(authPayload.user?.name || getStoredPublicAccessName() || "Guest");
         setGuestMode(Boolean(authPayload.guest_mode));
         setFeatureFlags(payload.feature_flags || {});
         setReports(reportsPayload);
@@ -626,9 +611,9 @@ export default function DashboardPage() {
       </AnimatePresence>
       <section className="mx-auto max-w-[1320px]">
         <p className="text-xs uppercase tracking-[0.2em] text-cyan-100/72">{guestMode ? "Guest Dashboard" : "Dashboard"}</p>
-        <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">{formatPossessiveName(displayName)} dashboard</h1>
+        <h1 className="mt-2 text-3xl font-semibold text-cyan-50 sm:text-5xl">Your dashboard</h1>
         <p className="mt-2 max-w-3xl text-sm text-cyan-50/72">
-          No signup required. Your score checks, next steps, and saved progress live here under your name.
+          No signup required. Your score checks, next steps, and saved progress live here automatically.
         </p>
 
         {loading && <p className="mt-5 text-sm text-cyan-100/76">Loading your dashboard...</p>}
@@ -653,7 +638,7 @@ export default function DashboardPage() {
               <section className="xl:col-span-8 rounded-[2rem] border border-cyan-100/26 bg-[linear-gradient(130deg,rgba(8,33,58,0.95)_0%,rgba(9,25,44,0.94)_56%,rgba(40,29,16,0.82)_100%)] p-5 shadow-[0_28px_65px_rgba(2,8,22,0.45)] sm:p-7">
                 <h2 className="mt-3 text-2xl font-semibold text-cyan-50 sm:text-4xl">Keep improving before you apply.</h2>
                 <p className="mt-1 break-all text-xs uppercase tracking-[0.12em] text-cyan-100/74">
-                  Workspace: {displayName || "Guest"} {guestMode ? "• guest access" : ""}
+                  Workspace: {guestMode ? "Guest access" : "Active"} workspace
                 </p>
                 <p className="mt-2 text-sm text-cyan-50/74">
                   {nextMilestone
@@ -665,7 +650,7 @@ export default function DashboardPage() {
                   <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
                     <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Score Checks</p>
                     <p className="mt-1 text-3xl font-semibold text-emerald-100">{jobTracks.length}</p>
-                    <p className="text-xs text-cyan-100/64">Saved under your name</p>
+                    <p className="text-xs text-cyan-100/64">Saved runs</p>
                   </article>
                   <article className="rounded-2xl border border-cyan-100/22 bg-[#071f39]/72 p-4">
                     <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/70">Reports</p>
@@ -707,12 +692,12 @@ export default function DashboardPage() {
 
               <aside className="xl:col-span-4 rounded-[2rem] border border-amber-100/28 bg-[linear-gradient(160deg,rgba(51,35,12,0.72),rgba(16,23,36,0.96))] p-5 shadow-[0_28px_65px_rgba(2,8,22,0.45)] sm:p-6">
                 <p className="text-xs uppercase tracking-[0.14em] text-amber-100/76">Guest Workspace</p>
-                <h3 className="mt-2 text-2xl font-semibold text-amber-50">Everything stays under {displayName || "your name"}</h3>
+                <h3 className="mt-2 text-2xl font-semibold text-amber-50">Everything stays in this workspace</h3>
                 <p className="mt-2 text-sm text-amber-50/82">
                   Run a score check, come back later, and keep your saved results in one place without signing up.
                 </p>
                 <div className="mt-4 space-y-2 rounded-2xl border border-amber-100/24 bg-[#2b2516]/45 p-4 text-sm text-amber-50/86">
-                  <p>Name on workspace: {displayName || "Guest"}</p>
+                  <p>Mode: {guestMode ? "Guest access" : "Workspace active"}</p>
                   <p>Saved score checks: {jobTracks.length}</p>
                   <p>Saved reports: {reports.length}</p>
                 </div>
@@ -786,9 +771,9 @@ export default function DashboardPage() {
               className="mt-6 scroll-mt-24 rounded-[2rem] border border-cyan-100/22 bg-[linear-gradient(145deg,rgba(8,29,55,0.84),rgba(5,18,36,0.82))] p-5 shadow-[0_20px_55px_rgba(2,8,22,0.45)]"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
+              <div>
                   <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Recent Score Checks</p>
-                  <h2 className="mt-2 text-xl font-semibold text-cyan-50">Saved under {displayName || "your name"}</h2>
+                  <h2 className="mt-2 text-xl font-semibold text-cyan-50">Recent saved score checks</h2>
                   <p className="mt-1 text-sm text-cyan-50/70">Every matcher run shows up here without asking for signup.</p>
                 </div>
                 <TrackedLink

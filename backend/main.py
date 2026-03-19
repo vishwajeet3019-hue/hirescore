@@ -4023,6 +4023,53 @@ def is_public_access_guest_user(user_row: sqlite3.Row | None) -> bool:
     return is_public_access_guest_email(str(user_row["email"]))
 
 
+def is_placeholder_public_access_name(value: str | None) -> bool:
+    normalized = re.sub(r"\s+", " ", safe_text(value)).strip().lower()
+    if not normalized:
+        return True
+    if normalized in {"guest access", "guest user"}:
+        return True
+    return normalized.startswith("guest ")
+
+
+def sync_public_access_user_name_from_resume(user_row: sqlite3.Row | None, resume_text: str) -> str:
+    if not is_public_access_guest_user(user_row):
+        return safe_text(str(user_row["full_name"])) if user_row else ""
+
+    current_name = safe_text(str(user_row["full_name"])).strip()
+    if current_name and not is_placeholder_public_access_name(current_name):
+        return current_name
+
+    lines = [clean_resume_line(line) for line in safe_text(resume_text).replace("\r", "\n").split("\n")]
+    inferred_name = safe_text(infer_candidate_name_from_resume_lines(lines)).strip()
+    if not inferred_name:
+        return current_name
+    if is_placeholder_public_access_name(inferred_name) or is_placeholder_candidate_name(inferred_name):
+        return current_name
+
+    normalized_name = normalize_optional_profile_name(inferred_name)
+    if not normalized_name:
+        return current_name
+
+    with AUTH_DB_LOCK:
+        connection = auth_db_connection()
+        try:
+            cursor = connection.cursor()
+            begin_write_transaction(cursor)
+            cursor.execute(
+                "UPDATE users SET full_name = ? WHERE id = ?",
+                (normalized_name, int(user_row["id"])),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    return normalized_name
+
+
 def get_or_create_public_access_user(guest_key: str, name: str | None = None) -> sqlite3.Row:
     email = public_access_email_for_key(guest_key)
     provided_name = normalize_optional_profile_name(name)
@@ -10508,6 +10555,8 @@ def analysis_application_copilot(data: ApplicationCopilotRequest, request: Reque
         raise HTTPException(status_code=400, detail="Job description is too short for Application Copilot.")
 
     try:
+        if user:
+            sync_public_access_user_name_from_resume(user, resume_text)
         payload = build_application_copilot_payload(data)
         if user:
             payload["wallet"] = wallet_payload(int(user["credits"] or 0))

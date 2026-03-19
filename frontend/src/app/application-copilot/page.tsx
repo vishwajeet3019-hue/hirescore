@@ -15,7 +15,7 @@ const faqs = [
   },
   {
     question: "Do I need an account first?",
-    answer: "No. We only capture your name so your score checks can appear in your dashboard.",
+    answer: "No. Your guest workspace starts automatically after the score check.",
   },
   {
     question: "What do I see first?",
