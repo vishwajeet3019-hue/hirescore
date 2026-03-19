@@ -1,36 +1,44 @@
 import type { Metadata } from "next";
+import { COMPANY_KEYWORDS, DEFAULT_OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
 import AppChrome from "./components/app-chrome";
 import AnalyticsBootstrap from "./components/analytics-bootstrap";
 import AnalyticsPageviewTracker from "./components/analytics-pageview";
 import MotionProvider from "./components/motion-provider";
 import "./globals.css";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
+const GOOGLE_SITE_VERIFICATION = process.env.GOOGLE_SITE_VERIFICATION?.trim();
+const BING_SITE_VERIFICATION = process.env.BING_SITE_VERIFICATION?.trim();
+const YANDEX_SITE_VERIFICATION = process.env.YANDEX_SITE_VERIFICATION?.trim();
+
+const siteVerification =
+  GOOGLE_SITE_VERIFICATION || BING_SITE_VERIFICATION || YANDEX_SITE_VERIFICATION
+    ? {
+        ...(GOOGLE_SITE_VERIFICATION ? { google: GOOGLE_SITE_VERIFICATION } : {}),
+        ...(YANDEX_SITE_VERIFICATION ? { yandex: YANDEX_SITE_VERIFICATION } : {}),
+        ...(BING_SITE_VERIFICATION
+          ? {
+              other: {
+                "msvalidate.01": BING_SITE_VERIFICATION,
+              },
+            }
+          : {}),
+      }
+    : undefined;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
+  category: "career tools",
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  manifest: "/manifest.webmanifest",
   title: {
-    default: "HireScore AI | Resume Analyzer and ATS Resume Builder",
-    template: "%s | HireScore AI",
+    default: `${SITE_NAME} | Resume JD Matcher`,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "Improve your resume with AI role-fit analysis, shortlist prediction, and ATS-friendly templates. Build stronger job applications with HireScore AI.",
-  keywords: [
-    "AI resume analyzer",
-    "ATS resume builder",
-    "resume score checker",
-    "resume optimization",
-    "shortlist prediction",
-    "job application tools",
-    "resume format for fresher job",
-    "resume score check free",
-    "ats resume checker free",
-    "resume checker free online",
-    "why resume not getting shortlisted",
-    "how to increase interview calls",
-    "job switch resume 2 years experience",
-    "resume ka score kaise check kare",
-  ],
+  description: SITE_DESCRIPTION,
+  keywords: COMPANY_KEYWORDS,
   alternates: {
     canonical: "/",
     languages: {
@@ -52,25 +60,16 @@ export const metadata: Metadata = {
     type: "website",
     url: SITE_URL,
     locale: "en_IN",
-    title: "HireScore AI | Resume Analyzer and ATS Resume Builder",
-    description:
-      "Analyze role-fit, find improvement gaps, and build recruiter-ready resumes with HireScore AI.",
-    siteName: "HireScore AI",
-    images: [
-      {
-        url: "/icon.svg",
-        width: 512,
-        height: 512,
-        alt: "HireScore AI",
-      },
-    ],
+    title: `${SITE_NAME} | Resume JD Matcher`,
+    description: SITE_DESCRIPTION,
+    siteName: SITE_NAME,
+    images: [DEFAULT_OG_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "HireScore AI | Resume Analyzer and ATS Resume Builder",
-    description:
-      "Analyze role-fit, improve your resume, and boost shortlist chances with AI-powered insights.",
-    images: ["/icon.svg"],
+    title: `${SITE_NAME} | Resume JD Matcher`,
+    description: SITE_DESCRIPTION,
+    images: [DEFAULT_OG_IMAGE.url],
   },
   robots: {
     index: true,
@@ -83,6 +82,7 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
+  ...(siteVerification ? { verification: siteVerification } : {}),
 };
 
 export default function RootLayout({
@@ -92,12 +92,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en-IN">
-      <body className="antialiased overflow-x-hidden">
+      <body className="antialiased">
         <AnalyticsBootstrap />
         <AnalyticsPageviewTracker />
-        <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden">
-          <div className="futuristic-grid" />
-        </div>
         <MotionProvider>
           <AppChrome>{children}</AppChrome>
         </MotionProvider>

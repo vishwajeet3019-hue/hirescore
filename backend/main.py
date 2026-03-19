@@ -242,6 +242,7 @@ elif STRIPE_ENABLED:
     PAYMENT_GATEWAY_ACTIVE = "stripe"
 else:
     PAYMENT_GATEWAY_ACTIVE = "none"
+FOCUSED_MATCHER_MODE = env_flag("FOCUSED_MATCHER_MODE", True)
 
 EMAIL_SMTP_HOST = (os.getenv("EMAIL_SMTP_HOST") or "").strip()
 EMAIL_SMTP_PORT = int((os.getenv("EMAIL_SMTP_PORT") or "587").strip())
@@ -3592,16 +3593,25 @@ def require_admin_access(request: Request) -> None:
 
 
 def wallet_payload(credits: int) -> dict[str, Any]:
+    pricing = {
+        "analyze": CREDIT_COSTS["analyze"],
+        "jd_match": CREDIT_COSTS["jd_match"],
+        "interview_prep": CREDIT_COSTS["interview_prep"],
+        "ai_resume_generation": CREDIT_COSTS["ai_resume_generation"],
+        "template_pdf_download": CREDIT_COSTS["template_pdf_download"],
+    }
+    if FOCUSED_MATCHER_MODE:
+        pricing = {
+            "analyze": 0,
+            "jd_match": 0,
+            "interview_prep": 0,
+            "ai_resume_generation": 0,
+            "template_pdf_download": 0,
+        }
     return {
         "credits": max(0, int(credits)),
         "welcome_credits": WELCOME_FREE_CREDITS,
-        "pricing": {
-            "analyze": CREDIT_COSTS["analyze"],
-            "jd_match": CREDIT_COSTS["jd_match"],
-            "interview_prep": CREDIT_COSTS["interview_prep"],
-            "ai_resume_generation": CREDIT_COSTS["ai_resume_generation"],
-            "template_pdf_download": CREDIT_COSTS["template_pdf_download"],
-        },
+        "pricing": pricing,
         "free_analysis_included": 1,
     }
 
@@ -3778,6 +3788,13 @@ def credit_error(user_row: sqlite3.Row, message: str, status_code: int = 402) ->
 
 
 def debit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    if FOCUSED_MATCHER_MODE:
+        user = fetch_user_by_id(user_id)
+        effective_credits = int(user["credits"] or 0) if user else 0
+        return {
+            "transaction_id": 0,
+            "wallet": wallet_payload(effective_credits),
+        }
     if public_feature_access_enabled():
         user = fetch_user_by_id(user_id)
         if is_public_access_guest_user(user):
@@ -3835,6 +3852,13 @@ def debit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] |
 
 
 def credit_credits(user_id: int, action: str, amount: int, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    if FOCUSED_MATCHER_MODE:
+        user = fetch_user_by_id(user_id)
+        effective_credits = int(user["credits"] or 0) if user else 0
+        return {
+            "transaction_id": 0,
+            "wallet": wallet_payload(effective_credits),
+        }
     with AUTH_DB_LOCK:
         connection = auth_db_connection()
         try:
@@ -9222,7 +9246,7 @@ async def analysis_jd_match_extract_from_file(
     file: UploadFile = File(...),
     auth_token: str | None = Form(None),
 ) -> dict[str, Any]:
-    user = require_authenticated_user(request, auth_token)
+    user = resolve_optional_authenticated_user(request, auth_token)
     file_name = safe_text(file.filename) or "uploaded-jd"
     content_type = safe_text(file.content_type)
     contents = await file.read()
@@ -9241,7 +9265,7 @@ async def analysis_jd_match_extract_from_file(
     log_analytics_event(
         "analysis",
         "analysis_jd_file_extracted",
-        user_id=int(user["id"]),
+        user_id=int(user["id"]) if user else None,
         meta={
             "file_type": content_type or "unknown",
             "file_name": file_name[:120],
@@ -10412,7 +10436,7 @@ def analysis_application_pack(data: ApplicationPackRequest, request: Request) ->
 
 @app.post("/analysis/application-copilot")
 def analysis_application_copilot(data: ApplicationCopilotRequest, request: Request) -> dict[str, Any]:
-    user = require_authenticated_user(request, data.auth_token)
+    user = resolve_optional_authenticated_user(request, data.auth_token)
     resume_text = safe_text(data.resume_text)
     job_description = safe_text(data.job_description)
     if len(resume_text) < 24:
@@ -10420,50 +10444,28 @@ def analysis_application_copilot(data: ApplicationCopilotRequest, request: Reque
     if len(job_description) < 24:
         raise HTTPException(status_code=400, detail="Job description is too short for Application Copilot.")
 
-    debit = debit_credits(
-        int(user["id"]),
-        "jd_match",
-        CREDIT_COSTS["jd_match"],
-        meta={
-            "route": "/analysis/application-copilot",
-            "role": safe_text(data.role),
-            "industry": safe_text(data.industry),
-            "company": safe_text(data.company),
-        },
-    )
     try:
         payload = build_application_copilot_payload(data)
-        payload["wallet"] = debit["wallet"]
-        payload["credit_transaction_id"] = debit["transaction_id"]
+        if user:
+            payload["wallet"] = wallet_payload(int(user["credits"] or 0))
+            payload["credit_transaction_id"] = 0
         log_analytics_event(
             "analysis",
             "analysis_application_copilot_generated",
-            user_id=int(user["id"]),
+            user_id=int(user["id"]) if user else None,
             meta={
                 "role": safe_text(data.role),
                 "industry": safe_text(data.industry),
                 "company": safe_text(data.company),
                 "match_percentage": int(payload.get("match_percentage") or 0),
                 "missing_skills": len(payload.get("missing_skills") or []),
-                "credit_transaction_id": debit["transaction_id"],
+                "credit_transaction_id": 0,
             },
         )
         return payload
     except HTTPException:
-        credit_credits(
-            int(user["id"]),
-            "refund_jd_match",
-            CREDIT_COSTS["jd_match"],
-            meta={"reason": "application_copilot_failed"},
-        )
         raise
     except Exception as exc:
-        credit_credits(
-            int(user["id"]),
-            "refund_jd_match",
-            CREDIT_COSTS["jd_match"],
-            meta={"reason": "application_copilot_failed_unhandled"},
-        )
         raise HTTPException(status_code=500, detail="Unable to run Application Copilot right now.") from exc
 
 
@@ -10892,6 +10894,15 @@ def user_chat_send_message(data: ChatMessageCreateRequest, request: Request) -> 
 
 @app.get("/payments/packages")
 def payment_packages() -> dict[str, Any]:
+    if FOCUSED_MATCHER_MODE:
+        return {
+            "payment_gateway": "none",
+            "payment_enabled": False,
+            "stripe_enabled": False,
+            "razorpay_enabled": False,
+            "razorpay_key_id": "",
+            "packages": [],
+        }
     return {
         "payment_gateway": PAYMENT_GATEWAY_ACTIVE,
         "payment_enabled": PAYMENT_GATEWAY_ACTIVE in {"stripe", "razorpay"},
@@ -10964,6 +10975,8 @@ def razorpay_signature_valid(order_id: str, payment_id: str, signature: str) -> 
 
 @app.post("/payments/checkout")
 def create_payment_checkout(data: PaymentCheckoutRequest, request: Request) -> dict[str, Any]:
+    if FOCUSED_MATCHER_MODE:
+        raise HTTPException(status_code=503, detail="Payments are temporarily disabled while HireScore is focused on resume matching.")
     if PAYMENT_GATEWAY_ACTIVE not in {"stripe", "razorpay"}:
         raise HTTPException(status_code=503, detail="Payment gateway is not configured yet.")
 
@@ -11089,6 +11102,8 @@ def create_payment_checkout(data: PaymentCheckoutRequest, request: Request) -> d
 
 @app.post("/payments/razorpay/verify")
 def verify_razorpay_payment(data: RazorpayVerifyRequest, request: Request) -> dict[str, Any]:
+    if FOCUSED_MATCHER_MODE:
+        raise HTTPException(status_code=503, detail="Payments are temporarily disabled while HireScore is focused on resume matching.")
     if not RAZORPAY_ENABLED:
         raise HTTPException(status_code=503, detail="Razorpay is not configured yet.")
     user = require_authenticated_user(request, data.auth_token)
@@ -11245,6 +11260,8 @@ def verify_razorpay_payment(data: RazorpayVerifyRequest, request: Request) -> di
 
 @app.post("/payments/webhook")
 async def stripe_webhook(request: Request) -> dict[str, bool]:
+    if FOCUSED_MATCHER_MODE:
+        return {"received": True}
     if not STRIPE_ENABLED or stripe is None:
         raise HTTPException(status_code=503, detail="Payment gateway is not configured.")
     if not STRIPE_WEBHOOK_SECRET:

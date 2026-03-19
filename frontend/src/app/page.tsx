@@ -1,544 +1,148 @@
+import Link from "next/link";
 import type { Metadata } from "next";
-import GrowthShareSection from "./components/growth-share-section";
-import TrackedLink from "./components/tracked-link";
-import { seoLandingPages } from "@/lib/seo-landing-pages";
-import { addUtmParams } from "@/lib/utm";
+import { buildPageMetadata } from "@/lib/seo";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://hirescore.in";
-
-export const metadata: Metadata = {
-  title: "AI Interview Simulator + Resume Analyzer for India | HireScore",
-  description:
-    "Run a live interview simulator, get role-fit analysis, shortlist prediction, and actionable improvements built for job seekers in India.",
-  keywords: [
-    "resume analyzer India",
-    "interview simulator India",
-    "ATS resume checker India",
-    "job switch resume India",
-    "JD matcher India",
-  ],
-  alternates: {
-    canonical: "/",
-  },
-};
-
-const proofStats = [
-  { label: "Interview Practice", value: "Structured Mock Interview" },
-  { label: "Prediction Layers", value: "12+" },
-  { label: "Jobs We Cover", value: "All Major Domains" },
-  { label: "Free Guest Interview", value: "1 Without Login" },
-];
-
-const valueCards = [
+const outcomeCards = [
   {
-    title: "Shortlist Probability",
-    description: "Know your realistic shortlist chance before you apply and avoid low-conversion submissions.",
+    title: "Match score",
+    description: "See how strongly your current resume fits the job description before you apply.",
   },
   {
-    title: "Precision Gap Detection",
-    description: "Detect must-have gaps instantly with role-specific insights, not generic resume advice.",
+    title: "Missing skills",
+    description: "Spot the must-have gaps recruiters are likely to notice first.",
   },
   {
-    title: "Build, Improve, Export",
-    description: "Create resumes inside the platform, improve with AI, and download one polished ATS-ready PDF.",
+    title: "Clear suggestions",
+    description: "Get practical resume fixes you can make right away for the role you want.",
   },
 ];
 
 const workflowSteps = [
-  {
-    title: "Add Role Intent",
-    description: "Enter target industry, target role, and your current capabilities.",
-  },
-  {
-    title: "Run Precision Analysis",
-    description: "Get shortlist prediction, confidence, and high-priority improvement signals.",
-  },
-  {
-    title: "Build Winning Resume",
-    description: "Use guided suggestions to build and export one recruiter-ready ATS-standard resume.",
-  },
+  "Paste your resume or upload the file.",
+  "Paste the target job description or upload it.",
+  "Review the score, missing skills, and shortlist-focused suggestions.",
 ];
 
-const reviewCards = [
-  {
-    name: "Ananya Sharma",
-    role: "Software Engineer",
-    city: "Bengaluru",
-    quote:
-      "The shortlist prediction helped me stop random applying. I focused on better-fit roles and got interview calls within two weeks.",
-  },
-  {
-    name: "Rohit Verma",
-    role: "Sales Manager",
-    city: "Mumbai",
-    quote:
-      "I liked that it worked for non-tech roles too. The suggestions were practical and directly improved my resume quality.",
-  },
-  {
-    name: "Priya Nair",
-    role: "Product Analyst",
-    city: "Pune",
-    quote:
-      "The confidence score and gap insights made my preparation clear. My resume now looks far more professional and focused.",
-  },
-];
-
-const successStories = [
-  {
-    title: "Fresher To First Interview",
-    person: "Karthik R. • Chennai",
-    summary: "Used role-fit analysis + in-platform builder to move from no callbacks to scheduled interviews.",
-    outcome: "Interview response improved from low to consistent",
-  },
-  {
-    title: "Career Switch With Clarity",
-    person: "Sneha P. • Hyderabad",
-    summary: "Switched from operations to product-facing roles by closing must-have skill gaps identified in analysis.",
-    outcome: "Shortlist probability improved after profile rebuild",
-  },
-  {
-    title: "Higher Conversion In 30 Days",
-    person: "Arjun M. • Delhi NCR",
-    summary: "Used one clean ATS-ready format and targeted suggestions to optimize each application batch.",
-    outcome: "More recruiter replies from the same application volume",
-  },
-];
+export const metadata: Metadata = buildPageMetadata({
+  title: "HireScore | Check if your resume will get shortlisted",
+  description:
+    "Check if your resume will get shortlisted by matching it against a job description and getting focused suggestions.",
+  path: "/",
+  keywords: [
+    "check if resume will get shortlisted",
+    "resume jd matcher",
+    "resume shortlist checker",
+    "resume suggestions",
+    "resume match score",
+  ],
+});
 
 export default function Home() {
-  const featuredGuides = seoLandingPages.slice(0, 3);
-  const homeUploadHref = addUtmParams("/instant-fit", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_instant_fit",
-  });
-  const homeGuidedFlowHref = addUtmParams("/guided-flow", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_guided_flow",
-  });
-  const homePricingHref = addUtmParams("/pricing", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_hero",
-  });
-  const homeInterviewDemoHref = addUtmParams("/interview-simulator?mode=demo", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_demo_hero",
-  });
-  const homeShareHref = addUtmParams("/upload", {
-    source: "home_social",
-    medium: "referral",
-    campaign: "share_prompt",
-  });
-  const homeCaseStudiesHref = addUtmParams("/case-studies", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_case_studies",
-  });
-  const homeStudioHref = addUtmParams("/studio", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_workflow",
-  });
-  const homeResourcesHref = addUtmParams("/resources", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_resources",
-  });
-  const homeFeatureGuidesHref = addUtmParams("/features", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_feature_guides",
-  });
-  const homeToolsHubHref = addUtmParams("/tools", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_tools_hub",
-  });
-  const homeMonetizationUploadHref = addUtmParams("/upload", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_monetization",
-  });
-  const homeMonetizationPricingHref = addUtmParams("/pricing", {
-    source: "home",
-    medium: "organic",
-    campaign: "home_monetization",
-  });
-  const featuredStudies = [
-    {
-      title: "Fresher To First Interview",
-      person: "Karthik R. • Chennai",
-      outcome: "Interview response improved from low to consistent",
-    },
-    {
-      title: "Career Switch With Clarity",
-      person: "Sneha P. • Hyderabad",
-      outcome: "Shortlist probability improved after profile rebuild",
-    },
-    {
-      title: "Higher Conversion In 30 Days",
-      person: "Arjun M. • Delhi NCR",
-      outcome: "More recruiter replies from the same application volume",
-    },
-  ];
-  const organizationJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    name: "HireScore AI",
-    url: SITE_URL,
-    logo: `${SITE_URL}/icon.svg`,
-    areaServed: {
-      "@type": "Country",
-      name: "India",
-    },
-    sameAs: [],
-  };
-
-  const softwareApplicationJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    name: "HireScore AI",
-    applicationCategory: "BusinessApplication",
-    operatingSystem: "Web",
-    url: SITE_URL,
-    areaServed: {
-      "@type": "Country",
-      name: "India",
-    },
-    description:
-      "AI-powered resume analyzer and builder with role-fit scoring, shortlist prediction, and ATS-ready PDF export.",
-    offers: {
-      "@type": "Offer",
-      price: "0",
-      priceCurrency: "INR",
-      availability: "https://schema.org/InStock",
-    },
-  };
-
   return (
-    <main className="min-h-screen px-4 pb-20 pt-8 sm:px-6 sm:pt-12 lg:px-8">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
-      />
-      <section className="mx-auto max-w-7xl">
-        <div className="premium-panel holo-sheen relative overflow-hidden rounded-[2rem] p-6 sm:rounded-[2.2rem] sm:p-10 lg:p-12">
-          <div className="absolute -top-24 right-[-60px] h-72 w-72 rounded-full bg-cyan-200/24 blur-[100px]" />
-          <div className="absolute bottom-[-120px] left-[-40px] h-72 w-72 rounded-full bg-amber-100/16 blur-[110px]" />
+    <main className="px-4 pb-20 pt-8 sm:px-6 sm:pt-12 lg:px-8">
+      <section className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+        <div className="accent-panel rounded-[2rem] p-7 sm:p-10 lg:p-12">
+          <p className="inline-flex items-center gap-2 rounded-full border border-[#dccdb6] bg-[#fff7eb] px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-[#7a846e]">
+            <span className="live-dot" />
+            Resume Shortlist Check
+          </p>
+          <h1 className="mt-5 max-w-3xl text-4xl font-semibold leading-tight text-[#203528] sm:text-5xl lg:text-6xl">
+            Check if your resume will get shortlisted.
+          </h1>
+          <p className="mt-5 max-w-2xl text-base leading-relaxed text-[#52604d] sm:text-lg">
+            HireScore is now focused on one thing: matching your resume against a job description so you can see the score,
+            understand the gaps, and improve the application before you send it.
+          </p>
 
-          <div className="relative z-10 grid gap-10 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
-            <div>
-              <p className="inline-flex items-center gap-2 rounded-full glow-chip px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-cyan-100/82 sm:px-4 sm:text-xs sm:tracking-[0.28em]">
-                <span className="live-dot" />
-                Premium Resume Intelligence
-              </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              href="/application-copilot"
+              className="rounded-full bg-[#355e46] px-6 py-3 text-sm font-semibold text-[#f8f4ec] shadow-[0_18px_28px_rgba(53,94,70,0.18)] transition hover:bg-[#2d503c]"
+            >
+              Open Resume Matcher
+            </Link>
+            <Link
+              href="#how-it-works"
+              className="rounded-full border border-[#d7cab5] bg-[#fff8ee] px-6 py-3 text-sm font-semibold text-[#203528] transition hover:bg-[#f3eadc]"
+            >
+              See How It Works
+            </Link>
+          </div>
+        </div>
 
-              <h1 className="mt-5 text-3xl font-semibold leading-tight text-cyan-50 sm:mt-6 sm:text-5xl lg:text-6xl">
-                Stop Applying Blind.
-                <span className="block bg-gradient-to-r from-cyan-100 via-cyan-300 to-amber-100 bg-clip-text text-transparent">
-                  Know your real shortlisting chances before you apply.
-                </span>
-              </h1>
-
-              <p className="mt-6 max-w-2xl text-sm leading-relaxed text-cyan-50/72 sm:text-base">
-                HireScore helps candidates spend effort where it converts. Practice in a live interview simulator, analyze role fit, close high-impact gaps, and build resumes that improve interview outcomes.
-              </p>
-
-            <div className="mt-8 flex flex-wrap gap-3 sm:mt-10 sm:gap-4">
-            <TrackedLink
-                  href={homeUploadHref}
-                  eventName="cta_instant_fit_click"
-                  eventParams={{ cta_location: "home_hero", cta_label: "Instant Fit Check (Free)" }}
-                  className="w-full rounded-2xl border border-cyan-100/40 bg-gradient-to-r from-cyan-300/28 via-cyan-200/30 to-amber-100/20 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
-                >
-                  Instant Fit Check (Free)
-                </TrackedLink>
-
-                <TrackedLink
-                  href={homeGuidedFlowHref}
-                  eventName="guided_flow_step_click"
-                  eventParams={{ cta_location: "home_hero", step: 0, label: "Guided Flow" }}
-                  className="w-full rounded-2xl border border-emerald-100/34 bg-gradient-to-r from-emerald-300/24 via-cyan-300/20 to-cyan-200/14 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
-                >
-                  Open Guided Flow
-                </TrackedLink>
-
-                <TrackedLink
-                  href={homeInterviewDemoHref}
-                  eventName="cta_interview_demo_click"
-                  eventParams={{ cta_location: "home_hero", cta_label: "Try Free 90-Second Interview" }}
-                  className="w-full rounded-2xl border border-emerald-100/34 bg-gradient-to-r from-emerald-300/20 via-cyan-300/18 to-cyan-200/12 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:brightness-110 sm:w-auto sm:px-7 sm:py-3.5"
-                >
-                  Try Free 90-Second Interview
-                </TrackedLink>
-
-                <TrackedLink
-                  href={homePricingHref}
-                  eventName="cta_view_premium_plans_click"
-                  eventParams={{ cta_location: "home_hero", cta_label: "View Premium Plans" }}
-                  className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
-                >
-                  View Premium Plans
-                </TrackedLink>
+        <div className="surface-panel rounded-[2rem] p-6 sm:p-8">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[#7a846e]">What the matcher returns</p>
+          <div className="mt-5 space-y-4">
+            <div className="rounded-[1.4rem] border border-[#ddd0ba] bg-[#fffaf3] p-4">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Resume match</p>
+                  <p className="mt-1 text-4xl font-semibold text-[#203528]">78%</p>
+                </div>
+                <p className="max-w-[12rem] text-right text-sm leading-relaxed text-[#677463]">
+                  A quick view of how close your current profile is to the role.
+                </p>
               </div>
             </div>
 
-            <div className="space-y-3">
-              {proofStats.map((stat) => (
-                <div key={stat.label} className="stat-live-card holo-sheen soft-pulse rounded-2xl border border-cyan-100/18 bg-cyan-100/7 p-4">
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/62 sm:text-xs sm:tracking-[0.2em]">{stat.label}</p>
-                  <p className="mt-1 text-2xl font-semibold text-cyan-50">{stat.value}</p>
-                  <div className="aurora-strip mt-3 h-1 rounded-full" />
-                </div>
-              ))}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[1.2rem] border border-[#ddd0ba] bg-[#fff8ee] p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Critical coverage</p>
+                <p className="mt-2 text-2xl font-semibold text-[#203528]">82%</p>
+              </div>
+              <div className="rounded-[1.2rem] border border-[#ddd0ba] bg-[#fff8ee] p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Missing skills</p>
+                <p className="mt-2 text-2xl font-semibold text-[#203528]">4</p>
+              </div>
+              <div className="rounded-[1.2rem] border border-[#ddd0ba] bg-[#fff8ee] p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Suggestions</p>
+                <p className="mt-2 text-2xl font-semibold text-[#203528]">Actionable</p>
+              </div>
+            </div>
+
+            <div className="rounded-[1.4rem] border border-[#ddd0ba] bg-[#fff8ee] p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Suggestion preview</p>
+              <div className="mt-3 space-y-2">
+                <div className="loading-bar h-3" />
+                <div className="loading-bar h-3 w-[88%]" />
+                <div className="loading-bar h-3 w-[74%]" />
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto mt-10 max-w-7xl">
-        <div className="grid gap-5 md:grid-cols-3">
-          {valueCards.map((card, index) => (
-            <article key={card.title} className="stat-live-card neon-panel holo-sheen rounded-3xl p-5 sm:p-6 transition-transform duration-200 hover:-translate-y-1">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.2em]">Value {index + 1}</p>
-              <h2 className="mt-4 text-xl font-semibold text-cyan-50 sm:text-2xl">{card.title}</h2>
-              <p className="mt-3 text-sm leading-relaxed text-cyan-50/70">{card.description}</p>
+      <section className="mx-auto mt-10 grid max-w-7xl gap-4 md:grid-cols-3">
+        {outcomeCards.map((card) => (
+          <article key={card.title} className="surface-panel rounded-[1.6rem] p-6">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-[#7a846e]">Included</p>
+            <h2 className="mt-3 text-2xl font-semibold text-[#203528]">{card.title}</h2>
+            <p className="mt-3 text-sm leading-relaxed text-[#52604d]">{card.description}</p>
+          </article>
+        ))}
+      </section>
 
-              <div className="signal-line mt-6 h-2 rounded-full bg-cyan-100/12">
-                <div className="h-full w-full rounded-full bg-gradient-to-r from-cyan-300 to-amber-100" />
-              </div>
+      <section id="how-it-works" className="mx-auto mt-10 max-w-7xl rounded-[2rem] border border-[#ddd0ba] bg-[#fff8ee] p-6 sm:p-8">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-[#7a846e]">How it works</p>
+            <h2 className="mt-2 text-3xl font-semibold text-[#203528] sm:text-4xl">Three steps. One focused result.</h2>
+          </div>
+          <Link
+            href="/application-copilot"
+            className="rounded-full border border-[#d7cab5] bg-white px-5 py-2.5 text-sm font-semibold text-[#203528] transition hover:bg-[#f7efe3]"
+          >
+            Open Matcher
+          </Link>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {workflowSteps.map((step, index) => (
+            <article key={step} className="surface-panel rounded-[1.4rem] p-5">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#7a846e]">Step {index + 1}</p>
+              <p className="mt-3 text-base leading-relaxed text-[#203528]">{step}</p>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className="mx-auto mt-12 max-w-7xl">
-        <div className="neon-panel rounded-[2rem] p-6 sm:p-8">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.22em]">
-                Reviews
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">What Users In India Are Saying</h3>
-            </div>
-            <p className="text-sm text-cyan-50/62">Freshers and professionals across domains</p>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {reviewCards.map((review) => (
-              <article key={review.name} className="holo-sheen rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                <p className="text-sm leading-relaxed text-cyan-50/78">&quot;{review.quote}&quot;</p>
-                <p className="mt-4 text-sm font-semibold text-cyan-50">{review.name}</p>
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/62">
-                  {review.role} • {review.city}
-                </p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto mt-12 max-w-7xl">
-        <div className="premium-panel rounded-2xl p-6 sm:p-8">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.2em]">Traffic Boost Block</p>
-          <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-3xl">Share with friends who are actively applying</h3>
-            <p className="mt-2 text-sm text-cyan-50/72">
-            Real growth is usually referral-driven for this audience in India. Each share brings an already-intentional jobseeker.
-          </p>
-          <div className="mt-6">
-            <TrackedLink
-              href={homeShareHref}
-              eventName="cta_check_my_score_click"
-              eventParams={{
-                cta_location: "home_share_prompt",
-                cta_label: "Send to Friends",
-              }}
-              className="rounded-2xl border border-cyan-100/38 bg-cyan-200/18 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto"
-            >
-              Send People to Free Analysis
-            </TrackedLink>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto mt-10 max-w-7xl">
-        <div className="premium-panel rounded-[2rem] p-6 sm:p-10">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/64 sm:text-xs sm:tracking-[0.24em]">Live Proof</p>
-          <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-4xl">Top Case Outcomes from Our Users</h3>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {featuredStudies.map((item) => (
-              <article key={item.title} className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-4">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-100/62">{item.person}</p>
-                <h4 className="mt-2 text-lg font-semibold text-cyan-50">{item.title}</h4>
-                <p className="mt-3 text-sm text-cyan-50/74">{item.outcome}</p>
-              </article>
-            ))}
-          </div>
-          <div className="mt-6">
-            <TrackedLink
-              href={homeCaseStudiesHref}
-              eventName="cta_case_studies_click"
-              eventParams={{ cta_location: "home_case_studies", cta_label: "View All Proof Stories" }}
-              className="inline-flex rounded-xl border border-cyan-100/28 px-4 py-2.5 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/12"
-            >
-              View All Proof Stories
-            </TrackedLink>
-          </div>
-        </div>
-      </section>
-
-      <GrowthShareSection
-        location="home"
-        title="HireScore AI Resume Analyzer"
-      />
-
-      <section className="mx-auto mt-12 max-w-7xl">
-        <div className="premium-panel rounded-[2rem] p-6 sm:p-10">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.22em]">
-            Success Stories
-          </p>
-          <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-4xl">
-            Real Career Outcomes From Indian Users
-          </h3>
-
-          <div className="mt-7 grid gap-4 md:grid-cols-3">
-            {successStories.map((story) => (
-              <article key={story.title} className="holo-sheen rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/62">Case</p>
-                <h4 className="mt-2 text-lg font-semibold text-cyan-50">{story.title}</h4>
-                <p className="mt-2 text-xs uppercase tracking-[0.12em] text-cyan-100/60">{story.person}</p>
-                <p className="mt-3 text-sm leading-relaxed text-cyan-50/74">{story.summary}</p>
-                <p className="mt-4 text-sm font-semibold text-cyan-100">{story.outcome}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="workflow" className="mx-auto mt-14 max-w-7xl">
-        <div className="premium-panel holo-sheen rounded-[2rem] p-6 sm:p-10">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.24em]">Workflow</p>
-              <h3 className="mt-2 text-2xl font-semibold leading-tight text-cyan-50 sm:text-4xl">From Profile Input to Offer-Ready Resume</h3>
-            </div>
-            <TrackedLink
-              href={homeStudioHref}
-              eventName="cta_navigation"
-              eventParams={{ cta_location: "home_workflow", cta_label: "Open Resume Studio" }}
-              className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:w-auto"
-            >
-              Open Resume Studio
-            </TrackedLink>
-          </div>
-
-          <div className="mt-8 grid gap-5 md:grid-cols-3">
-            {workflowSteps.map((step, index) => (
-              <article key={step.title} className="rounded-2xl border border-cyan-100/16 bg-cyan-100/6 p-5">
-                <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.2em]">Step {index + 1}</p>
-                <h4 className="mt-2 text-lg font-semibold text-cyan-50 sm:text-xl">{step.title}</h4>
-                <p className="mt-3 text-sm leading-relaxed text-cyan-50/72">{step.description}</p>
-              </article>
-            ))}
-          </div>
-
-        </div>
-      </section>
-
-      <section className="mx-auto mt-14 max-w-7xl">
-        <div className="premium-panel rounded-[2rem] p-6 sm:p-10">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/64 sm:text-xs sm:tracking-[0.24em]">
-                SEO Guides
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold text-cyan-50 sm:text-4xl">
-                Role-Specific Resume Playbooks
-              </h3>
-            </div>
-            <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-              <TrackedLink
-                href={homeResourcesHref}
-                eventName="cta_navigation"
-                eventParams={{ cta_location: "home_resources", cta_label: "Explore All Guides" }}
-                className="w-full rounded-xl border border-cyan-100/30 bg-cyan-200/16 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/24 sm:w-auto"
-              >
-                Explore All {seoLandingPages.length} Guides
-              </TrackedLink>
-              <TrackedLink
-                href={homeFeatureGuidesHref}
-                eventName="cta_navigation"
-                eventParams={{ cta_location: "home_resources", cta_label: "Feature Guides" }}
-                className="w-full rounded-xl border border-cyan-100/24 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50/88 transition hover:bg-cyan-100/10 sm:w-auto"
-              >
-                Feature Guides
-              </TrackedLink>
-              <TrackedLink
-                href={homeToolsHubHref}
-                eventName="cta_navigation"
-                eventParams={{ cta_location: "home_resources", cta_label: "Tools Hub" }}
-                className="w-full rounded-xl border border-cyan-100/24 px-5 py-2.5 text-center text-sm font-semibold text-cyan-50/88 transition hover:bg-cyan-100/10 sm:w-auto"
-              >
-                Tools Hub
-              </TrackedLink>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {featuredGuides.map((guide) => (
-              <article key={guide.slug} className="rounded-2xl border border-cyan-100/18 bg-cyan-100/6 p-5">
-                <p className="text-[11px] uppercase tracking-[0.12em] text-cyan-100/62">{guide.roleFocus}</p>
-                <h4 className="mt-2 text-lg font-semibold text-cyan-50">{guide.title}</h4>
-                <p className="mt-2 text-sm leading-relaxed text-cyan-50/72">{guide.metaDescription}</p>
-                <TrackedLink
-                  href={addUtmParams(`/resources/${guide.slug}`, {
-                    source: "home_resources",
-                    medium: "organic",
-                    campaign: "home_guide_featured",
-                    content: guide.slug,
-                  })}
-                  eventName="cta_resources_open"
-                  eventParams={{ cta_location: "home_resources", cta_label: "Read Guide", content: guide.slug }}
-                  className="mt-4 inline-flex rounded-xl border border-cyan-100/28 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/12"
-                >
-                  Read Guide
-                </TrackedLink>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto mt-14 max-w-7xl">
-        <div className="neon-panel holo-sheen rounded-[2rem] p-6 text-center sm:p-10">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/62 sm:text-xs sm:tracking-[0.26em]">Monetization Promise</p>
-          <h3 className="mx-auto mt-3 max-w-3xl text-2xl font-semibold text-cyan-50 sm:text-4xl">
-            You are not paying for a resume editor. You are paying for a higher probability of getting shortlisted.
-          </h3>
-          <div className="mt-8 flex flex-wrap justify-center gap-3 sm:gap-4">
-            <TrackedLink
-              href={homeMonetizationPricingHref}
-              eventName="cta_view_premium_plans_click"
-              eventParams={{ cta_location: "home_monetization", cta_label: "Compare Plans" }}
-              className="w-full rounded-2xl border border-cyan-100/40 bg-cyan-200/18 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50 transition hover:bg-cyan-200/28 sm:w-auto sm:px-7 sm:py-3.5"
-            >
-              Compare Plans
-            </TrackedLink>
-            <TrackedLink
-              href={homeMonetizationUploadHref}
-              eventName="cta_check_my_score_click"
-              eventParams={{ cta_location: "home_monetization", cta_label: "Start Analysis" }}
-              className="w-full rounded-2xl border border-cyan-100/25 px-6 py-3 text-center text-sm font-semibold tracking-wide text-cyan-50/88 transition hover:bg-cyan-200/10 sm:w-auto sm:px-7 sm:py-3.5"
-            >
-              Start Analysis
-            </TrackedLink>
-          </div>
         </div>
       </section>
     </main>
