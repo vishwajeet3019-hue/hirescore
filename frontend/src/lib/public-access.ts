@@ -187,6 +187,7 @@ export const ensurePublicAccessSession = async (): Promise<string | null> => {
         },
         body: JSON.stringify({
           guest_key: ensurePublicAccessGuestKey(),
+          name: getStoredPublicAccessName() || undefined,
         }),
         cache: "no-store",
       },

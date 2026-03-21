@@ -9354,39 +9354,67 @@ def analysis_jd_match(data: JobDescriptionMatchRequest, request: Request) -> dic
 async def analysis_jd_match_extract_from_file(
     request: Request,
     file: UploadFile = File(...),
+    kind: str = Form("jd"),
     auth_token: str | None = Form(None),
 ) -> dict[str, Any]:
     user = resolve_optional_authenticated_user(request, auth_token)
+    normalized_kind = safe_text(kind).strip().lower()
+    is_resume_upload = normalized_kind in {"resume", "cv"}
     file_name = safe_text(file.filename) or "uploaded-jd"
     content_type = safe_text(file.content_type)
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     if len(contents) > 12 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="JD file is too large. Upload a file smaller than 12 MB.")
-
-    job_description = extract_job_description_text_from_upload(file_name, content_type, contents).strip()
-    if len(job_description) < 24:
         raise HTTPException(
             status_code=400,
-            detail="Could not extract enough JD text. Upload a clearer file or paste the description manually.",
+            detail=f"{'Resume' if is_resume_upload else 'JD'} file is too large. Upload a file smaller than 12 MB.",
         )
+
+    extracted_text = (
+        extract_resume_text_for_analysis(file_name, content_type, contents).strip()
+        if is_resume_upload
+        else extract_job_description_text_from_upload(file_name, content_type, contents).strip()
+    )
+    if len(extracted_text) < 24:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Could not extract enough resume text. Upload a clearer file or paste the resume manually."
+                if is_resume_upload
+                else "Could not extract enough JD text. Upload a clearer file or paste the description manually."
+            ),
+        )
+
+    candidate_name = ""
+    if is_resume_upload:
+        lines = [clean_resume_line(line) for line in extracted_text.replace("\r", "\n").split("\n")]
+        inferred_name = safe_text(infer_candidate_name_from_resume_lines(lines)).strip()
+        if inferred_name and not is_placeholder_public_access_name(inferred_name) and not is_placeholder_candidate_name(inferred_name):
+            candidate_name = normalize_optional_profile_name(inferred_name)
+        if user:
+            synced_name = sync_public_access_user_name_from_resume(user, extracted_text)
+            if synced_name:
+                candidate_name = synced_name
 
     log_analytics_event(
         "analysis",
-        "analysis_jd_file_extracted",
+        "analysis_resume_file_extracted" if is_resume_upload else "analysis_jd_file_extracted",
         user_id=int(user["id"]) if user else None,
         meta={
+            "kind": "resume" if is_resume_upload else "jd",
             "file_type": content_type or "unknown",
             "file_name": file_name[:120],
-            "chars": len(job_description),
+            "chars": len(extracted_text),
+            "candidate_name": candidate_name[:80] if candidate_name else "",
         },
     )
     return {
-        "job_description": job_description[:16000],
-        "extracted_chars": len(job_description),
+        "job_description": extracted_text[:16000],
+        "extracted_chars": len(extracted_text),
         "file_name": file_name,
         "file_type": content_type or "",
+        "candidate_name": candidate_name,
     }
 
 
@@ -12918,6 +12946,160 @@ def build_application_copilot_next_steps_7_day(
     return day_steps
 
 
+def normalize_skill_evidence_map(
+    value: Any,
+    *,
+    limit_skills: int = 6,
+    limit_lines: int = 1,
+) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, list[str]] = {}
+    for raw_skill, raw_lines in value.items():
+        skill = safe_text(raw_skill)[:80]
+        if not skill:
+            continue
+        lines = normalize_string_list(raw_lines, limit=limit_lines, max_item_len=220)
+        if not lines:
+            continue
+        normalized[skill] = lines
+        if len(normalized) >= max(1, limit_skills):
+            break
+    return normalized
+
+
+def build_application_copilot_skills_analysis(
+    match_percentage: int,
+    jd_match_payload: dict[str, Any],
+) -> dict[str, Any]:
+    matched_must_have = normalize_string_list(
+        jd_match_payload.get("matched_must_have_skills"),
+        limit=8,
+        max_item_len=80,
+    )
+    matched_good_to_have = normalize_string_list(
+        jd_match_payload.get("matched_good_to_have_skills"),
+        limit=8,
+        max_item_len=80,
+    )
+    missing_must_have = normalize_string_list(
+        jd_match_payload.get("missing_must_have_skills"),
+        limit=8,
+        max_item_len=80,
+    )
+    missing_good_to_have = normalize_string_list(
+        jd_match_payload.get("missing_good_to_have_skills"),
+        limit=8,
+        max_item_len=80,
+    )
+    matched_skills = normalize_string_list(
+        jd_match_payload.get("matched_skills"),
+        limit=12,
+        max_item_len=80,
+    )
+    missing_skills = normalize_string_list(
+        jd_match_payload.get("missing_skills"),
+        limit=12,
+        max_item_len=80,
+    )
+    supporting_matches = dedupe_text_list(
+        [*matched_good_to_have, *matched_skills],
+        limit=10,
+        max_item_len=80,
+    )
+    supporting_gaps = dedupe_text_list(
+        [*missing_good_to_have, *missing_skills],
+        limit=10,
+        max_item_len=80,
+    )
+    evidence_map = normalize_skill_evidence_map(
+        jd_match_payload.get("matched_skill_evidence"),
+        limit_skills=5,
+        limit_lines=1,
+    )
+    skill_breakdown = jd_match_payload.get("skill_breakdown") if isinstance(jd_match_payload.get("skill_breakdown"), dict) else {}
+    must_have_coverage = int(
+        clamp_float(float(skill_breakdown.get("must_have_coverage") or 0), 0.0, 100.0)
+    )
+    good_to_have_coverage = int(
+        clamp_float(float(skill_breakdown.get("good_to_have_coverage") or 0), 0.0, 100.0)
+    )
+    critical_coverage = int(clamp_float(float(jd_match_payload.get("critical_coverage") or 0), 0.0, 100.0))
+    gap_severity = safe_text(skill_breakdown.get("gap_severity")) or "medium"
+    target_score = 90
+    points_to_target = max(0, target_score - int(match_percentage))
+
+    priority_actions: list[str] = []
+    if missing_must_have:
+        focus = ", ".join(missing_must_have[:3])
+        priority_actions.append(
+            f"Add direct evidence for {focus} in the summary, skills, and top experience bullets."
+        )
+    if must_have_coverage < 90:
+        priority_actions.append(
+            f"Raise must-have coverage from {must_have_coverage}% toward 90% by mirroring the JD's role-critical language."
+        )
+    if supporting_gaps:
+        focus = ", ".join(supporting_gaps[:3])
+        priority_actions.append(
+            f"Add supporting proof for {focus} through projects, certifications, or quantified work examples."
+        )
+    if matched_must_have:
+        focus = ", ".join(matched_must_have[:2])
+        priority_actions.append(
+            f"Keep {focus} prominent and attach stronger metrics so current strengths carry more screening weight."
+        )
+    if critical_coverage < 85:
+        priority_actions.append(
+            f"Lift critical skill coverage from {critical_coverage}% by rewriting 3 to 5 bullets around ownership, tools, and outcomes."
+        )
+    if points_to_target > 0:
+        priority_actions.append(
+            f"Close the remaining {points_to_target}-point gap by tailoring the headline, summary, and first two experience blocks to this JD."
+        )
+    priority_actions = dedupe_text_list(priority_actions, limit=5, max_item_len=220)
+
+    if points_to_target == 0:
+        target_summary = "You are already at or above 90/100. Focus on polishing clarity, metrics, and application packaging."
+    elif missing_must_have:
+        target_summary = (
+            "The fastest route to 90/100 is closing the missing must-have skills and making the strongest resume evidence easier to verify."
+        )
+    elif must_have_coverage >= 80 and critical_coverage >= 75:
+        target_summary = (
+            "You are relatively close to 90/100. Better quantified bullets and tighter JD phrasing should create the biggest lift."
+        )
+    else:
+        target_summary = (
+            "Reaching 90/100 will require both better skill coverage and stronger role-specific proof across the top half of the resume."
+        )
+
+    return {
+        "matched": {
+            "must_have": matched_must_have,
+            "supporting": supporting_matches,
+            "evidence": evidence_map,
+        },
+        "missing": {
+            "must_have": missing_must_have,
+            "supporting": supporting_gaps,
+        },
+        "gap_to_90": {
+            "current_score": int(match_percentage),
+            "target_score": target_score,
+            "points_needed": points_to_target,
+            "gap_severity": gap_severity,
+            "summary": target_summary,
+            "priority_actions": priority_actions,
+        },
+        "coverage": {
+            "must_have": must_have_coverage,
+            "good_to_have": good_to_have_coverage,
+            "critical": critical_coverage,
+        },
+    }
+
+
 def build_application_copilot_payload(data: ApplicationCopilotRequest) -> dict[str, Any]:
     role = safe_text(data.role) or "Target role"
     industry = safe_text(data.industry) or "General"
@@ -12986,6 +13168,7 @@ def build_application_copilot_payload(data: ApplicationCopilotRequest) -> dict[s
         interview_prep_payload,
         application_pack_payload,
     )
+    skills_analysis = build_application_copilot_skills_analysis(match_percentage, jd_match_payload)
 
     ai_models = dedupe_text_list(
         [
@@ -13006,6 +13189,7 @@ def build_application_copilot_payload(data: ApplicationCopilotRequest) -> dict[s
         "matched_skills": matched_skills,
         "missing_skills": missing_skills,
         "feedback": feedback,
+        "skills_analysis": skills_analysis,
         "resume_improvements": resume_improvements,
         "next_steps_7_day": next_steps_7_day,
         "interview_questions": normalize_string_list(
@@ -13043,6 +13227,32 @@ def build_application_copilot_payload(data: ApplicationCopilotRequest) -> dict[s
                     0.0,
                     100.0,
                 )
+            ),
+            "gap_severity": safe_text((jd_match_payload.get("skill_breakdown") or {}).get("gap_severity")) or "medium",
+            "matched_must_have_skills": normalize_string_list(
+                jd_match_payload.get("matched_must_have_skills"),
+                limit=10,
+                max_item_len=80,
+            ),
+            "missing_must_have_skills": normalize_string_list(
+                jd_match_payload.get("missing_must_have_skills"),
+                limit=10,
+                max_item_len=80,
+            ),
+            "matched_good_to_have_skills": normalize_string_list(
+                jd_match_payload.get("matched_good_to_have_skills"),
+                limit=10,
+                max_item_len=80,
+            ),
+            "missing_good_to_have_skills": normalize_string_list(
+                jd_match_payload.get("missing_good_to_have_skills"),
+                limit=10,
+                max_item_len=80,
+            ),
+            "matched_skill_evidence": normalize_skill_evidence_map(
+                jd_match_payload.get("matched_skill_evidence"),
+                limit_skills=5,
+                limit_lines=1,
             ),
             "jd_relevance": int(
                 clamp_float(

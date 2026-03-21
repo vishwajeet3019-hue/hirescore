@@ -15,7 +15,7 @@ const faqs = [
   },
   {
     question: "Do I need an account first?",
-    answer: "No. Your guest workspace starts automatically after the score check.",
+    answer: "No. The full result appears on this page right after the score check.",
   },
   {
     question: "What do I see first?",
@@ -63,7 +63,7 @@ export default async function ApplicationCopilotPage({ searchParams }: Applicati
             Check your resume score now.
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-relaxed text-black/68">
-            Paste your resume and the job description to see if you're likely to get shortlisted before you apply.
+            Paste your resume and the job description to see if you&apos;re likely to get shortlisted before you apply.
           </p>
           <div className="mt-6 flex flex-wrap gap-2.5">
             <span className="glow-chip rounded-full px-3 py-2 text-sm font-medium text-black/66">Lands on the score checker</span>
@@ -77,7 +77,7 @@ export default async function ApplicationCopilotPage({ searchParams }: Applicati
             No account required
           </p>
           <h1 className="mt-3 max-w-4xl text-4xl font-semibold leading-[1.04] tracking-[-0.03em] text-[#111111] sm:text-5xl">
-            Upload your resume, paste the job description, and see if you're likely to get shortlisted.
+            Upload your resume, paste the job description, and see if you&apos;re likely to get shortlisted.
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-relaxed text-black/68">
             HireScore is designed to answer one question quickly: should you apply with this resume, or fix it first?
